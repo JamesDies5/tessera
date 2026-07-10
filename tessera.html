@@ -80,11 +80,12 @@
     <span class="vsep"></span>
     <select class="pal" id="palSelect" title="Zone palette preview — the same gradient map the game uses"></select>
     <button class="ibtn" id="btnPalLoad" data-icon="droplet" title="Load PaletteResource .tres files from global/palettes/"></button>
-    <button class="ibtn" id="btnReset" data-icon="rotate" title="Restore the default mock layout"></button>
+    <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
   </div>
   <span class="spacer"></span>
   <button class="ibtn" id="btnLoad" data-icon="upload" title="Load a template PNG"></button>
   <button class="ibtn" id="btnSave" data-icon="download" title="Save autotile_template.png"></button>
+  <button class="ibtn" id="btnResetArt" data-icon="history" title="Reset the template art to the shipped original (asks first)"></button>
   <input type="file" id="fileTpl" accept="image/png" hidden>
   <input type="file" id="filePal" accept=".tres" multiple hidden>
 </header>
@@ -390,6 +391,7 @@ const ICONS = {
   sqx: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/>',
   droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
 };
 document.querySelectorAll("[data-icon]").forEach((b) => {
   b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
@@ -926,7 +928,25 @@ $("btnRedo").addEventListener("click", redo);
 $("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gridOn[activeTab].cell; syncGridButtons(); drawGrid(); });
 $("btnPxGrid").addEventListener("click", () => { gridOn[activeTab].px = !gridOn[activeTab].px; syncGridButtons(); drawGrid(); });
 $("btnFit").addEventListener("click", () => fitView(activeTab));
-$("btnReset").addEventListener("click", () => { fills = buildDefaultFills(); rebuild(); renderPreview(); persistFills(); status("Mock layout restored."); });
+$("btnReset").addEventListener("click", () => {
+  const def = buildDefaultFills();
+  const same = (() => {
+    const a = Object.keys(fills).sort(), b = Object.keys(def).sort();
+    return a.length === b.length && a.every((k, i) => k === b[i]);
+  })();
+  if (same && layoutMode === "field") { status("Layout is already the default."); return; }
+  if (!confirm("Reset the Playfield layout to the default mock arrangement? Cells you painted or erased will revert.")) return;
+  fills = def;
+  if (layoutMode !== "field") {
+    layoutMode = "field";
+    document.querySelectorAll(".lmode").forEach((q) => q.classList.toggle("on", q.dataset.lmode === "field"));
+  }
+  rebuild(); renderPreview(); persistFills(); status("Playfield layout reset to the default.");
+});
+$("btnResetArt").addEventListener("click", () => {
+  if (!confirm("Reset the template art to the original shipped version? Your current drawing will be replaced.")) return;
+  loadPngIntoEditor(DEFAULT_PNG, "Template art reset to the shipped original.");
+});
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (e.metaKey || e.ctrlKey) return;
@@ -990,7 +1010,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "1.9.1";
+const APP_VERSION = "1.10.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
