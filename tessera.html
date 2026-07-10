@@ -6,8 +6,8 @@
 <title>TESSERA — autotile proofing bench</title>
 <style>
   :root {
-    --bg0: #0d0a18; --bg1: #17112a; --panel: #131024; --line: #2b2344;
-    --text: #cfc6ec; --dim: #7f74a8; --accent: #b388ff;
+    --bg0: #1e1e1e; --bg1: #2a2a2a; --panel: #292929; --line: #3f3f3f;
+    --text: #d6d6d6; --dim: #8f8f8f; --accent: #e8e8e8;
   }
   * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   html, body { margin: 0; height: 100dvh; overflow: hidden; overscroll-behavior: none;
@@ -27,7 +27,7 @@
     cursor: pointer; padding: 0; flex: 0 0 auto; }
   .ibtn svg { width: 20px; height: 20px; }
   .ibtn:active { background: var(--line); }
-  .ibtn.on { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .ibtn.on { border-color: var(--accent); color: var(--accent); background: #383838; box-shadow: 0 0 0 1px var(--accent) inset; }
   .ctx { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .vsep { width: 1px; height: 26px; background: var(--line); margin: 0 3px; }
   select.pal { background: var(--panel); border: 1px solid var(--line); color: var(--text);
@@ -45,12 +45,9 @@
 
   #viewport { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; touch-action: none;
     background: var(--bg0); border: 1px solid var(--line); border-radius: 10px 0 0 0; }
-  .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
-  .world canvas { display: block; position: absolute; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; }
-  #edChecker { position: absolute; left: 0; top: 0; width: 160px; height: 176px;
-    background-image: conic-gradient(#1c1731 25%, #241d3e 0 50%, #1c1731 0 75%, #241d3e 0); background-size: 8px 8px; }
-  #gridOverlay { position: absolute; left: 0; top: 0; pointer-events: none; }
-  #statusChip { position: absolute; left: 10px; bottom: 10px; background: #131024ee; border: 1px solid var(--line);
+  #screen, #gridOverlay { position: absolute; left: 0; top: 0; }
+  #gridOverlay { pointer-events: none; }
+  #statusChip { position: absolute; left: 10px; bottom: 10px; background: #292929ee; border: 1px solid var(--line);
     border-radius: 7px; padding: 5px 10px; color: var(--dim); font-size: 11px; max-width: 70%;
     opacity: 0; transition: opacity .35s; pointer-events: none; }
   #statusChip.show { opacity: 1; }
@@ -108,8 +105,7 @@
     <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
   </div>
   <div id="viewport">
-    <div id="edWorld" class="world"><div id="edChecker"></div><canvas id="edCanvas" width="160" height="176"></canvas></div>
-    <div id="pvWorld" class="world" style="display:none"><canvas id="pvCanvas" width="704" height="416"></canvas></div>
+    <canvas id="screen"></canvas>
     <canvas id="gridOverlay"></canvas>
     <div id="statusChip"></div>
   </div>
@@ -392,25 +388,70 @@ let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", a
 let color = { r: 20, g: 20, b: 20, a: 255 };
 let fills = null, cells = null, resolved = null;
 let undoStack = [], redoStack = [];
-let palettes = [{ name: "Grayscale", base: null }, { name: "Lavune", base: PAL_SCRIPT_DEFAULTS.map((c) => c.slice()) }];
+/* ---- built-in palettes ----
+   Baked into the file so they travel with the hosted app. Lavune is the
+   PaletteResource script default (the .tres is nearly empty because it IS
+   the default). To bake in the other zone palettes, add entries here with
+   the five base stops from each global/palettes/*.tres — darkest to
+   lightest, each [r, g, b] in 0..1 — or hand Claude the .tres files.
+   Shape: { name: "Azra Abyss", base: [[r,g,b],[r,g,b],[r,g,b],[r,g,b],[r,g,b]] } */
+const BUILTIN_PALETTES = [
+  { name: "Azra", base: [[0.0078,0.0431,0.0902], [0.0314,0.1608,0.3725], [0.0902,0.4314,0.9882], [0.5216,0.7059,1], [1,1,1]] },
+  { name: "Truce", base: [[0,0.0588,0.0275], [0,0.2275,0.1255], [0,0.6,0.3412], [0.4588,0.8118,0.6667], [1,1,1]] },
+  { name: "Golden", base: [[0.0627,0.0392,0], [0.2235,0.1569,0], [0.5922,0.4196,0], [0.8,0.7098,0.298], [1,1,1]] },
+  { name: "Russet", base: [[0.0784,0.0275,0.0196], [0.2941,0.1137,0.0588], [0.7765,0.298,0.1569], [0.9725,0.6,0.4118], [1,1,1]] },
+  { name: "Sylvane", base: [[0.048,0.048,0.048], [0.1539,0.1539,0.1539], [0.4951,0.4951,0.4951], [0.7314,0.7387,0.7461], [0.95,0.95,0.95]] },
+  { name: "Lab", base: [[0.0275,0.0314,0.102], [0.1176,0.1098,0.4118], [0.3216,0.2941,1], [0.6431,0.6314,1], [1,1,1]] },
+];
+let palettes = [
+  { name: "Grayscale", base: null },
+  { name: "Lavune", base: PAL_SCRIPT_DEFAULTS.map((c) => c.slice()) },
+  ...BUILTIN_PALETTES,
+];
 let palIdx = 0;
 let pvDirty = true;
 
-const ed = $("edCanvas"), edCtx = ed.getContext("2d", { willReadFrequently: true });
-const pv = $("pvCanvas"), pvCtx = pv.getContext("2d");
+const ed = document.createElement("canvas"); ed.width = 160; ed.height = 176;
+const edCtx = ed.getContext("2d", { willReadFrequently: true });
+const pv = document.createElement("canvas"); pv.width = GCOLS * TILE; pv.height = GROWS * TILE;
+const pvCtx = pv.getContext("2d");
+const screen = $("screen"), sctx = screen.getContext("2d");
 const overlay = $("gridOverlay"), ovCtx = overlay.getContext("2d");
 const off = document.createElement("canvas"); off.width = GCOLS * TILE; off.height = GROWS * TILE;
 const offCtx = off.getContext("2d", { willReadFrequently: true });
-[edCtx, pvCtx, offCtx].forEach((c) => { c.imageSmoothingEnabled = false; });
+[edCtx, pvCtx, offCtx, sctx].forEach((c) => { c.imageSmoothingEnabled = false; });
 const viewport = $("viewport");
+const checker = (() => {   // world-space checker behind the transparent template
+  const c = document.createElement("canvas"); c.width = 8; c.height = 8;
+  const g = c.getContext("2d");
+  g.fillStyle = "#232323"; g.fillRect(0, 0, 8, 8);
+  g.fillStyle = "#2c2c2c"; g.fillRect(4, 0, 4, 4); g.fillRect(0, 4, 4, 4);
+  return sctx.createPattern(c, "repeat");
+})();
 
-/* ---- view transforms: one {s, x, y} per tab, applied as CSS transform ---- */
+/* ---- view transforms: one {s, x, y} per tab; the art is BLITTED to a
+   screen-resolution canvas with imageSmoothingEnabled=false, so scaling is
+   true nearest-neighbour on every engine (Safari filters CSS-transformed
+   canvases bilinearly — the blit path is immune to that). ---- */
 const view = { ed: { s: 3, x: 0, y: 0 }, pv: { s: 1, x: 0, y: 0 } };
-const WORLD = { ed: { el: $("edWorld"), w: 160, h: 176 }, pv: { el: $("pvWorld"), w: GCOLS * TILE, h: GROWS * TILE } };
+const WORLD = { ed: { w: 160, h: 176 }, pv: { w: GCOLS * TILE, h: GROWS * TILE } };
 const SMIN = 0.4, SMAX = 32;
+function blit() {
+  const r = viewport.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const v = view[activeTab];
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.clearRect(0, 0, screen.width, screen.height);
+  sctx.imageSmoothingEnabled = false;
+  sctx.setTransform(dpr * v.s, 0, 0, dpr * v.s, dpr * v.x, dpr * v.y);
+  if (activeTab === "ed") {
+    sctx.fillStyle = checker; sctx.fillRect(0, 0, 160, 176);
+    sctx.drawImage(ed, 0, 0);
+  } else {
+    sctx.drawImage(pv, 0, 0);
+  }
+}
 function applyView(tab) {
-  const v = view[tab];
-  WORLD[tab].el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`;
+  if (tab === activeTab) blit();
   if (tab === "ed") drawGrid();
 }
 function fitView(tab) {
@@ -421,10 +462,12 @@ function fitView(tab) {
 }
 function sizeOverlay() {
   const r = viewport.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-  overlay.width = Math.round(r.width * dpr); overlay.height = Math.round(r.height * dpr);
-  overlay.style.width = r.width + "px"; overlay.style.height = r.height + "px";
+  for (const c of [overlay, screen]) {
+    c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+    c.style.width = r.width + "px"; c.style.height = r.height + "px";
+  }
   ovCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawGrid();
+  blit(); drawGrid();
 }
 function drawGrid() {
   const r = viewport.getBoundingClientRect();
@@ -435,25 +478,35 @@ function drawGrid() {
   const x1 = Math.min(r.width, v.x + 160 * v.s), y1 = Math.min(r.height, v.y + 176 * v.s);
   if (x1 <= x0 || y1 <= y0) return;
   if ($("btnPxGrid").classList.contains("on") && v.s >= 4) {
-    ovCtx.strokeStyle = "rgba(180,160,255,0.10)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+    ovCtx.strokeStyle = "rgba(255,255,255,0.09)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
     for (let i = 1; i < 160; i++) { const x = v.x + i * v.s; if (x > x0 && x < x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
     for (let j = 1; j < 176; j++) { const y = v.y + j * v.s; if (y > y0 && y < y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
     ovCtx.stroke();
   }
   if ($("btnCellGrid").classList.contains("on")) {
-    ovCtx.strokeStyle = "rgba(180,160,255,0.35)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+    ovCtx.strokeStyle = "rgba(255,255,255,0.28)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
     for (let i = 0; i <= TCOLS; i++) { const x = v.x + i * TILE * v.s; if (x >= x0 && x <= x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
     for (let j = 0; j <= TROWS; j++) { const y = v.y + j * TILE * v.s; if (y >= y0 && y <= y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
     ovCtx.stroke();
   }
 }
 
-/* ---- swatches ---- */
+/* ---- swatches: displayed through the active palette's gradient map for
+   consistency with the level view, but selecting one still paints the
+   underlying GRAY — the template stays value-truth. ---- */
 const STOP_GRAYS = PAL_STOPS.map((s) => Math.round(s * 255));
+function displayColor(rgba) {
+  const pal = palettes[palIdx];
+  if (!pal.base) return `rgb(${rgba.r},${rgba.g},${rgba.b})`;
+  const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
+  const l = Math.min(255, Math.round(rgba.r*0.299 + rgba.g*0.587 + rgba.b*0.114));
+  return `rgb(${lut[l*3]},${lut[l*3+1]},${lut[l*3+2]})`;
+}
 function swatchBtn(rgba, tag, title) {
   const b = document.createElement("button");
   b.className = "sw"; b.title = title || "";
-  b.style.background = rgba.a === 0 ? "transparent" : `rgb(${rgba.r},${rgba.g},${rgba.b})`;
+  b.style.background = rgba.a === 0 ? "transparent" : displayColor(rgba);
+  if (rgba.r === color.r && rgba.g === color.g && rgba.b === color.b && rgba.a === color.a) b.classList.add("on");
   if (tag !== null && tag !== undefined) { const t = document.createElement("span"); t.className = "tag"; t.textContent = tag; b.appendChild(t); }
   b.addEventListener("click", () => {
     color = { ...rgba }; if (tool === "eraser" || tool === "pick") setTool("pencil");
@@ -464,12 +517,11 @@ function swatchBtn(rgba, tag, title) {
 function buildStopSwatches() {
   const host = $("stopSwatches"); host.innerHTML = "";
   STOP_GRAYS.forEach((g, i) => {
-    const t = i === 4 ? "stop 4 — reserved for characters in your value hierarchy" : `stop ${i} — tile range`;
-    const b = swatchBtn({ r: g, g: g, b: g, a: 255 }, i, t);
-    if (i === 0) b.classList.add("on");
-    host.appendChild(b);
+    const t = (i === 4 ? "stop 4 — reserved for characters in your value hierarchy" : `stop ${i} — tile range`) + ` (paints gray ${g})`;
+    host.appendChild(swatchBtn({ r: g, g: g, b: g, a: 255 }, i, t));
   });
 }
+function refreshSwatches() { buildStopSwatches(); refreshFileSwatches(); }
 function refreshFileSwatches() {
   const host = $("fileSwatches"); host.innerHTML = "";
   const d = edCtx.getImageData(0, 0, 160, 176).data, seen = new Map();
@@ -537,7 +589,7 @@ function pickAt(x, y) {
 
 /* ---- preview render (lazy when hidden) ---- */
 function rebuild() { cells = layoutMode === "zoo" ? buildZooCells() : buildCells(fills); resolved = resolveAll(cells); pvDirty = true; }
-function templateChanged() { pvDirty = true; renderPreview(); }
+function templateChanged() { pvDirty = true; if (activeTab === "ed") blit(); renderPreview(); }
 let rafQueued = false;
 function renderPreview() {
   if (activeTab !== "pv" || !pvDirty) return;
@@ -562,7 +614,7 @@ function renderPreviewNow() {
     }
   }
   const pal = palettes[palIdx];
-  let backdrop = "#101018";
+  let backdrop = "#161616";
   if (pal.base) {
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
     const img = offCtx.getImageData(0, 0, off.width, off.height), d = img.data;
@@ -576,6 +628,7 @@ function renderPreviewNow() {
   }
   pvCtx.fillStyle = backdrop; pvCtx.fillRect(0, 0, pv.width, pv.height);
   pvCtx.drawImage(off, 0, 0);
+  if (activeTab === "pv") blit();
 }
 
 /* ---- level<->template mapping ---- */
@@ -613,9 +666,31 @@ const pointers = new Map();
 let stroke = null;   // { kind: 'ed'|'pvpx'|'pvcell', last, snap }
 let pinch = null;    // { d0, mid0, v0 }
 function vpPoint(e) { const r = viewport.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
-function edPos(e) { const r = ed.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * 160), Math.floor((e.clientY - r.top) / r.height * 176)]; }
-function pvPos(e) { const r = pv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * off.width), Math.floor((e.clientY - r.top) / r.height * off.height)]; }
+function worldPos(e, tab) {
+  const p = vpPoint(e), v = view[tab];
+  return [Math.floor((p.x - v.x) / v.s), Math.floor((p.y - v.y) / v.s)];
+}
+function edPos(e) { return worldPos(e, "ed"); }
+function pvPos(e) { return worldPos(e, "pv"); }
 
+/* ---- Procreate-style hold-to-pick: a pencil/eraser press that stays put for
+   HOLD_MS aborts its stroke (the dot is rolled back from the snapshot) and
+   eyedrops the pixel under the finger instead. Movement past the jitter
+   threshold keeps it a normal stroke. ---- */
+const HOLD_MS = 500, HOLD_JITTER = 6;
+function clearHold() { if (stroke && stroke.holdT) { clearTimeout(stroke.holdT); stroke.holdT = null; } }
+function armHold(e) {
+  stroke.downVp = vpPoint(e);
+  stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
+  stroke.holdT = setTimeout(() => {
+    if (!stroke || pointers.size !== 1) return;
+    const kind = stroke.kind, lc = stroke.lastClient;
+    abortStroke();
+    stroke = null;
+    if (kind === "ed") { const [x, y] = edPos(lc); pickAt(x, y); }
+    else { const [px, py] = pvPos(lc); const m = levelToTemplate(px, py); if (m) pickAt(m.tx, m.ty); }
+  }, HOLD_MS);
+}
 function beginStroke(e) {
   if (activeTab === "ed") {
     const [x, y] = edPos(e);
@@ -623,6 +698,7 @@ function beginStroke(e) {
     if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
     snapshot(); putPx(x, y); templateChanged();
     stroke = { kind: "ed", last: [x, y], snap: true };
+    armHold(e);
     return;
   }
   if (pvMode === "cells") { const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE)); stroke = { kind: "pvcell" }; return; }
@@ -633,8 +709,14 @@ function beginStroke(e) {
   if (tool === "fill") { snapshot(); cellFill(m.tx, m.ty); templateChanged(); persistPng(); refreshFileSwatches(); return; }
   snapshot(); putPx(m.tx, m.ty); templateChanged();
   stroke = { kind: "pvpx", last: [px, py], snap: true };
+  armHold(e);
 }
 function moveStroke(e) {
+  if (stroke.holdT) {
+    stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
+    const p = vpPoint(e);
+    if (Math.hypot(p.x - stroke.downVp.x, p.y - stroke.downVp.y) > HOLD_JITTER) clearHold();
+  }
   if (stroke.kind === "ed") {
     const [x, y] = edPos(e);
     if (x !== stroke.last[0] || y !== stroke.last[1]) { lineTo(stroke.last[0], stroke.last[1], x, y); stroke.last = [x, y]; templateChanged(); }
@@ -646,6 +728,7 @@ function moveStroke(e) {
   }
 }
 function endStroke() {
+  clearHold();
   if (stroke && stroke.snap) { persistPng(); refreshFileSwatches(); }
   stroke = null;
 }
@@ -673,6 +756,7 @@ viewport.addEventListener("pointerdown", (e) => {
   viewport.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, vpPoint(e));
   if (pointers.size === 2) {
+    clearHold();
     if (stroke && stroke.snap) abortStroke();   // second finger cancels the stroke — pinch, not paint
     stroke = null;
     startPinch();
@@ -713,12 +797,10 @@ document.addEventListener("gesturechange", (e) => e.preventDefault());
 function setTab(tab) {
   activeTab = tab;
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
-  WORLD.ed.el.style.display = tab === "ed" ? "" : "none";
-  WORLD.pv.el.style.display = tab === "pv" ? "" : "none";
   $("ctxLevel").style.display = tab === "pv" ? "" : "none";
   $("railTpl").style.display = tab === "ed" ? "contents" : "none";
+  if (tab === "pv" && pvDirty) renderPreviewNow(); else blit();
   drawGrid();
-  if (tab === "pv") renderPreview();
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
 
@@ -756,7 +838,7 @@ function refreshPalSelect() {
   palettes.forEach((p, i) => { const o = document.createElement("option"); o.value = i; o.textContent = p.name; s.appendChild(o); });
   s.value = palIdx;
 }
-$("palSelect").addEventListener("change", (e) => { palIdx = parseInt(e.target.value, 10); pvDirty = true; renderPreview(); });
+$("palSelect").addEventListener("change", (e) => { palIdx = parseInt(e.target.value, 10); pvDirty = true; renderPreview(); refreshSwatches(); });
 $("btnPalLoad").addEventListener("click", () => $("filePal").click());
 $("filePal").addEventListener("change", async (e) => {
   let added = 0;
@@ -769,8 +851,8 @@ $("filePal").addEventListener("change", async (e) => {
   }
   e.target.value = "";
   if (added) {
-    refreshPalSelect(); pvDirty = true; renderPreview();
-    try { localStorage.setItem(LS.pals, JSON.stringify(palettes.slice(2).map((p) => ({ name: p.name, base: p.base })))); } catch (err) {}
+    refreshPalSelect(); pvDirty = true; renderPreview(); refreshSwatches();
+    try { localStorage.setItem(LS.pals, JSON.stringify(palettes.slice(2 + BUILTIN_PALETTES.length).map((p) => ({ name: p.name, base: p.base })))); } catch (err) {}
     status(`Loaded ${added} palette${added > 1 ? "s" : ""}.`);
   }
 });
@@ -809,7 +891,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
   buildStopSwatches();
   try {
     const savedPals = JSON.parse(localStorage.getItem(LS.pals) || "[]");
-    for (const p of savedPals) if (p && p.base) palettes.push(p);
+    for (const p of savedPals) if (p && p.base && !palettes.some((q) => q.name === p.name)) palettes.push(p);
   } catch (e) {}
   refreshPalSelect();
   try {
