@@ -51,6 +51,9 @@
     border-radius: 7px; padding: 5px 10px; color: var(--dim); font-size: 11px; max-width: 70%;
     opacity: 0; transition: opacity .35s; pointer-events: none; }
   #statusChip.show { opacity: 1; }
+  #ver { position: absolute; right: 8px; bottom: 6px; color: var(--dim); font-size: 10px; opacity: .75; pointer-events: none; letter-spacing: 1px; }
+  #tip { position: fixed; z-index: 99; background: #2f2f2fee; border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 8px; color: var(--text); font-size: 11px; max-width: 250px; pointer-events: none; display: none; line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -97,17 +100,18 @@
     <button class="ibtn" id="btnUndo" data-icon="undo" title="Undo (Cmd/Ctrl+Z)"></button>
     <button class="ibtn" id="btnRedo" data-icon="redo" title="Redo (Shift+Cmd/Ctrl+Z)"></button>
     <div class="hsep"></div>
-    <span id="railTpl" style="display:contents">
-      <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell boundaries"></button>
-      <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid (visible when zoomed in)"></button>
-      <div class="hsep"></div>
-    </span>
+    <button class="ibtn on" id="btnFinger" data-icon="hand" title="Finger drawing — off, fingers only pan/zoom (auto-disabled when an Apple Pencil is detected)"></button>
+    <div class="hsep"></div>
+    <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
+    <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
+    <div class="hsep"></div>
     <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
   </div>
   <div id="viewport">
     <canvas id="screen"></canvas>
     <canvas id="gridOverlay"></canvas>
     <div id="statusChip"></div>
+    <div id="ver"></div>
   </div>
 </div>
 
@@ -375,13 +379,14 @@ const ICONS = {
   sqplus: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/>',
   sqx: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/>',
   droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+  hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
 };
 document.querySelectorAll("[data-icon]").forEach((b) => {
   b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
 });
 
 const DEFAULT_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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";
-const LS = { png: "tessera.png", fills: "tessera.fills", pals: "tessera.pals" };
+const LS = { png: "tessera.png", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen" };
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
@@ -469,26 +474,45 @@ function sizeOverlay() {
   ovCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   blit(); drawGrid();
 }
+/* Per-tab grid visibility: template defaults to cell lines on, level starts
+   clean. The two rail buttons always act on the active tab's state. */
+const gridOn = { ed: { cell: true, px: false }, pv: { cell: false, px: false } };
+let hover = null;   // { x, y } world px under a hovering pen/mouse tip
 function drawGrid() {
   const r = viewport.getBoundingClientRect();
   ovCtx.clearRect(0, 0, r.width, r.height);
-  if (activeTab !== "ed") return;
-  const v = view.ed;
+  const v = view[activeTab], g = gridOn[activeTab];
+  const W = WORLD[activeTab].w, H = WORLD[activeTab].h;
   const x0 = Math.max(0, v.x), y0 = Math.max(0, v.y);
-  const x1 = Math.min(r.width, v.x + 160 * v.s), y1 = Math.min(r.height, v.y + 176 * v.s);
+  const x1 = Math.min(r.width, v.x + W * v.s), y1 = Math.min(r.height, v.y + H * v.s);
   if (x1 <= x0 || y1 <= y0) return;
-  if ($("btnPxGrid").classList.contains("on") && v.s >= 4) {
+  if (g.px && v.s >= 4) {
     ovCtx.strokeStyle = "rgba(255,255,255,0.09)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
-    for (let i = 1; i < 160; i++) { const x = v.x + i * v.s; if (x > x0 && x < x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
-    for (let j = 1; j < 176; j++) { const y = v.y + j * v.s; if (y > y0 && y < y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
+    for (let i = 1; i < W; i++) { const x = v.x + i * v.s; if (x > x0 && x < x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
+    for (let j = 1; j < H; j++) { const y = v.y + j * v.s; if (y > y0 && y < y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
     ovCtx.stroke();
   }
-  if ($("btnCellGrid").classList.contains("on")) {
+  if (g.cell) {
     ovCtx.strokeStyle = "rgba(255,255,255,0.28)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
-    for (let i = 0; i <= TCOLS; i++) { const x = v.x + i * TILE * v.s; if (x >= x0 && x <= x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
-    for (let j = 0; j <= TROWS; j++) { const y = v.y + j * TILE * v.s; if (y >= y0 && y <= y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
+    for (let i = 0; i <= W / TILE; i++) { const x = v.x + i * TILE * v.s; if (x >= x0 && x <= x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
+    for (let j = 0; j <= H / TILE; j++) { const y = v.y + j * TILE * v.s; if (y >= y0 && y <= y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
     ovCtx.stroke();
   }
+  if (hover && hover.x >= 0 && hover.y >= 0 && hover.x < W && hover.y < H) {
+    // hovering pen/mouse tip: outline the pixel it would touch (or the whole
+    // cell in Cells mode), dark halo behind an accent line for contrast
+    const cellMode = activeTab === "pv" && pvMode === "cells";
+    const u = cellMode ? TILE : 1;
+    const hx = v.x + Math.floor(hover.x / u) * u * v.s, hy = v.y + Math.floor(hover.y / u) * u * v.s, hs = u * v.s;
+    ovCtx.strokeStyle = "rgba(0,0,0,0.7)"; ovCtx.lineWidth = 3; ovCtx.strokeRect(hx - 1, hy - 1, hs + 2, hs + 2);
+    ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
+  }
+}
+let ovRaf = false;
+function scheduleOverlay() { if (ovRaf) return; ovRaf = true; requestAnimationFrame(() => { ovRaf = false; drawGrid(); }); }
+function syncGridButtons() {
+  $("btnCellGrid").classList.toggle("on", gridOn[activeTab].cell);
+  $("btnPxGrid").classList.toggle("on", gridOn[activeTab].px);
 }
 
 /* ---- swatches: displayed through the active palette's gradient map for
@@ -504,7 +528,7 @@ function displayColor(rgba) {
 }
 function swatchBtn(rgba, tag, title) {
   const b = document.createElement("button");
-  b.className = "sw"; b.title = title || "";
+  b.className = "sw"; if (title) b.dataset.tip = title;
   b.style.background = rgba.a === 0 ? "transparent" : displayColor(rgba);
   if (rgba.r === color.r && rgba.g === color.g && rgba.b === color.b && rgba.a === color.a) b.classList.add("on");
   if (tag !== null && tag !== undefined) { const t = document.createElement("span"); t.className = "tag"; t.textContent = tag; b.appendChild(t); }
@@ -583,7 +607,7 @@ function pickAt(x, y) {
   if (d[3] === 0) { setTool("eraser"); status("Picked transparent — eraser armed."); return; }
   color = { r: d[0], g: d[1], b: d[2], a: d[3] };
   setTool("pencil");
-  document.querySelectorAll(".sw").forEach((s) => s.classList.remove("on"));
+  refreshSwatches();   // rebuild marks whichever swatches match the picked color
   status(`Picked rgb(${d[0]},${d[1]},${d[2]}).`);
 }
 
@@ -662,9 +686,19 @@ function pvApply(c, r) {
 }
 
 /* ---- unified viewport gestures: 1 pointer = tool, 2 pointers = pinch/pan ---- */
-const pointers = new Map();
+const pointers = new Map();   // id -> { x, y, type }
 let stroke = null;   // { kind: 'ed'|'pvpx'|'pvcell', last, snap }
 let pinch = null;    // { d0, mid0, v0 }
+let pan = null;      // { last } — single-finger pan when fingers don't draw
+let gesture = null;  // { t0, moved, maxN } — quick still 2-finger tap = undo, 3 = redo
+let penSeen = false, fingerDraws = true;
+function penActive() { return [...pointers.values()].some((p) => p.type === "pen"); }
+function setFingerDraws(v, auto) {
+  fingerDraws = v;
+  try { localStorage.setItem(LS.finger, v ? "1" : "0"); } catch (e) {}
+  $("btnFinger").classList.toggle("on", v);
+  if (auto) status("Apple Pencil detected — fingers now pan and zoom only. Tap the hand icon to let fingers draw again.");
+}
 function vpPoint(e) { const r = viewport.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function worldPos(e, tab) {
   const p = vpPoint(e), v = view[tab];
@@ -739,11 +773,16 @@ function startPinch() {
     mid0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
     v0: { ...view[activeTab] },
   };
+  gesture = { t0: performance.now(), moved: false, maxN: 2 };
 }
 function movePinch() {
   const [a, b] = [...pointers.values()];
   const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  if (gesture && !gesture.moved) {
+    if (Math.abs(d / pinch.d0 - 1) < 0.06 && Math.hypot(mid.x - pinch.mid0.x, mid.y - pinch.mid0.y) < 12) return;
+    gesture.moved = true;
+  }
   const s = Math.min(SMAX, Math.max(SMIN, pinch.v0.s * d / pinch.d0));
   const v = view[activeTab];
   v.s = s;
@@ -753,31 +792,67 @@ function movePinch() {
 }
 viewport.addEventListener("pointerdown", (e) => {
   e.preventDefault();
+  hover = null; scheduleOverlay();
+  const isTouch = e.pointerType === "touch";
+  if (e.pointerType === "pen" && !penSeen) {
+    penSeen = true; try { localStorage.setItem(LS.pen, "1"); } catch (err) {}
+    if (fingerDraws) setFingerDraws(false, true);   // first Pencil contact flips fingers to gesture-only
+  }
+  if (isTouch && !fingerDraws && penActive()) return;   // palm while the pen is down — ignored outright
+  if (e.pointerType === "pen" && !fingerDraws && pointers.size && !penActive()) {
+    pointers.forEach((_, id) => { try { viewport.releasePointerCapture(id); } catch (err) {} });
+    pointers.clear(); pan = null; pinch = null; gesture = null;   // palm landed first: pen evicts it
+  }
   viewport.setPointerCapture(e.pointerId);
-  pointers.set(e.pointerId, vpPoint(e));
-  if (pointers.size === 2) {
+  pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
+  if (pointers.size === 1) {
+    if (isTouch && !fingerDraws) { pan = { last: vpPoint(e) }; return; }   // finger = pan in pen mode
+    beginStroke(e);
+  } else if (pointers.size === 2) {
     clearHold();
     if (stroke && stroke.snap) abortStroke();   // second finger cancels the stroke — pinch, not paint
-    stroke = null;
+    stroke = null; pan = null;
     startPinch();
-    return;
+  } else if (gesture) {
+    gesture.maxN = Math.max(gesture.maxN, pointers.size);   // 3-finger tap = redo
   }
-  if (pointers.size === 1) beginStroke(e);
 });
 viewport.addEventListener("pointermove", (e) => {
-  if (!pointers.has(e.pointerId)) return;
-  pointers.set(e.pointerId, vpPoint(e));
+  if (!pointers.has(e.pointerId)) {
+    if (e.pointerType === "touch") return;   // fingers have no hover
+    const p = vpPoint(e), v = view[activeTab];
+    hover = { x: Math.floor((p.x - v.x) / v.s), y: Math.floor((p.y - v.y) / v.s) };
+    scheduleOverlay();
+    return;
+  }
+  pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
   if (pinch && pointers.size >= 2) { movePinch(); return; }
+  if (pan && pointers.size === 1) {
+    const p = vpPoint(e), v = view[activeTab];
+    v.x += p.x - pan.last.x; v.y += p.y - pan.last.y;
+    pan.last = p; applyView(activeTab);
+    return;
+  }
   if (stroke && pointers.size === 1) moveStroke(e);
 });
 const vpUp = (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
-  if (pinch && pointers.size < 2) { pinch = null; return; }   // lifting out of a pinch never resumes drawing
+  if (pan && pointers.size === 0) { pan = null; return; }
+  if (pinch && pointers.size < 2) {   // lifting out of a pinch never resumes drawing
+    pinch = null;
+    if (gesture && !gesture.moved && performance.now() - gesture.t0 < 300) {
+      if (gesture.maxN === 2) { undo(); status("Undo"); }
+      else if (gesture.maxN === 3) { redo(); status("Redo"); }
+    }
+    gesture = null;
+    return;
+  }
   if (stroke && pointers.size === 0) endStroke();
 };
 viewport.addEventListener("pointerup", vpUp);
 viewport.addEventListener("pointercancel", vpUp);
+viewport.addEventListener("pointerleave", (e) => { if (!pointers.has(e.pointerId)) { hover = null; scheduleOverlay(); } });
 viewport.addEventListener("wheel", (e) => {
   e.preventDefault();
   const v = view[activeTab];
@@ -798,7 +873,8 @@ function setTab(tab) {
   activeTab = tab;
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("ctxLevel").style.display = tab === "pv" ? "" : "none";
-  $("railTpl").style.display = tab === "ed" ? "contents" : "none";
+  syncGridButtons();
+  hover = null;
   if (tab === "pv" && pvDirty) renderPreviewNow(); else blit();
   drawGrid();
 }
@@ -820,8 +896,8 @@ document.querySelectorAll(".lmode").forEach((b) => b.addEventListener("click", (
 }));
 $("btnUndo").addEventListener("click", undo);
 $("btnRedo").addEventListener("click", redo);
-$("btnCellGrid").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
-$("btnPxGrid").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
+$("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gridOn[activeTab].cell; syncGridButtons(); drawGrid(); });
+$("btnPxGrid").addEventListener("click", () => { gridOn[activeTab].px = !gridOn[activeTab].px; syncGridButtons(); drawGrid(); });
 $("btnFit").addEventListener("click", () => fitView(activeTab));
 $("btnReset").addEventListener("click", () => { fills = buildDefaultFills(); rebuild(); renderPreview(); persistFills(); status("Mock layout restored."); });
 document.addEventListener("keydown", (e) => {
@@ -887,7 +963,39 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
+const APP_VERSION = "1.8.0";
+
+/* ---- tooltips that work for Apple Pencil hover (native title bubbles are
+   mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
+const tipEl = document.createElement("div"); tipEl.id = "tip"; document.body.appendChild(tipEl);
+document.querySelectorAll("[title]").forEach((el) => { el.dataset.tip = el.getAttribute("title"); el.removeAttribute("title"); });
+let tipT = null;
+function showTip(el) {
+  tipEl.textContent = el.dataset.tip;
+  tipEl.style.display = "block"; tipEl.style.left = "0px"; tipEl.style.top = "0px";
+  const r = el.getBoundingClientRect(), tr = tipEl.getBoundingClientRect();
+  let x = Math.min(Math.max(6, r.left), window.innerWidth - tr.width - 6);
+  let y = r.bottom + 6;
+  if (y + tr.height > window.innerHeight - 6) y = r.top - tr.height - 6;
+  tipEl.style.left = x + "px"; tipEl.style.top = y + "px";
+}
+function hideTip() { tipEl.style.display = "none"; }
+document.addEventListener("pointerover", (e) => {
+  const el = e.target.closest("[data-tip]");
+  clearTimeout(tipT); hideTip();
+  if (el) tipT = setTimeout(() => showTip(el), 450);
+});
+document.addEventListener("pointerout", () => { clearTimeout(tipT); hideTip(); });
+document.addEventListener("pointerdown", () => { clearTimeout(tipT); hideTip(); }, true);
+$("btnFinger").addEventListener("click", () => setFingerDraws(!fingerDraws));
 (function boot() {
+  $("ver").textContent = "v" + APP_VERSION;
+  try {
+    penSeen = localStorage.getItem(LS.pen) === "1";
+    const f = localStorage.getItem(LS.finger);
+    fingerDraws = f === null ? !penSeen : f === "1";
+  } catch (e) {}
+  $("btnFinger").classList.toggle("on", fingerDraws);
   buildStopSwatches();
   try {
     const savedPals = JSON.parse(localStorage.getItem(LS.pals) || "[]");
