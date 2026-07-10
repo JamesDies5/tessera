@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>TESSERA — autotile proofing bench</title>
+<style>
+  :root {
+    --bg0: #0d0a18; --bg1: #17112a; --panel: #131024; --line: #2b2344;
+    --text: #cfc6ec; --dim: #7f74a8; --accent: #b388ff;
+  }
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  html, body { margin: 0; height: 100dvh; overflow: hidden; overscroll-behavior: none;
+    background: radial-gradient(circle at 30% -10%, var(--bg1) 0%, var(--bg0) 60%);
+    color: var(--text); font-family: ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 13px; }
+  body { display: flex; flex-direction: column; }
+
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; flex-wrap: wrap; flex: 0 0 auto; }
+  header h1 { font-size: 15px; margin: 0 4px 0 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; }
+  .spacer { flex: 1; }
+  .tab { background: none; border: 1px solid var(--line); border-bottom-width: 3px; color: var(--dim);
+    border-radius: 8px; padding: 7px 16px; font: inherit; letter-spacing: 2px; cursor: pointer; }
+  .tab.on { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+
+  .ibtn { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+    width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 0; flex: 0 0 auto; }
+  .ibtn svg { width: 20px; height: 20px; }
+  .ibtn:active { background: var(--line); }
+  .ibtn.on { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .ctx { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .vsep { width: 1px; height: 26px; background: var(--line); margin: 0 3px; }
+  select.pal { background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    border-radius: 8px; height: 38px; padding: 0 8px; font: inherit; max-width: 130px; }
+
+  #swatchbar { display: flex; gap: 6px; align-items: center; padding: 0 12px 8px; flex-wrap: wrap; flex: 0 0 auto; }
+  .lbl { color: var(--dim); font-size: 10px; letter-spacing: 1px; }
+  .sw { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; position: relative; padding: 0; flex: 0 0 auto; }
+  .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sw .tag { position: absolute; right: 1px; bottom: 0; font-size: 8px; color: #000; background: #ffffffb0; border-radius: 3px; padding: 0 2px; line-height: 10px; }
+
+  #stage { display: flex; flex: 1 1 auto; min-height: 0; }
+  #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
+  #rail .hsep { width: 26px; height: 1px; background: var(--line); margin: 3px 0; flex: 0 0 auto; }
+
+  #viewport { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; touch-action: none;
+    background: var(--bg0); border: 1px solid var(--line); border-radius: 10px 0 0 0; }
+  .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .world canvas { display: block; position: absolute; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #edChecker { position: absolute; left: 0; top: 0; width: 160px; height: 176px;
+    background-image: conic-gradient(#1c1731 25%, #241d3e 0 50%, #1c1731 0 75%, #241d3e 0); background-size: 8px 8px; }
+  #gridOverlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #statusChip { position: absolute; left: 10px; bottom: 10px; background: #131024ee; border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 10px; color: var(--dim); font-size: 11px; max-width: 70%;
+    opacity: 0; transition: opacity .35s; pointer-events: none; }
+  #statusChip.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TESSERA</h1>
+  <button class="tab on" data-tab="ed">TEMPLATE</button>
+  <button class="tab" data-tab="pv">LEVEL</button>
+  <div class="ctx" id="ctxLevel" style="display:none">
+    <span class="vsep"></span>
+    <button class="ibtn lmode on" data-lmode="field" data-icon="mountain" title="Playfield — editable mock level"></button>
+    <button class="ibtn lmode" data-lmode="zoo" data-icon="grip" title="All 47 — generated coverage: every blob mask + all twelve slope stamps"></button>
+    <span class="vsep"></span>
+    <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
+    <button class="ibtn pvmode" data-pvmode="cells" data-icon="layout" title="Cells — paint or erase whole terrain cells"></button>
+    <span id="cellTools" style="display:none">
+      <button class="ibtn ptool on" data-ptool="paint" data-icon="sqplus" title="Paint terrain cells"></button>
+      <button class="ibtn ptool" data-ptool="erase" data-icon="sqx" title="Erase terrain cells (slope runs and their backing are fixed)"></button>
+    </span>
+    <span class="vsep"></span>
+    <select class="pal" id="palSelect" title="Zone palette preview — the same gradient map the game uses"></select>
+    <button class="ibtn" id="btnPalLoad" data-icon="droplet" title="Load PaletteResource .tres files from global/palettes/"></button>
+    <button class="ibtn" id="btnReset" data-icon="rotate" title="Restore the default mock layout"></button>
+  </div>
+  <span class="spacer"></span>
+  <button class="ibtn" id="btnLoad" data-icon="upload" title="Load a template PNG"></button>
+  <button class="ibtn" id="btnSave" data-icon="download" title="Save autotile_template.png"></button>
+  <input type="file" id="fileTpl" accept="image/png" hidden>
+  <input type="file" id="filePal" accept=".tres" multiple hidden>
+</header>
+
+<div id="swatchbar">
+  <span class="lbl">STOPS</span><span class="ctx" id="stopSwatches"></span>
+  <span class="vsep"></span>
+  <span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span>
+</div>
+
+<div id="stage">
+  <div id="rail">
+    <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B)"></button>
+    <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E)"></button>
+    <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
+    <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
+    <div class="hsep"></div>
+    <button class="ibtn" id="btnUndo" data-icon="undo" title="Undo (Cmd/Ctrl+Z)"></button>
+    <button class="ibtn" id="btnRedo" data-icon="redo" title="Redo (Shift+Cmd/Ctrl+Z)"></button>
+    <div class="hsep"></div>
+    <span id="railTpl" style="display:contents">
+      <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell boundaries"></button>
+      <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid (visible when zoomed in)"></button>
+      <div class="hsep"></div>
+    </span>
+    <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
+  </div>
+  <div id="viewport">
+    <div id="edWorld" class="world"><div id="edChecker"></div><canvas id="edCanvas" width="160" height="176"></canvas></div>
+    <div id="pvWorld" class="world" style="display:none"><canvas id="pvCanvas" width="704" height="416"></canvas></div>
+    <canvas id="gridOverlay"></canvas>
+    <div id="statusChip"></div>
+  </div>
+</div>
+
+<script>
+/*__PURE_START__*/
+/* ============================================================
+   Verbatim contract ports from ATLAS v28 (atlas-editor.html).
+   Cell addresses are IDENTITY — art may change, addresses may not.
+   Bit order (clockwise from N): N=1 NE=2 E=4 SE=8 S=16 SW=32 W=64 NW=128.
+   A diagonal counts only when both of its adjacent cardinals are filled.
+   ============================================================ */
+const TILE = 16, TCOLS = 10, TROWS = 11;      // template: 160x176
+const GCOLS = 44, GROWS = 26;                  // mock level grid
+
+const TERR_BLOB_LOOKUP = {
+  0:{ax:3,ay:3},1:{ax:3,ay:2},4:{ax:0,ay:3},5:{ax:4,ay:6},7:{ax:0,ay:2},
+  16:{ax:3,ay:0},17:{ax:3,ay:1},20:{ax:4,ay:4},21:{ax:4,ay:5},23:{ax:0,ay:4},
+  28:{ax:0,ay:0},29:{ax:0,ay:5},31:{ax:0,ay:1},64:{ax:2,ay:3},65:{ax:6,ay:6},
+  68:{ax:1,ay:3},69:{ax:5,ay:6},71:{ax:3,ay:5},80:{ax:6,ay:4},81:{ax:6,ay:5},
+  84:{ax:5,ay:4},85:{ax:5,ay:5},87:{ax:5,ay:2},92:{ax:3,ay:4},93:{ax:5,ay:3},
+  95:{ax:6,ay:1},112:{ax:2,ay:0},113:{ax:1,ay:5},116:{ax:2,ay:4},117:{ax:4,ay:2},
+  119:{ax:3,ay:6},124:{ax:1,ay:0},125:{ax:6,ay:0},127:{ax:5,ay:1},193:{ax:2,ay:2},
+  197:{ax:2,ay:5},199:{ax:1,ay:2},209:{ax:1,ay:4},213:{ax:4,ay:3},215:{ax:6,ay:3},
+  221:{ax:2,ay:6},223:{ax:5,ay:0},241:{ax:2,ay:1},245:{ax:6,ay:2},247:{ax:4,ay:0},
+  253:{ax:4,ay:1},255:{ax:1,ay:1}
+};
+const TERR_INTERIOR_VARIANTS = [
+  { ax: 1, ay: 1, weight: 88 },
+  { ax: 8, ay: 0, weight: 4 }, { ax: 9, ay: 0, weight: 4 },
+  { ax: 8, ay: 1, weight: 4 }, { ax: 9, ay: 1, weight: 4 },
+];
+const terrCanonicalMask = (n, ne, e, se, s, sw, w, nw) => {
+  let m = 0;
+  if (n) m |= 1; if (ne && n && e) m |= 2; if (e) m |= 4; if (se && s && e) m |= 8;
+  if (s) m |= 16; if (sw && s && w) m |= 32; if (w) m |= 64; if (nw && n && w) m |= 128;
+  return m;
+};
+const terrHash01 = (x, y) => {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+};
+const terrPickInterior = (x, y) => {
+  const total = TERR_INTERIOR_VARIANTS.reduce((s, v) => s + v.weight, 0);
+  let r = terrHash01(x, y) * total;
+  for (const v of TERR_INTERIOR_VARIANTS) { if ((r -= v.weight) < 0) return v; }
+  return TERR_INTERIOR_VARIANTS[0];
+};
+const TERR_SLOPE_STAMPS = {
+  slope_45_asc:  [[{ax:0,ay:7},{ax:0,ay:8}]],
+  slope_45_desc: [[{ax:1,ay:7},{ax:1,ay:8}]],
+  slope_2to1_asc:  [[{ax:2,ay:7},{ax:2,ay:8}],[{ax:3,ay:7},{ax:3,ay:8}]],
+  slope_2to1_desc: [[{ax:4,ay:7},{ax:4,ay:8}],[{ax:5,ay:7},{ax:5,ay:8}]],
+  slope_3to1_asc:  [[{ax:0,ay:9},{ax:0,ay:10}],[{ax:1,ay:9},{ax:1,ay:10}],[{ax:2,ay:9},{ax:2,ay:10}]],
+  slope_3to1_desc: [[{ax:3,ay:9},{ax:3,ay:10}],[{ax:4,ay:9},{ax:4,ay:10}],[{ax:5,ay:9},{ax:5,ay:10}]],
+};
+const TERR_SLOPE_KEYS = { "1,asc":"slope_45_asc","1,desc":"slope_45_desc","2,asc":"slope_2to1_asc","2,desc":"slope_2to1_desc","3,asc":"slope_3to1_asc","3,desc":"slope_3to1_desc" };
+
+const K = (c, r) => c + "," + r;
+
+/* Slope run -> cells. (c,r) is the SURFACE cell of the LEFTMOST column;
+   'asc' surface rises as x increases (matches ATLAS drag semantics).
+   Ceilings (face 'c') follow the v22.2 contract, settled numerically in
+   ATLAS: INVERT the stamp direction (vertical flip mirrors each piece's
+   diagonal), do NOT reverse column order, stack cells UPWARD, draw V-flipped. */
+function expandSlopeRun(run) {
+  const face = run.face || "f";
+  const stampDir = face === "c" ? (run.dir === "asc" ? "desc" : "asc") : run.dir;
+  const stamps = TERR_SLOPE_STAMPS[TERR_SLOPE_KEYS[run.grad + "," + stampDir]];
+  const out = {};
+  const cols = run.steps * run.grad;
+  for (let j = 0; j < cols; j++) {
+    const group = Math.floor(j / run.grad);
+    const rr = run.r + (run.dir === "asc" ? -group : group);
+    const col = stamps[j % run.grad];
+    col.forEach((cell, i) => {
+      out[K(run.c + j, face === "c" ? rr - i : rr + i)] =
+        { kind: "slope", part: i === 0 ? "s" : "u", face, ax: cell.ax, ay: cell.ay, flipV: face === "c" };
+    });
+  }
+  return out;
+}
+
+/* Neighbour mask — mirrors ATLAS terrMaskAt: slope SURFACE cells read as
+   empty from their AIR side (a block above a floor ramp grows a bottom
+   edge; mirrored for ceilings). Underlays are fully solid. */
+function maskAt(cells, c, r) {
+  const on = (dx, dy) => {
+    const v = cells[K(c + dx, r + dy)];
+    if (!v) return false;
+    if (v.kind === "slope" && v.part === "s") {
+      if (v.face !== "c" && dy === 1) return false;
+      if (v.face === "c" && dy === -1) return false;
+    }
+    return true;
+  };
+  return terrCanonicalMask(on(0,-1), on(1,-1), on(1,0), on(1,1), on(0,1), on(-1,1), on(-1,0), on(-1,-1));
+}
+
+/* Slopes must always sit on solid backing: walk each slope cell toward its
+   support (down for floors, up for ceilings) and fill until existing content,
+   the grid edge, or the cap. In the built-in layouts every gap closes within
+   one cell; the cap only guards floating showcase stamps. */
+const SUPPORT_CAP = 2;
+function addSlopeSupports(cells) {
+  const add = {};
+  for (const k of Object.keys(cells)) {
+    const v = cells[k];
+    if (v.kind !== "slope") continue;
+    const [c, r] = k.split(",").map(Number);
+    const dir = v.face === "c" ? -1 : 1;
+    for (let i = 1; i <= SUPPORT_CAP; i++) {
+      const rr = r + dir * i;
+      if (rr < 0 || rr >= GROWS) break;
+      const kk = K(c, rr);
+      if (cells[kk] || add[kk]) break;
+      add[kk] = { t: 1 };
+    }
+  }
+  Object.assign(cells, add);
+  return cells;
+}
+
+/* Resolve every cell to a template address. Slope cells were stamped at
+   expansion time and are NEVER re-resolved — but still count as neighbours. */
+function resolveAll(cells) {
+  const out = {};
+  for (const k of Object.keys(cells)) {
+    const v = cells[k];
+    if (v.kind === "slope") { out[k] = { ax: v.ax, ay: v.ay, flipV: !!v.flipV }; continue; }
+    const [c, r] = k.split(",").map(Number);
+    const m = maskAt(cells, c, r);
+    const cell = m === 255 ? terrPickInterior(c, r) : TERR_BLOB_LOOKUP[m];
+    if (cell) out[k] = { ax: cell.ax, ay: cell.ay };
+  }
+  return out;
+}
+
+/* ---- default mock layout ---- */
+function buildDefaultFills() {
+  const f = {};
+  const rect = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) f[K(c, r)] = { t: 1 }; };
+  const cut = (...ks) => ks.forEach(([c, r]) => delete f[K(c, r)]);
+  rect(0, 20, 43, 25);            // ground slab, 6 deep — interior variants live here
+  cut([12,20],[13,20],[30,20]);   // pit + 1-wide slit
+  rect(18, 17, 25, 19);           // hill (45° ramps attach both sides)
+  rect(38, 17, 43, 19);           // 2:1 plateau
+  rect(8, 18, 9, 19);             // 3:1 plateau
+  rect(0, 0, 43, 1);              // ceiling slab
+  cut([12,1],[13,1]);             // ceiling notch
+  rect(20, 2, 20, 3);             // stalactite
+  rect(33, 2, 38, 4);             // hanging block (45° ceiling ramps attach both sides)
+  rect(17, 9, 24, 12);            // thick island
+  cut([20,10],[21,10],[24,12]);   // inner-corner hole + outer notch
+  rect(3, 13, 3, 13);             // platforms: 1 / 2 / 4 wide
+  rect(6, 13, 7, 13);
+  rect(10, 13, 13, 13);
+  rect(28, 8, 28, 13);            // 1-wide column
+  rect(31, 10, 36, 10);           // 1-tall bar
+  rect(12, 16, 13, 17);           // 2x2 block
+  rect(1, 15, 1, 15);             // isolated single tile
+  rect(38, 15, 38, 15);           // stairsteps
+  rect(39, 14, 39, 15);
+  rect(40, 13, 40, 15);
+  return f;
+}
+const DEFAULT_SLOPES = [
+  { grad: 1, dir: "asc",  c: 15, r: 19, steps: 3 },              // up the hill's left side
+  { grad: 1, dir: "desc", c: 26, r: 17, steps: 3 },              // down its right side
+  { grad: 2, dir: "asc",  c: 32, r: 19, steps: 3 },              // 2:1 onto the plateau
+  { grad: 3, dir: "asc",  c: 2,  r: 19, steps: 2 },              // 3:1 onto the small plateau
+  { grad: 1, dir: "desc", c: 30, r: 2, steps: 3, face: "c" },    // ceiling: down onto the hanging block
+  { grad: 1, dir: "asc",  c: 39, r: 4, steps: 3, face: "c" },    // ceiling: back up to the slab
+];
+function buildCells(fills) {
+  const cells = {};
+  for (const k of Object.keys(fills)) cells[k] = fills[k];
+  for (const run of DEFAULT_SLOPES) Object.assign(cells, expandSlopeRun(run));
+  return addSlopeSupports(cells);
+}
+
+/* ---- "All 47" coverage layout: one isolated 3x3 island per blob mask.
+   Canonical masks set a diagonal bit only alongside both cardinals, so
+   stamping the neighbourhood verbatim realizes exactly the target mask
+   at each island's center. Six slope stamps line the bottom rows. ---- */
+const ZOO_DIRS = [[0,-1,1],[1,-1,2],[1,0,4],[1,1,8],[0,1,16],[-1,1,32],[-1,0,64],[-1,-1,128]];
+function buildZooCells() {
+  const cells = {};
+  const masks = Object.keys(TERR_BLOB_LOOKUP).map(Number).sort((a, b) => a - b);
+  masks.forEach((m, i) => {
+    const cc = (i % 11) * 4 + 1, cr = Math.floor(i / 11) * 4 + 3;   // island centers
+    cells[K(cc, cr)] = { t: 1 };
+    for (const [dx, dy, bit] of ZOO_DIRS) if (m & bit) cells[K(cc + dx, cr + dy)] = { t: 1 };
+  });
+  const runs = [
+    { grad: 1, dir: "asc",  c: 1,  r: 24, steps: 2 },
+    { grad: 1, dir: "desc", c: 4,  r: 23, steps: 2 },
+    { grad: 2, dir: "asc",  c: 7,  r: 24, steps: 2 },
+    { grad: 2, dir: "desc", c: 12, r: 23, steps: 2 },
+    { grad: 3, dir: "asc",  c: 17, r: 24, steps: 2 },
+    { grad: 3, dir: "desc", c: 24, r: 23, steps: 2 },
+    { grad: 1, dir: "asc",  c: 12, r: 21, steps: 2, face: "c" },
+    { grad: 1, dir: "desc", c: 15, r: 20, steps: 2, face: "c" },
+    { grad: 2, dir: "asc",  c: 18, r: 21, steps: 2, face: "c" },
+    { grad: 2, dir: "desc", c: 23, r: 20, steps: 2, face: "c" },
+    { grad: 3, dir: "asc",  c: 28, r: 21, steps: 2, face: "c" },
+    { grad: 3, dir: "desc", c: 35, r: 20, steps: 2, face: "c" },
+  ];
+  for (const run of runs) Object.assign(cells, expandSlopeRun(run));
+  return addSlopeSupports(cells);
+}
+
+/* ---- zone palette: verbatim gradient-map port (gradient_map.gdshader path) ---- */
+const PAL_STOPS = [0.078, 0.204, 0.545, 0.784, 1.0];
+const PAL_SCRIPT_DEFAULTS = [[0.047,0.0,0.118],[0.180,0.027,0.408],[0.490,0.153,1.0],[0.753,0.608,1.0],[1.0,1.0,1.0]];
+function buildPalLut(cols) {   // tiles = bg group: base colors, no hue shift
+  const S = PAL_STOPS, lut = new Uint8ClampedArray(768);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255; let c;
+    if (t <= S[0]) c = cols[0].slice();
+    else {
+      let seg = 3; for (let k = 1; k < 5; k++) { if (t <= S[k]) { seg = k - 1; break; } }
+      const f = (t - S[seg]) / (S[seg + 1] - S[seg]);
+      c = [cols[seg][0]+(cols[seg+1][0]-cols[seg][0])*f, cols[seg][1]+(cols[seg+1][1]-cols[seg][1])*f, cols[seg][2]+(cols[seg+1][2]-cols[seg][2])*f];
+    }
+    lut[i*3] = Math.round(c[0]*255); lut[i*3+1] = Math.round(c[1]*255); lut[i*3+2] = Math.round(c[2]*255);
+  }
+  return lut;
+}
+function parseTresPalette(filename, text) {
+  if (text.indexOf('script_class="PaletteResource"') === -1) return null;
+  const col = (k, dflt) => { const m = text.match(new RegExp("^" + k + "\\s*=\\s*Color\\(([^)]*)\\)", "m")); if (!m) return dflt.slice(); const v = m[1].split(",").map(parseFloat); return [v[0]||0, v[1]||0, v[2]||0]; };
+  const D = PAL_SCRIPT_DEFAULTS;
+  const name = filename.replace(/\.tres$/, "").replace(/_palette$/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return { name, base: [col("color_darkest",D[0]), col("color_dark",D[1]), col("color_medium",D[2]), col("color_light",D[3]), col("color_lightest",D[4])] };
+}
+/*__PURE_END__*/
+
+/* ============================================================ app ============================================================ */
+const $ = (id) => document.getElementById(id);
+let statusT = null;
+const status = (msg) => {
+  const el = $("statusChip"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(statusT); statusT = setTimeout(() => el.classList.remove("show"), 4000);
+};
+
+const ICONS = {
+  pencil: '<path d="M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z"/>',
+  eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/>',
+  bucket: '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/>',
+  pipette: '<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+  dots: '<g fill="currentColor" stroke="none"><circle cx="5" cy="5" r="1.3"/><circle cx="12" cy="5" r="1.3"/><circle cx="19" cy="5" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/><circle cx="5" cy="19" r="1.3"/><circle cx="12" cy="19" r="1.3"/><circle cx="19" cy="19" r="1.3"/></g>',
+  fit: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  rotate: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  mountain: '<path d="m8 3 4 8 5-5 5 15H2L8 3z"/>',
+  grip: '<g fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></g>',
+  brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
+  layout: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  sqplus: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/>',
+  sqx: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/>',
+  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+};
+document.querySelectorAll("[data-icon]").forEach((b) => {
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
+});
+
+const DEFAULT_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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";
+const LS = { png: "tessera.png", fills: "tessera.fills", pals: "tessera.pals" };
+
+/* ---- state ---- */
+let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
+let color = { r: 20, g: 20, b: 20, a: 255 };
+let fills = null, cells = null, resolved = null;
+let undoStack = [], redoStack = [];
+let palettes = [{ name: "Grayscale", base: null }, { name: "Lavune", base: PAL_SCRIPT_DEFAULTS.map((c) => c.slice()) }];
+let palIdx = 0;
+let pvDirty = true;
+
+const ed = $("edCanvas"), edCtx = ed.getContext("2d", { willReadFrequently: true });
+const pv = $("pvCanvas"), pvCtx = pv.getContext("2d");
+const overlay = $("gridOverlay"), ovCtx = overlay.getContext("2d");
+const off = document.createElement("canvas"); off.width = GCOLS * TILE; off.height = GROWS * TILE;
+const offCtx = off.getContext("2d", { willReadFrequently: true });
+[edCtx, pvCtx, offCtx].forEach((c) => { c.imageSmoothingEnabled = false; });
+const viewport = $("viewport");
+
+/* ---- view transforms: one {s, x, y} per tab, applied as CSS transform ---- */
+const view = { ed: { s: 3, x: 0, y: 0 }, pv: { s: 1, x: 0, y: 0 } };
+const WORLD = { ed: { el: $("edWorld"), w: 160, h: 176 }, pv: { el: $("pvWorld"), w: GCOLS * TILE, h: GROWS * TILE } };
+const SMIN = 0.4, SMAX = 32;
+function applyView(tab) {
+  const v = view[tab];
+  WORLD[tab].el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`;
+  if (tab === "ed") drawGrid();
+}
+function fitView(tab) {
+  const r = viewport.getBoundingClientRect(), w = WORLD[tab];
+  const s = Math.min((r.width - 40) / w.w, (r.height - 40) / w.h);
+  view[tab] = { s, x: (r.width - w.w * s) / 2, y: (r.height - w.h * s) / 2 };
+  applyView(tab);
+}
+function sizeOverlay() {
+  const r = viewport.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  overlay.width = Math.round(r.width * dpr); overlay.height = Math.round(r.height * dpr);
+  overlay.style.width = r.width + "px"; overlay.style.height = r.height + "px";
+  ovCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawGrid();
+}
+function drawGrid() {
+  const r = viewport.getBoundingClientRect();
+  ovCtx.clearRect(0, 0, r.width, r.height);
+  if (activeTab !== "ed") return;
+  const v = view.ed;
+  const x0 = Math.max(0, v.x), y0 = Math.max(0, v.y);
+  const x1 = Math.min(r.width, v.x + 160 * v.s), y1 = Math.min(r.height, v.y + 176 * v.s);
+  if (x1 <= x0 || y1 <= y0) return;
+  if ($("btnPxGrid").classList.contains("on") && v.s >= 4) {
+    ovCtx.strokeStyle = "rgba(180,160,255,0.10)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+    for (let i = 1; i < 160; i++) { const x = v.x + i * v.s; if (x > x0 && x < x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
+    for (let j = 1; j < 176; j++) { const y = v.y + j * v.s; if (y > y0 && y < y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
+    ovCtx.stroke();
+  }
+  if ($("btnCellGrid").classList.contains("on")) {
+    ovCtx.strokeStyle = "rgba(180,160,255,0.35)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+    for (let i = 0; i <= TCOLS; i++) { const x = v.x + i * TILE * v.s; if (x >= x0 && x <= x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
+    for (let j = 0; j <= TROWS; j++) { const y = v.y + j * TILE * v.s; if (y >= y0 && y <= y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
+    ovCtx.stroke();
+  }
+}
+
+/* ---- swatches ---- */
+const STOP_GRAYS = PAL_STOPS.map((s) => Math.round(s * 255));
+function swatchBtn(rgba, tag, title) {
+  const b = document.createElement("button");
+  b.className = "sw"; b.title = title || "";
+  b.style.background = rgba.a === 0 ? "transparent" : `rgb(${rgba.r},${rgba.g},${rgba.b})`;
+  if (tag !== null && tag !== undefined) { const t = document.createElement("span"); t.className = "tag"; t.textContent = tag; b.appendChild(t); }
+  b.addEventListener("click", () => {
+    color = { ...rgba }; if (tool === "eraser" || tool === "pick") setTool("pencil");
+    document.querySelectorAll(".sw").forEach((s) => s.classList.remove("on")); b.classList.add("on");
+  });
+  return b;
+}
+function buildStopSwatches() {
+  const host = $("stopSwatches"); host.innerHTML = "";
+  STOP_GRAYS.forEach((g, i) => {
+    const t = i === 4 ? "stop 4 — reserved for characters in your value hierarchy" : `stop ${i} — tile range`;
+    const b = swatchBtn({ r: g, g: g, b: g, a: 255 }, i, t);
+    if (i === 0) b.classList.add("on");
+    host.appendChild(b);
+  });
+}
+function refreshFileSwatches() {
+  const host = $("fileSwatches"); host.innerHTML = "";
+  const d = edCtx.getImageData(0, 0, 160, 176).data, seen = new Map();
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const key = d[i] + "," + d[i+1] + "," + d[i+2] + "," + d[i+3];
+    if (!seen.has(key)) seen.set(key, { r: d[i], g: d[i+1], b: d[i+2], a: d[i+3] });
+    if (seen.size > 12) break;
+  }
+  [...seen.values()].sort((a, b2) => (a.r*.299+a.g*.587+a.b*.114) - (b2.r*.299+b2.g*.587+b2.b*.114))
+    .forEach((c) => host.appendChild(swatchBtn(c, null, `rgb(${c.r},${c.g},${c.b})`)));
+}
+
+/* ---- undo ---- */
+function snapshot() { undoStack.push(edCtx.getImageData(0, 0, 160, 176)); if (undoStack.length > 40) undoStack.shift(); redoStack = []; }
+function undo() { if (!undoStack.length) return; redoStack.push(edCtx.getImageData(0, 0, 160, 176)); edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); persistPng(); refreshFileSwatches(); }
+function redo() { if (!redoStack.length) return; undoStack.push(edCtx.getImageData(0, 0, 160, 176)); edCtx.putImageData(redoStack.pop(), 0, 0); templateChanged(); persistPng(); refreshFileSwatches(); }
+function abortStroke() { if (!undoStack.length) return; edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); }
+
+/* ---- drawing ops (template coordinates) ---- */
+function putPx(x, y) {
+  if (x < 0 || y < 0 || x >= 160 || y >= 176) return;
+  if (tool === "eraser") edCtx.clearRect(x, y, 1, 1);
+  else { edCtx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a / 255})`; edCtx.clearRect(x, y, 1, 1); edCtx.fillRect(x, y, 1, 1); }
+}
+function lineTo(x0, y0, x1, y1) {
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  while (true) {
+    putPx(x0, y0);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+}
+function cellFill(x, y) {
+  if (x < 0 || y < 0 || x >= 160 || y >= 176) return;
+  const cx = Math.floor(x / TILE) * TILE, cy = Math.floor(y / TILE) * TILE;
+  const img = edCtx.getImageData(cx, cy, TILE, TILE), d = img.data;
+  const lx = x - cx, ly = y - cy, si = (ly * TILE + lx) * 4;
+  const t = [d[si], d[si+1], d[si+2], d[si+3]];
+  const nc = tool === "eraser" ? [0,0,0,0] : [color.r, color.g, color.b, color.a];
+  if (t[0]===nc[0] && t[1]===nc[1] && t[2]===nc[2] && t[3]===nc[3]) return;
+  const stack = [[lx, ly]];
+  while (stack.length) {
+    const [px, py] = stack.pop();
+    if (px < 0 || py < 0 || px >= TILE || py >= TILE) continue;
+    const i = (py * TILE + px) * 4;
+    if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
+    d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3];
+    stack.push([px+1,py],[px-1,py],[px,py+1],[px,py-1]);
+  }
+  edCtx.putImageData(img, cx, cy);
+}
+function pickAt(x, y) {
+  if (x < 0 || y < 0 || x >= 160 || y >= 176) return;
+  const d = edCtx.getImageData(x, y, 1, 1).data;
+  if (d[3] === 0) { setTool("eraser"); status("Picked transparent — eraser armed."); return; }
+  color = { r: d[0], g: d[1], b: d[2], a: d[3] };
+  setTool("pencil");
+  document.querySelectorAll(".sw").forEach((s) => s.classList.remove("on"));
+  status(`Picked rgb(${d[0]},${d[1]},${d[2]}).`);
+}
+
+/* ---- preview render (lazy when hidden) ---- */
+function rebuild() { cells = layoutMode === "zoo" ? buildZooCells() : buildCells(fills); resolved = resolveAll(cells); pvDirty = true; }
+function templateChanged() { pvDirty = true; renderPreview(); }
+let rafQueued = false;
+function renderPreview() {
+  if (activeTab !== "pv" || !pvDirty) return;
+  if (rafQueued) return;
+  rafQueued = true;
+  requestAnimationFrame(() => { rafQueued = false; renderPreviewNow(); });
+}
+function renderPreviewNow() {
+  pvDirty = false;
+  offCtx.clearRect(0, 0, off.width, off.height);
+  for (const k of Object.keys(resolved)) {
+    const [c, r] = k.split(",").map(Number);
+    const t = resolved[k];
+    if (t.flipV) {
+      offCtx.save();
+      offCtx.translate(c * TILE, r * TILE + TILE);
+      offCtx.scale(1, -1);
+      offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, 0, 0, TILE, TILE);
+      offCtx.restore();
+    } else {
+      offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, c * TILE, r * TILE, TILE, TILE);
+    }
+  }
+  const pal = palettes[palIdx];
+  let backdrop = "#101018";
+  if (pal.base) {
+    const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
+    const img = offCtx.getImageData(0, 0, off.width, off.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === 0) continue;
+      const l = Math.min(255, Math.round(d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114));
+      d[i] = lut[l*3]; d[i+1] = lut[l*3+1]; d[i+2] = lut[l*3+2];
+    }
+    offCtx.putImageData(img, 0, 0);
+    backdrop = `rgb(${Math.round(pal.base[0][0]*255*0.55)},${Math.round(pal.base[0][1]*255*0.55)},${Math.round(pal.base[0][2]*255*0.55)})`;
+  }
+  pvCtx.fillStyle = backdrop; pvCtx.fillRect(0, 0, pv.width, pv.height);
+  pvCtx.drawImage(off, 0, 0);
+}
+
+/* ---- level<->template mapping ---- */
+function levelToTemplate(px, py) {
+  if (px < 0 || py < 0 || px >= off.width || py >= off.height) return null;
+  const t = resolved[K(Math.floor(px / TILE), Math.floor(py / TILE))];
+  if (!t) return null;
+  const lx = px % TILE, ly = t.flipV ? (TILE - 1 - (py % TILE)) : (py % TILE);
+  return { tx: t.ax * TILE + lx, ty: t.ay * TILE + ly };
+}
+function pvLine(x0, y0, x1, y1) {
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  while (true) {
+    const m = levelToTemplate(x0, y0);
+    if (m) putPx(m.tx, m.ty);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+}
+function pvApply(c, r) {
+  if (layoutMode === "zoo") { status("All 47 is a generated layout — switch to Playfield to edit cells."); return; }
+  if (c < 0 || r < 0 || c >= GCOLS || r >= GROWS) return;
+  const k = K(c, r);
+  if (cells[k] && cells[k].kind === "slope") return;
+  if (pTool === "paint") { if (fills[k]) return; fills[k] = { t: 1 }; }
+  else { if (!fills[k]) return; delete fills[k]; }
+  rebuild(); renderPreview(); persistFills();
+}
+
+/* ---- unified viewport gestures: 1 pointer = tool, 2 pointers = pinch/pan ---- */
+const pointers = new Map();
+let stroke = null;   // { kind: 'ed'|'pvpx'|'pvcell', last, snap }
+let pinch = null;    // { d0, mid0, v0 }
+function vpPoint(e) { const r = viewport.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function edPos(e) { const r = ed.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * 160), Math.floor((e.clientY - r.top) / r.height * 176)]; }
+function pvPos(e) { const r = pv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * off.width), Math.floor((e.clientY - r.top) / r.height * off.height)]; }
+
+function beginStroke(e) {
+  if (activeTab === "ed") {
+    const [x, y] = edPos(e);
+    if (tool === "pick") { pickAt(x, y); return; }
+    if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
+    snapshot(); putPx(x, y); templateChanged();
+    stroke = { kind: "ed", last: [x, y], snap: true };
+    return;
+  }
+  if (pvMode === "cells") { const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE)); stroke = { kind: "pvcell" }; return; }
+  const [px, py] = pvPos(e);
+  const m = levelToTemplate(px, py);
+  if (!m) return;   // air
+  if (tool === "pick") { pickAt(m.tx, m.ty); return; }
+  if (tool === "fill") { snapshot(); cellFill(m.tx, m.ty); templateChanged(); persistPng(); refreshFileSwatches(); return; }
+  snapshot(); putPx(m.tx, m.ty); templateChanged();
+  stroke = { kind: "pvpx", last: [px, py], snap: true };
+}
+function moveStroke(e) {
+  if (stroke.kind === "ed") {
+    const [x, y] = edPos(e);
+    if (x !== stroke.last[0] || y !== stroke.last[1]) { lineTo(stroke.last[0], stroke.last[1], x, y); stroke.last = [x, y]; templateChanged(); }
+  } else if (stroke.kind === "pvpx") {
+    const [px, py] = pvPos(e);
+    if (px !== stroke.last[0] || py !== stroke.last[1]) { pvLine(stroke.last[0], stroke.last[1], px, py); stroke.last = [px, py]; templateChanged(); }
+  } else if (stroke.kind === "pvcell") {
+    const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE));
+  }
+}
+function endStroke() {
+  if (stroke && stroke.snap) { persistPng(); refreshFileSwatches(); }
+  stroke = null;
+}
+function startPinch() {
+  const [a, b] = [...pointers.values()];
+  pinch = {
+    d0: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+    mid0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    v0: { ...view[activeTab] },
+  };
+}
+function movePinch() {
+  const [a, b] = [...pointers.values()];
+  const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const s = Math.min(SMAX, Math.max(SMIN, pinch.v0.s * d / pinch.d0));
+  const v = view[activeTab];
+  v.s = s;
+  v.x = mid.x - (pinch.mid0.x - pinch.v0.x) / pinch.v0.s * s;
+  v.y = mid.y - (pinch.mid0.y - pinch.v0.y) / pinch.v0.s * s;
+  applyView(activeTab);
+}
+viewport.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  viewport.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, vpPoint(e));
+  if (pointers.size === 2) {
+    if (stroke && stroke.snap) abortStroke();   // second finger cancels the stroke — pinch, not paint
+    stroke = null;
+    startPinch();
+    return;
+  }
+  if (pointers.size === 1) beginStroke(e);
+});
+viewport.addEventListener("pointermove", (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, vpPoint(e));
+  if (pinch && pointers.size >= 2) { movePinch(); return; }
+  if (stroke && pointers.size === 1) moveStroke(e);
+});
+const vpUp = (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (pinch && pointers.size < 2) { pinch = null; return; }   // lifting out of a pinch never resumes drawing
+  if (stroke && pointers.size === 0) endStroke();
+};
+viewport.addEventListener("pointerup", vpUp);
+viewport.addEventListener("pointercancel", vpUp);
+viewport.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const v = view[activeTab];
+  if (e.ctrlKey || e.metaKey) {   // trackpad pinch / ctrl+wheel = zoom toward cursor
+    const p = vpPoint(e);
+    const s = Math.min(SMAX, Math.max(SMIN, v.s * Math.exp(-e.deltaY * 0.01)));
+    v.x = p.x - (p.x - v.x) / v.s * s;
+    v.y = p.y - (p.y - v.y) / v.s * s;
+    v.s = s;
+  } else { v.x -= e.deltaX; v.y -= e.deltaY; }
+  applyView(activeTab);
+}, { passive: false });
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("gesturechange", (e) => e.preventDefault());
+
+/* ---- tabs ---- */
+function setTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  WORLD.ed.el.style.display = tab === "ed" ? "" : "none";
+  WORLD.pv.el.style.display = tab === "pv" ? "" : "none";
+  $("ctxLevel").style.display = tab === "pv" ? "" : "none";
+  $("railTpl").style.display = tab === "ed" ? "contents" : "none";
+  drawGrid();
+  if (tab === "pv") renderPreview();
+}
+document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+/* ---- tool + mode UI ---- */
+function setTool(t) { tool = t; document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t)); }
+document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
+document.querySelectorAll(".ptool").forEach((b) => b.addEventListener("click", () => { pTool = b.dataset.ptool; document.querySelectorAll(".ptool").forEach((q) => q.classList.toggle("on", q === b)); }));
+document.querySelectorAll(".pvmode").forEach((b) => b.addEventListener("click", () => {
+  pvMode = b.dataset.pvmode;
+  document.querySelectorAll(".pvmode").forEach((q) => q.classList.toggle("on", q === b));
+  $("cellTools").style.display = pvMode === "cells" ? "" : "none";
+}));
+document.querySelectorAll(".lmode").forEach((b) => b.addEventListener("click", () => {
+  layoutMode = b.dataset.lmode;
+  document.querySelectorAll(".lmode").forEach((q) => q.classList.toggle("on", q === b));
+  rebuild(); renderPreview();
+}));
+$("btnUndo").addEventListener("click", undo);
+$("btnRedo").addEventListener("click", redo);
+$("btnCellGrid").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
+$("btnPxGrid").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
+$("btnFit").addEventListener("click", () => fitView(activeTab));
+$("btnReset").addEventListener("click", () => { fills = buildDefaultFills(); rebuild(); renderPreview(); persistFills(); status("Mock layout restored."); });
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (e.metaKey || e.ctrlKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "b") setTool("pencil"); else if (k === "e") setTool("eraser");
+  else if (k === "g") setTool("fill"); else if (k === "i") setTool("pick");
+});
+
+/* ---- palette UI ---- */
+function refreshPalSelect() {
+  const s = $("palSelect"); s.innerHTML = "";
+  palettes.forEach((p, i) => { const o = document.createElement("option"); o.value = i; o.textContent = p.name; s.appendChild(o); });
+  s.value = palIdx;
+}
+$("palSelect").addEventListener("change", (e) => { palIdx = parseInt(e.target.value, 10); pvDirty = true; renderPreview(); });
+$("btnPalLoad").addEventListener("click", () => $("filePal").click());
+$("filePal").addEventListener("change", async (e) => {
+  let added = 0;
+  for (const f of e.target.files) {
+    const p = parseTresPalette(f.name, await f.text());
+    if (!p) { status(`${f.name}: not a PaletteResource — skipped.`); continue; }
+    const ex = palettes.findIndex((q) => q.name === p.name);
+    if (ex >= 0) palettes[ex] = p; else palettes.push(p);
+    palIdx = ex >= 0 ? ex : palettes.length - 1; added++;
+  }
+  e.target.value = "";
+  if (added) {
+    refreshPalSelect(); pvDirty = true; renderPreview();
+    try { localStorage.setItem(LS.pals, JSON.stringify(palettes.slice(2).map((p) => ({ name: p.name, base: p.base })))); } catch (err) {}
+    status(`Loaded ${added} palette${added > 1 ? "s" : ""}.`);
+  }
+});
+
+/* ---- file IO / persistence ---- */
+function loadPngIntoEditor(src, note) {
+  const img = new Image();
+  img.onload = () => {
+    edCtx.clearRect(0, 0, 160, 176);
+    edCtx.drawImage(img, 0, 0);
+    if (img.width !== 160 || img.height !== 176) status(`Note: image is ${img.width}\u00d7${img.height}, expected 160\u00d7176 — drawn top-left.`);
+    else if (note) status(note);
+    undoStack = []; redoStack = [];
+    refreshFileSwatches(); templateChanged(); persistPng();
+  };
+  img.src = src;
+}
+$("btnLoad").addEventListener("click", () => $("fileTpl").click());
+$("fileTpl").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader(); rd.onload = () => loadPngIntoEditor(rd.result, `Loaded ${f.name}.`); rd.readAsDataURL(f);
+  e.target.value = "";
+});
+$("btnSave").addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.href = ed.toDataURL("image/png"); a.download = "autotile_template.png";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  status("Saved autotile_template.png — drop it into levels/shared/Terrains/ or the template slot.");
+});
+function persistPng() { try { localStorage.setItem(LS.png, ed.toDataURL("image/png")); } catch (e) {} }
+function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
+
+/* ---- boot ---- */
+window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
+(function boot() {
+  buildStopSwatches();
+  try {
+    const savedPals = JSON.parse(localStorage.getItem(LS.pals) || "[]");
+    for (const p of savedPals) if (p && p.base) palettes.push(p);
+  } catch (e) {}
+  refreshPalSelect();
+  try {
+    const savedFills = JSON.parse(localStorage.getItem(LS.fills) || "null");
+    if (savedFills && savedFills.length) { fills = {}; for (const k of savedFills) fills[k] = { t: 1 }; }
+  } catch (e) {}
+  if (!fills) fills = buildDefaultFills();
+  rebuild();
+  sizeOverlay(); fitView("ed"); fitView("pv");
+  const savedPng = (() => { try { return localStorage.getItem(LS.png); } catch (e) { return null; } })();
+  loadPngIntoEditor(savedPng || DEFAULT_PNG, savedPng ? "Restored your last session." : "Loaded your current autotile template. Pinch to zoom, two fingers to pan.");
+})();
+</script>
+</body>
+</html>
