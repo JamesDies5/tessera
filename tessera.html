@@ -38,6 +38,11 @@
   .sw { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; position: relative; padding: 0; flex: 0 0 auto; }
   .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   .sw .tag { position: absolute; right: 1px; bottom: 0; font-size: 8px; color: #000; background: #ffffffb0; border-radius: 3px; padding: 0 2px; line-height: 10px; }
+  .bgo { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; flex: 0 0 auto; }
+  .bgo.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #bgDark { background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 12px 12px; }
+  #bgBlack { background: #000; }
+  #bgLight { background: conic-gradient(#fff 25%, #cbcbcb 0 50%, #fff 0 75%, #cbcbcb 0); background-size: 12px 12px; }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
@@ -88,6 +93,11 @@
   <span class="lbl">STOPS</span><span class="ctx" id="stopSwatches"></span>
   <span class="vsep"></span>
   <span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span>
+  <span class="spacer"></span>
+  <span class="lbl">BG</span>
+  <button class="bgo on" data-bg="dark" id="bgDark" title="Dark checkerboard"></button>
+  <button class="bgo" data-bg="black" id="bgBlack" title="Solid black"></button>
+  <button class="bgo" data-bg="light" id="bgLight" title="Classic light checkerboard"></button>
 </div>
 
 <div id="stage">
@@ -100,7 +110,7 @@
     <button class="ibtn" id="btnUndo" data-icon="undo" title="Undo (Cmd/Ctrl+Z)"></button>
     <button class="ibtn" id="btnRedo" data-icon="redo" title="Redo (Shift+Cmd/Ctrl+Z)"></button>
     <div class="hsep"></div>
-    <button class="ibtn on" id="btnFinger" data-icon="hand" title="Finger drawing — off, fingers only pan/zoom (auto-disabled when an Apple Pencil is detected)"></button>
+    <button class="ibtn on" id="btnFinger" data-icon="hand" title="Finger drawing — when off: one finger hold-picks color, two fingers pan/zoom (auto-disabled when an Apple Pencil is detected)"></button>
     <div class="hsep"></div>
     <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
     <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
@@ -386,7 +396,7 @@ document.querySelectorAll("[data-icon]").forEach((b) => {
 });
 
 const DEFAULT_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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";
-const LS = { png: "tessera.png", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen" };
+const LS = { png: "tessera.png", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg" };
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
@@ -426,13 +436,19 @@ const off = document.createElement("canvas"); off.width = GCOLS * TILE; off.heig
 const offCtx = off.getContext("2d", { willReadFrequently: true });
 [edCtx, pvCtx, offCtx, sctx].forEach((c) => { c.imageSmoothingEnabled = false; });
 const viewport = $("viewport");
-const checker = (() => {   // world-space checker behind the transparent template
+function makeChecker(a, b) {   // world-space checker behind transparent art
   const c = document.createElement("canvas"); c.width = 8; c.height = 8;
   const g = c.getContext("2d");
-  g.fillStyle = "#232323"; g.fillRect(0, 0, 8, 8);
-  g.fillStyle = "#2c2c2c"; g.fillRect(4, 0, 4, 4); g.fillRect(0, 4, 4, 4);
+  g.fillStyle = a; g.fillRect(0, 0, 8, 8);
+  g.fillStyle = b; g.fillRect(4, 0, 4, 4); g.fillRect(0, 4, 4, 4);
   return sctx.createPattern(c, "repeat");
-})();
+}
+const BG_STYLES = {
+  dark: makeChecker("#232323", "#2c2c2c"),
+  black: "#000000",
+  light: makeChecker("#ffffff", "#cbcbcb"),
+};
+let bgMode = "dark";
 
 /* ---- view transforms: one {s, x, y} per tab; the art is BLITTED to a
    screen-resolution canvas with imageSmoothingEnabled=false, so scaling is
@@ -448,16 +464,12 @@ function blit() {
   sctx.clearRect(0, 0, screen.width, screen.height);
   sctx.imageSmoothingEnabled = false;
   sctx.setTransform(dpr * v.s, 0, 0, dpr * v.s, dpr * v.x, dpr * v.y);
-  if (activeTab === "ed") {
-    sctx.fillStyle = checker; sctx.fillRect(0, 0, 160, 176);
-    sctx.drawImage(ed, 0, 0);
-  } else {
-    sctx.drawImage(pv, 0, 0);
-  }
+  const w = WORLD[activeTab];
+  sctx.fillStyle = BG_STYLES[bgMode]; sctx.fillRect(0, 0, w.w, w.h);
+  sctx.drawImage(activeTab === "ed" ? ed : pv, 0, 0);
 }
 function applyView(tab) {
-  if (tab === activeTab) blit();
-  if (tab === "ed") drawGrid();
+  if (tab === activeTab) { blit(); drawGrid(); }
 }
 function fitView(tab) {
   const r = viewport.getBoundingClientRect(), w = WORLD[tab];
@@ -638,7 +650,6 @@ function renderPreviewNow() {
     }
   }
   const pal = palettes[palIdx];
-  let backdrop = "#161616";
   if (pal.base) {
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
     const img = offCtx.getImageData(0, 0, off.width, off.height), d = img.data;
@@ -648,9 +659,8 @@ function renderPreviewNow() {
       d[i] = lut[l*3]; d[i+1] = lut[l*3+1]; d[i+2] = lut[l*3+2];
     }
     offCtx.putImageData(img, 0, 0);
-    backdrop = `rgb(${Math.round(pal.base[0][0]*255*0.55)},${Math.round(pal.base[0][1]*255*0.55)},${Math.round(pal.base[0][2]*255*0.55)})`;
   }
-  pvCtx.fillStyle = backdrop; pvCtx.fillRect(0, 0, pv.width, pv.height);
+  pvCtx.clearRect(0, 0, pv.width, pv.height);
   pvCtx.drawImage(off, 0, 0);
   if (activeTab === "pv") blit();
 }
@@ -689,7 +699,7 @@ function pvApply(c, r) {
 const pointers = new Map();   // id -> { x, y, type }
 let stroke = null;   // { kind: 'ed'|'pvpx'|'pvcell', last, snap }
 let pinch = null;    // { d0, mid0, v0 }
-let pan = null;      // { last } — single-finger pan when fingers don't draw
+let fingerHold = null;   // pen mode: one finger is hold-pick only; two fingers pan/zoom
 let gesture = null;  // { t0, moved, maxN } — quick still 2-finger tap = undo, 3 = redo
 let penSeen = false, fingerDraws = true;
 function penActive() { return [...pointers.values()].some((p) => p.type === "pen"); }
@@ -697,7 +707,7 @@ function setFingerDraws(v, auto) {
   fingerDraws = v;
   try { localStorage.setItem(LS.finger, v ? "1" : "0"); } catch (e) {}
   $("btnFinger").classList.toggle("on", v);
-  if (auto) status("Apple Pencil detected — fingers now pan and zoom only. Tap the hand icon to let fingers draw again.");
+  if (auto) status("Apple Pencil detected — one finger hold-picks, two fingers pan and zoom. Tap the hand icon to let fingers draw again.");
 }
 function vpPoint(e) { const r = viewport.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function worldPos(e, tab) {
@@ -713,18 +723,23 @@ function pvPos(e) { return worldPos(e, "pv"); }
    threshold keeps it a normal stroke. ---- */
 const HOLD_MS = 500, HOLD_JITTER = 6;
 function clearHold() { if (stroke && stroke.holdT) { clearTimeout(stroke.holdT); stroke.holdT = null; } }
-function armHold(e) {
+function holdPick(lc) {
+  if (activeTab === "ed") { const [x, y] = edPos(lc); pickAt(x, y); }
+  else { const [px, py] = pvPos(lc); const m = levelToTemplate(px, py); if (m) pickAt(m.tx, m.ty); }
+}
+function armHold(e) {   // finger-only, by request — pen and mouse never hold-pick
+  if (e.pointerType !== "touch") return;
   stroke.downVp = vpPoint(e);
   stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
   stroke.holdT = setTimeout(() => {
     if (!stroke || pointers.size !== 1) return;
-    const kind = stroke.kind, lc = stroke.lastClient;
+    const lc = stroke.lastClient;
     abortStroke();
     stroke = null;
-    if (kind === "ed") { const [x, y] = edPos(lc); pickAt(x, y); }
-    else { const [px, py] = pvPos(lc); const m = levelToTemplate(px, py); if (m) pickAt(m.tx, m.ty); }
+    holdPick(lc);
   }, HOLD_MS);
 }
+function clearFingerHold() { if (fingerHold && fingerHold.holdT) { clearTimeout(fingerHold.holdT); fingerHold.holdT = null; } }
 function beginStroke(e) {
   if (activeTab === "ed") {
     const [x, y] = edPos(e);
@@ -801,17 +816,27 @@ viewport.addEventListener("pointerdown", (e) => {
   if (isTouch && !fingerDraws && penActive()) return;   // palm while the pen is down — ignored outright
   if (e.pointerType === "pen" && !fingerDraws && pointers.size && !penActive()) {
     pointers.forEach((_, id) => { try { viewport.releasePointerCapture(id); } catch (err) {} });
-    pointers.clear(); pan = null; pinch = null; gesture = null;   // palm landed first: pen evicts it
+    clearFingerHold();
+    pointers.clear(); fingerHold = null; pinch = null; gesture = null;   // palm landed first: pen evicts it
   }
   viewport.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
   if (pointers.size === 1) {
-    if (isTouch && !fingerDraws) { pan = { last: vpPoint(e) }; return; }   // finger = pan in pen mode
+    if (isTouch && !fingerDraws) {   // pen mode: one finger only hold-picks — moving cancels, never pans
+      fingerHold = {
+        down: vpPoint(e),
+        lastClient: { clientX: e.clientX, clientY: e.clientY },
+        holdT: setTimeout(() => {
+          if (fingerHold && pointers.size === 1) { const lc = fingerHold.lastClient; fingerHold = null; holdPick(lc); }
+        }, HOLD_MS),
+      };
+      return;
+    }
     beginStroke(e);
   } else if (pointers.size === 2) {
-    clearHold();
+    clearHold(); clearFingerHold();
     if (stroke && stroke.snap) abortStroke();   // second finger cancels the stroke — pinch, not paint
-    stroke = null; pan = null;
+    stroke = null; fingerHold = null;
     startPinch();
   } else if (gesture) {
     gesture.maxN = Math.max(gesture.maxN, pointers.size);   // 3-finger tap = redo
@@ -827,10 +852,12 @@ viewport.addEventListener("pointermove", (e) => {
   }
   pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
   if (pinch && pointers.size >= 2) { movePinch(); return; }
-  if (pan && pointers.size === 1) {
-    const p = vpPoint(e), v = view[activeTab];
-    v.x += p.x - pan.last.x; v.y += p.y - pan.last.y;
-    pan.last = p; applyView(activeTab);
+  if (fingerHold && pointers.size === 1) {
+    const p = vpPoint(e);
+    fingerHold.lastClient = { clientX: e.clientX, clientY: e.clientY };
+    if (Math.hypot(p.x - fingerHold.down.x, p.y - fingerHold.down.y) > HOLD_JITTER) {
+      clearFingerHold(); fingerHold = null;   // moved: no pick, and one finger never pans
+    }
     return;
   }
   if (stroke && pointers.size === 1) moveStroke(e);
@@ -838,7 +865,7 @@ viewport.addEventListener("pointermove", (e) => {
 const vpUp = (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
-  if (pan && pointers.size === 0) { pan = null; return; }
+  if (fingerHold && pointers.size === 0) { clearFingerHold(); fingerHold = null; return; }
   if (pinch && pointers.size < 2) {   // lifting out of a pinch never resumes drawing
     pinch = null;
     if (gesture && !gesture.moved && performance.now() - gesture.t0 < 300) {
@@ -963,7 +990,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.9.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -988,13 +1015,22 @@ document.addEventListener("pointerover", (e) => {
 document.addEventListener("pointerout", () => { clearTimeout(tipT); hideTip(); });
 document.addEventListener("pointerdown", () => { clearTimeout(tipT); hideTip(); }, true);
 $("btnFinger").addEventListener("click", () => setFingerDraws(!fingerDraws));
+document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () => {
+  bgMode = b.dataset.bg;
+  try { localStorage.setItem(LS.bg, bgMode); } catch (e) {}
+  document.querySelectorAll(".bgo").forEach((q) => q.classList.toggle("on", q === b));
+  blit();
+}));
 (function boot() {
   $("ver").textContent = "v" + APP_VERSION;
   try {
     penSeen = localStorage.getItem(LS.pen) === "1";
     const f = localStorage.getItem(LS.finger);
     fingerDraws = f === null ? !penSeen : f === "1";
+    const bg = localStorage.getItem(LS.bg);
+    if (bg && BG_STYLES[bg]) bgMode = bg;
   } catch (e) {}
+  document.querySelectorAll(".bgo").forEach((q) => q.classList.toggle("on", q.dataset.bg === bgMode));
   $("btnFinger").classList.toggle("on", fingerDraws);
   buildStopSwatches();
   try {
