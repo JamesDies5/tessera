@@ -66,6 +66,10 @@
   <h1>TESSERA</h1>
   <button class="tab on" data-tab="ed">TEMPLATE</button>
   <button class="tab" data-tab="pv">LEVEL</button>
+  <select class="pal" id="ctSelect" title="Terrain sheet format — 4\u00d74 adds parity edge pairs and the rim ring (TESSERA-only until the ATLAS port); 3\u00d73 is the current production ATLAS/Godot contract">
+    <option value="v2">4\u00d74 terrain</option>
+    <option value="v1">3\u00d73 terrain</option>
+  </select>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
     <button class="ibtn lmode on" data-lmode="field" data-icon="mountain" title="Playfield — editable mock level"></button>
@@ -129,31 +133,100 @@
 <script>
 /*__PURE_START__*/
 /* ============================================================
-   Verbatim contract ports from ATLAS v28 (atlas-editor.html).
-   Cell addresses are IDENTITY — art may change, addresses may not.
+   Dual terrain contracts. Each contract is pure data; one resolver
+   reads whichever is active.
+     v1 — 3x3 main block, 10x11 sheet (160x176). The CURRENT ATLAS/Godot
+          contract: production-accurate today.
+     v2 — 4x4 main block, 10x12 sheet (160x192). Parity edge pairs +
+          rim/deep interior. NOT YET IN ATLAS — preview only until the
+          bake is ported and Godot terrain registration is re-run.
+   Cell addresses are IDENTITY within a contract — art may change,
+   addresses may not.
    Bit order (clockwise from N): N=1 NE=2 E=4 SE=8 S=16 SW=32 W=64 NW=128.
    A diagonal counts only when both of its adjacent cardinals are filled.
    ============================================================ */
-const TILE = 16, TCOLS = 10, TROWS = 11;      // template: 160x176
-const GCOLS = 44, GROWS = 26;                  // mock level grid
+const TILE = 16;
+const GCOLS = 44, GROWS = 26;                    // mock level grid
 
-const TERR_BLOB_LOOKUP = {
-  0:{ax:3,ay:3},1:{ax:3,ay:2},4:{ax:0,ay:3},5:{ax:4,ay:6},7:{ax:0,ay:2},
-  16:{ax:3,ay:0},17:{ax:3,ay:1},20:{ax:4,ay:4},21:{ax:4,ay:5},23:{ax:0,ay:4},
-  28:{ax:0,ay:0},29:{ax:0,ay:5},31:{ax:0,ay:1},64:{ax:2,ay:3},65:{ax:6,ay:6},
-  68:{ax:1,ay:3},69:{ax:5,ay:6},71:{ax:3,ay:5},80:{ax:6,ay:4},81:{ax:6,ay:5},
-  84:{ax:5,ay:4},85:{ax:5,ay:5},87:{ax:5,ay:2},92:{ax:3,ay:4},93:{ax:5,ay:3},
-  95:{ax:6,ay:1},112:{ax:2,ay:0},113:{ax:1,ay:5},116:{ax:2,ay:4},117:{ax:4,ay:2},
-  119:{ax:3,ay:6},124:{ax:1,ay:0},125:{ax:6,ay:0},127:{ax:5,ay:1},193:{ax:2,ay:2},
-  197:{ax:2,ay:5},199:{ax:1,ay:2},209:{ax:1,ay:4},213:{ax:4,ay:3},215:{ax:6,ay:3},
-  221:{ax:2,ay:6},223:{ax:5,ay:0},241:{ax:2,ay:1},245:{ax:6,ay:2},247:{ax:4,ay:0},
-  253:{ax:4,ay:1},255:{ax:1,ay:1}
+const CONTRACTS = {
+  v1: {
+    id: "v1", label: "3\u00d73 terrain", TCOLS: 10, TROWS: 11,
+    filename: "autotile_template.png", lsKey: "tessera.png",
+    LOOKUP: {
+      0:{ax:3,ay:3},1:{ax:3,ay:2},4:{ax:0,ay:3},5:{ax:4,ay:6},7:{ax:0,ay:2},
+      16:{ax:3,ay:0},17:{ax:3,ay:1},20:{ax:4,ay:4},21:{ax:4,ay:5},23:{ax:0,ay:4},
+      28:{ax:0,ay:0},29:{ax:0,ay:5},31:{ax:0,ay:1},64:{ax:2,ay:3},65:{ax:6,ay:6},
+      68:{ax:1,ay:3},69:{ax:5,ay:6},71:{ax:3,ay:5},80:{ax:6,ay:4},81:{ax:6,ay:5},
+      84:{ax:5,ay:4},85:{ax:5,ay:5},87:{ax:5,ay:2},92:{ax:3,ay:4},93:{ax:5,ay:3},
+      95:{ax:6,ay:1},112:{ax:2,ay:0},113:{ax:1,ay:5},116:{ax:2,ay:4},117:{ax:4,ay:2},
+      119:{ax:3,ay:6},124:{ax:1,ay:0},125:{ax:6,ay:0},127:{ax:5,ay:1},193:{ax:2,ay:2},
+      197:{ax:2,ay:5},199:{ax:1,ay:2},209:{ax:1,ay:4},213:{ax:4,ay:3},215:{ax:6,ay:3},
+      221:{ax:2,ay:6},223:{ax:5,ay:0},241:{ax:2,ay:1},245:{ax:6,ay:2},247:{ax:4,ay:0},
+      253:{ax:4,ay:1},255:{ax:1,ay:1}
+    },
+    EDGE_VARIANTS: {},
+    RIM_CELLS: null,
+    DEEP_VARIANTS: [
+      { ax: 1, ay: 1, weight: 88 },
+      { ax: 8, ay: 0, weight: 4 }, { ax: 9, ay: 0, weight: 4 },
+      { ax: 8, ay: 1, weight: 4 }, { ax: 9, ay: 1, weight: 4 },
+    ],
+    SLOPE_STAMPS: {
+      slope_45_asc:  [[{ax:0,ay:7},{ax:0,ay:8}]],
+      slope_45_desc: [[{ax:1,ay:7},{ax:1,ay:8}]],
+      slope_2to1_asc:  [[{ax:2,ay:7},{ax:2,ay:8}],[{ax:3,ay:7},{ax:3,ay:8}]],
+      slope_2to1_desc: [[{ax:4,ay:7},{ax:4,ay:8}],[{ax:5,ay:7},{ax:5,ay:8}]],
+      slope_3to1_asc:  [[{ax:0,ay:9},{ax:0,ay:10}],[{ax:1,ay:9},{ax:1,ay:10}],[{ax:2,ay:9},{ax:2,ay:10}]],
+      slope_3to1_desc: [[{ax:3,ay:9},{ax:3,ay:10}],[{ax:4,ay:9},{ax:4,ay:10}],[{ax:5,ay:9},{ax:5,ay:10}]],
+    },
+  },
+  v2: {
+    id: "v2", label: "4\u00d74 terrain", TCOLS: 10, TROWS: 12,
+    filename: "autotile_template_4x4.png", lsKey: "tessera.png4x4",
+    LOOKUP: {
+      28:{ax:0,ay:0},124:{ax:1,ay:0},112:{ax:3,ay:0},
+      31:{ax:0,ay:1},241:{ax:3,ay:1},
+      7:{ax:0,ay:3},199:{ax:1,ay:3},193:{ax:3,ay:3},
+      255:{ax:9,ay:0},
+      16:{ax:4,ay:0},17:{ax:4,ay:1},1:{ax:4,ay:2},0:{ax:4,ay:3},
+      247:{ax:5,ay:0},223:{ax:6,ay:0},125:{ax:7,ay:0},
+      253:{ax:5,ay:1},127:{ax:6,ay:1},95:{ax:7,ay:1},
+      117:{ax:5,ay:2},87:{ax:6,ay:2},245:{ax:7,ay:2},
+      213:{ax:5,ay:3},93:{ax:6,ay:3},215:{ax:7,ay:3},
+      4:{ax:0,ay:4},68:{ax:1,ay:4},64:{ax:2,ay:4},
+      23:{ax:0,ay:5},209:{ax:1,ay:5},116:{ax:2,ay:5},92:{ax:3,ay:5},20:{ax:4,ay:5},84:{ax:5,ay:5},80:{ax:6,ay:5},
+      29:{ax:0,ay:6},113:{ax:1,ay:6},197:{ax:2,ay:6},71:{ax:3,ay:6},21:{ax:4,ay:6},85:{ax:5,ay:6},81:{ax:6,ay:6},
+      221:{ax:2,ay:7},119:{ax:3,ay:7},5:{ax:4,ay:7},69:{ax:5,ay:7},65:{ax:6,ay:7}
+    },
+    /* Straight edges have TWO cells each, chosen by world parity — draw them
+       identical, or as the two halves of a 32px repeating edge texture. */
+    EDGE_VARIANTS: {
+      124: { axis: "x", cells: [[1,0],[2,0]] },   // top
+      199: { axis: "x", cells: [[1,3],[2,3]] },   // bottom
+      31:  { axis: "y", cells: [[0,1],[0,2]] },   // left
+      241: { axis: "y", cells: [[3,1],[3,2]] },   // right
+    },
+    /* RIM — a mask-255 cell with an edge tile (or slope cell) in its
+       8-neighbourhood. Inner 2x2 by (col%2, row%2): a continuous 32x32
+       repeating rim texture works. DEEP — everything further in. */
+    RIM_CELLS: [[1,1],[2,1],[1,2],[2,2]],   // index = (r%2)*2 + (c%2)
+    DEEP_VARIANTS: [
+      { ax: 9, ay: 0, weight: 88 },
+      { ax: 9, ay: 1, weight: 4 }, { ax: 9, ay: 2, weight: 4 }, { ax: 9, ay: 3, weight: 4 },
+    ],
+    SLOPE_STAMPS: {
+      slope_45_asc:  [[{ax:0,ay:8},{ax:0,ay:9}]],
+      slope_45_desc: [[{ax:1,ay:8},{ax:1,ay:9}]],
+      slope_2to1_asc:  [[{ax:2,ay:8},{ax:2,ay:9}],[{ax:3,ay:8},{ax:3,ay:9}]],
+      slope_2to1_desc: [[{ax:4,ay:8},{ax:4,ay:9}],[{ax:5,ay:8},{ax:5,ay:9}]],
+      slope_3to1_asc:  [[{ax:0,ay:10},{ax:0,ay:11}],[{ax:1,ay:10},{ax:1,ay:11}],[{ax:2,ay:10},{ax:2,ay:11}]],
+      slope_3to1_desc: [[{ax:3,ay:10},{ax:3,ay:11}],[{ax:4,ay:10},{ax:4,ay:11}],[{ax:5,ay:10},{ax:5,ay:11}]],
+    },
+  },
 };
-const TERR_INTERIOR_VARIANTS = [
-  { ax: 1, ay: 1, weight: 88 },
-  { ax: 8, ay: 0, weight: 4 }, { ax: 9, ay: 0, weight: 4 },
-  { ax: 8, ay: 1, weight: 4 }, { ax: 9, ay: 1, weight: 4 },
-];
+
+const TERR_SLOPE_KEYS = { "1,asc":"slope_45_asc","1,desc":"slope_45_desc","2,asc":"slope_2to1_asc","2,desc":"slope_2to1_desc","3,asc":"slope_3to1_asc","3,desc":"slope_3to1_desc" };
+
 const terrCanonicalMask = (n, ne, e, se, s, sw, w, nw) => {
   let m = 0;
   if (n) m |= 1; if (ne && n && e) m |= 2; if (e) m |= 4; if (se && s && e) m |= 8;
@@ -166,21 +239,12 @@ const terrHash01 = (x, y) => {
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 };
-const terrPickInterior = (x, y) => {
-  const total = TERR_INTERIOR_VARIANTS.reduce((s, v) => s + v.weight, 0);
+const terrPickDeep = (x, y, variants) => {
+  const total = variants.reduce((s, v) => s + v.weight, 0);
   let r = terrHash01(x, y) * total;
-  for (const v of TERR_INTERIOR_VARIANTS) { if ((r -= v.weight) < 0) return v; }
-  return TERR_INTERIOR_VARIANTS[0];
+  for (const v of variants) { if ((r -= v.weight) < 0) return { ax: v.ax, ay: v.ay }; }
+  const v = variants[0]; return { ax: v.ax, ay: v.ay };
 };
-const TERR_SLOPE_STAMPS = {
-  slope_45_asc:  [[{ax:0,ay:7},{ax:0,ay:8}]],
-  slope_45_desc: [[{ax:1,ay:7},{ax:1,ay:8}]],
-  slope_2to1_asc:  [[{ax:2,ay:7},{ax:2,ay:8}],[{ax:3,ay:7},{ax:3,ay:8}]],
-  slope_2to1_desc: [[{ax:4,ay:7},{ax:4,ay:8}],[{ax:5,ay:7},{ax:5,ay:8}]],
-  slope_3to1_asc:  [[{ax:0,ay:9},{ax:0,ay:10}],[{ax:1,ay:9},{ax:1,ay:10}],[{ax:2,ay:9},{ax:2,ay:10}]],
-  slope_3to1_desc: [[{ax:3,ay:9},{ax:3,ay:10}],[{ax:4,ay:9},{ax:4,ay:10}],[{ax:5,ay:9},{ax:5,ay:10}]],
-};
-const TERR_SLOPE_KEYS = { "1,asc":"slope_45_asc","1,desc":"slope_45_desc","2,asc":"slope_2to1_asc","2,desc":"slope_2to1_desc","3,asc":"slope_3to1_asc","3,desc":"slope_3to1_desc" };
 
 const K = (c, r) => c + "," + r;
 
@@ -189,10 +253,10 @@ const K = (c, r) => c + "," + r;
    Ceilings (face 'c') follow the v22.2 contract, settled numerically in
    ATLAS: INVERT the stamp direction (vertical flip mirrors each piece's
    diagonal), do NOT reverse column order, stack cells UPWARD, draw V-flipped. */
-function expandSlopeRun(run) {
+function expandSlopeRun(run, ct) {
   const face = run.face || "f";
   const stampDir = face === "c" ? (run.dir === "asc" ? "desc" : "asc") : run.dir;
-  const stamps = TERR_SLOPE_STAMPS[TERR_SLOPE_KEYS[run.grad + "," + stampDir]];
+  const stamps = ct.SLOPE_STAMPS[TERR_SLOPE_KEYS[run.grad + "," + stampDir]];
   const out = {};
   const cols = run.steps * run.grad;
   for (let j = 0; j < cols; j++) {
@@ -225,8 +289,7 @@ function maskAt(cells, c, r) {
 
 /* Slopes must always sit on solid backing: walk each slope cell toward its
    support (down for floors, up for ceilings) and fill until existing content,
-   the grid edge, or the cap. In the built-in layouts every gap closes within
-   one cell; the cap only guards floating showcase stamps. */
+   the grid edge, or the cap. */
 const SUPPORT_CAP = 2;
 function addSlopeSupports(cells) {
   const add = {};
@@ -247,16 +310,40 @@ function addSlopeSupports(cells) {
   return cells;
 }
 
-/* Resolve every cell to a template address. Slope cells were stamped at
-   expansion time and are NEVER re-resolved — but still count as neighbours. */
-function resolveAll(cells) {
+/* Resolve every cell to a template address for the given contract — two
+   passes so interior cells can see their neighbours' masks (the LDtk-style
+   distance-2 rule; skipped when the contract has no rim). Slope cells were
+   stamped at expansion time and are never re-resolved. */
+function resolveAll(cells, ct) {
+  const masks = {};
+  for (const k of Object.keys(cells)) {
+    if (cells[k].kind === "slope") continue;
+    const [c, r] = k.split(",").map(Number);
+    masks[k] = maskAt(cells, c, r);
+  }
   const out = {};
   for (const k of Object.keys(cells)) {
     const v = cells[k];
     if (v.kind === "slope") { out[k] = { ax: v.ax, ay: v.ay, flipV: !!v.flipV }; continue; }
     const [c, r] = k.split(",").map(Number);
-    const m = maskAt(cells, c, r);
-    const cell = m === 255 ? terrPickInterior(c, r) : TERR_BLOB_LOOKUP[m];
+    const m = masks[k];
+    if (m === 255) {
+      if (ct.RIM_CELLS) {
+        let rim = false;
+        outer: for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const kk = K(c + dx, r + dy);
+          const n = cells[kk];
+          if (n && (n.kind === "slope" || masks[kk] !== 255)) { rim = true; break outer; }
+        }
+        if (rim) { const cell = ct.RIM_CELLS[(r % 2) * 2 + (c % 2)]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
+      }
+      out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
+      continue;
+    }
+    const ev = ct.EDGE_VARIANTS[m];
+    if (ev) { const cell = ev.cells[(ev.axis === "x" ? c : r) % 2]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
+    const cell = ct.LOOKUP[m];
     if (cell) out[k] = { ax: cell.ax, ay: cell.ay };
   }
   return out;
@@ -267,15 +354,15 @@ function buildDefaultFills() {
   const f = {};
   const rect = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) f[K(c, r)] = { t: 1 }; };
   const cut = (...ks) => ks.forEach(([c, r]) => delete f[K(c, r)]);
-  rect(0, 20, 43, 25);            // ground slab, 6 deep — interior variants live here
+  rect(0, 20, 43, 25);            // ground slab, 6 deep
   cut([12,20],[13,20],[30,20]);   // pit + 1-wide slit
-  rect(18, 17, 25, 19);           // hill (45° ramps attach both sides)
+  rect(18, 17, 25, 19);           // hill (45\u00b0 ramps attach both sides)
   rect(38, 17, 43, 19);           // 2:1 plateau
   rect(8, 18, 9, 19);             // 3:1 plateau
   rect(0, 0, 43, 1);              // ceiling slab
   cut([12,1],[13,1]);             // ceiling notch
   rect(20, 2, 20, 3);             // stalactite
-  rect(33, 2, 38, 4);             // hanging block (45° ceiling ramps attach both sides)
+  rect(33, 2, 38, 4);             // hanging block (ceiling ramps attach both sides)
   rect(17, 9, 24, 12);            // thick island
   cut([20,10],[21,10],[24,12]);   // inner-corner hole + outer notch
   rect(3, 13, 3, 13);             // platforms: 1 / 2 / 4 wide
@@ -291,30 +378,27 @@ function buildDefaultFills() {
   return f;
 }
 const DEFAULT_SLOPES = [
-  { grad: 1, dir: "asc",  c: 15, r: 19, steps: 3 },              // up the hill's left side
-  { grad: 1, dir: "desc", c: 26, r: 17, steps: 3 },              // down its right side
-  { grad: 2, dir: "asc",  c: 32, r: 19, steps: 3 },              // 2:1 onto the plateau
-  { grad: 3, dir: "asc",  c: 2,  r: 19, steps: 2 },              // 3:1 onto the small plateau
-  { grad: 1, dir: "desc", c: 30, r: 2, steps: 3, face: "c" },    // ceiling: down onto the hanging block
-  { grad: 1, dir: "asc",  c: 39, r: 4, steps: 3, face: "c" },    // ceiling: back up to the slab
+  { grad: 1, dir: "asc",  c: 15, r: 19, steps: 3 },
+  { grad: 1, dir: "desc", c: 26, r: 17, steps: 3 },
+  { grad: 2, dir: "asc",  c: 32, r: 19, steps: 3 },
+  { grad: 3, dir: "asc",  c: 2,  r: 19, steps: 2 },
+  { grad: 1, dir: "desc", c: 30, r: 2, steps: 3, face: "c" },
+  { grad: 1, dir: "asc",  c: 39, r: 4, steps: 3, face: "c" },
 ];
-function buildCells(fills) {
+function buildCells(fills, ct) {
   const cells = {};
   for (const k of Object.keys(fills)) cells[k] = fills[k];
-  for (const run of DEFAULT_SLOPES) Object.assign(cells, expandSlopeRun(run));
+  for (const run of DEFAULT_SLOPES) Object.assign(cells, expandSlopeRun(run, ct));
   return addSlopeSupports(cells);
 }
 
-/* ---- "All 47" coverage layout: one isolated 3x3 island per blob mask.
-   Canonical masks set a diagonal bit only alongside both cardinals, so
-   stamping the neighbourhood verbatim realizes exactly the target mask
-   at each island's center. Six slope stamps line the bottom rows. ---- */
+/* ---- "All 47" coverage layout ---- */
 const ZOO_DIRS = [[0,-1,1],[1,-1,2],[1,0,4],[1,1,8],[0,1,16],[-1,1,32],[-1,0,64],[-1,-1,128]];
-function buildZooCells() {
+function buildZooCells(ct) {
   const cells = {};
-  const masks = Object.keys(TERR_BLOB_LOOKUP).map(Number).sort((a, b) => a - b);
+  const masks = Object.keys(ct.LOOKUP).map(Number).sort((a, b) => a - b);
   masks.forEach((m, i) => {
-    const cc = (i % 11) * 4 + 1, cr = Math.floor(i / 11) * 4 + 3;   // island centers
+    const cc = (i % 11) * 4 + 1, cr = Math.floor(i / 11) * 4 + 3;
     cells[K(cc, cr)] = { t: 1 };
     for (const [dx, dy, bit] of ZOO_DIRS) if (m & bit) cells[K(cc + dx, cr + dy)] = { t: 1 };
   });
@@ -332,14 +416,14 @@ function buildZooCells() {
     { grad: 3, dir: "asc",  c: 28, r: 21, steps: 2, face: "c" },
     { grad: 3, dir: "desc", c: 35, r: 20, steps: 2, face: "c" },
   ];
-  for (const run of runs) Object.assign(cells, expandSlopeRun(run));
+  for (const run of runs) Object.assign(cells, expandSlopeRun(run, ct));
   return addSlopeSupports(cells);
 }
 
-/* ---- zone palette: verbatim gradient-map port (gradient_map.gdshader path) ---- */
+/* ---- zone palette: verbatim gradient-map port ---- */
 const PAL_STOPS = [0.078, 0.204, 0.545, 0.784, 1.0];
 const PAL_SCRIPT_DEFAULTS = [[0.047,0.0,0.118],[0.180,0.027,0.408],[0.490,0.153,1.0],[0.753,0.608,1.0],[1.0,1.0,1.0]];
-function buildPalLut(cols) {   // tiles = bg group: base colors, no hue shift
+function buildPalLut(cols) {
   const S = PAL_STOPS, lut = new Uint8ClampedArray(768);
   for (let i = 0; i < 256; i++) {
     const t = i / 255; let c;
@@ -397,8 +481,11 @@ document.querySelectorAll("[data-icon]").forEach((b) => {
   b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
 });
 
-const DEFAULT_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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";
-const LS = { png: "tessera.png", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg" };
+const DEFAULT_PNGS = {
+  v1: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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",
+  v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
+};
+const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg" };
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
@@ -428,15 +515,16 @@ let palettes = [
 let palIdx = 0;
 let pvDirty = true;
 
-const ed = document.createElement("canvas"); ed.width = 160; ed.height = 176;
-const edCtx = ed.getContext("2d", { willReadFrequently: true });
+let CT = null, TW = 0, TH = 0;          // active contract + its sheet dims
+let ed = null, edCtx = null;             // active contract's artboard
+const boards = {};                       // id -> { canvas, ctx, undo, redo, loaded }
 const pv = document.createElement("canvas"); pv.width = GCOLS * TILE; pv.height = GROWS * TILE;
 const pvCtx = pv.getContext("2d");
 const screen = $("screen"), sctx = screen.getContext("2d");
 const overlay = $("gridOverlay"), ovCtx = overlay.getContext("2d");
 const off = document.createElement("canvas"); off.width = GCOLS * TILE; off.height = GROWS * TILE;
 const offCtx = off.getContext("2d", { willReadFrequently: true });
-[edCtx, pvCtx, offCtx, sctx].forEach((c) => { c.imageSmoothingEnabled = false; });
+[pvCtx, offCtx, sctx].forEach((c) => { c.imageSmoothingEnabled = false; });
 const viewport = $("viewport");
 function makeChecker(a, b) {   // world-space checker behind transparent art
   const c = document.createElement("canvas"); c.width = 8; c.height = 8;
@@ -457,7 +545,7 @@ let bgMode = "dark";
    true nearest-neighbour on every engine (Safari filters CSS-transformed
    canvases bilinearly — the blit path is immune to that). ---- */
 const view = { ed: { s: 3, x: 0, y: 0 }, pv: { s: 1, x: 0, y: 0 } };
-const WORLD = { ed: { w: 160, h: 176 }, pv: { w: GCOLS * TILE, h: GROWS * TILE } };
+const WORLD = { ed: { w: 0, h: 0 }, pv: { w: GCOLS * TILE, h: GROWS * TILE } };   // ed dims follow the contract
 const SMIN = 0.4, SMAX = 32;
 function blit() {
   const r = viewport.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
@@ -562,7 +650,7 @@ function buildStopSwatches() {
 function refreshSwatches() { buildStopSwatches(); refreshFileSwatches(); }
 function refreshFileSwatches() {
   const host = $("fileSwatches"); host.innerHTML = "";
-  const d = edCtx.getImageData(0, 0, 160, 176).data, seen = new Map();
+  const d = edCtx.getImageData(0, 0, TW, TH).data, seen = new Map();
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] === 0) continue;
     const key = d[i] + "," + d[i+1] + "," + d[i+2] + "," + d[i+3];
@@ -574,14 +662,14 @@ function refreshFileSwatches() {
 }
 
 /* ---- undo ---- */
-function snapshot() { undoStack.push(edCtx.getImageData(0, 0, 160, 176)); if (undoStack.length > 40) undoStack.shift(); redoStack = []; }
-function undo() { if (!undoStack.length) return; redoStack.push(edCtx.getImageData(0, 0, 160, 176)); edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); persistPng(); refreshFileSwatches(); }
-function redo() { if (!redoStack.length) return; undoStack.push(edCtx.getImageData(0, 0, 160, 176)); edCtx.putImageData(redoStack.pop(), 0, 0); templateChanged(); persistPng(); refreshFileSwatches(); }
+function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undoStack.length > 40) undoStack.shift(); redoStack = []; }
+function undo() { if (!undoStack.length) return; redoStack.push(edCtx.getImageData(0, 0, TW, TH)); edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); persistPng(); refreshFileSwatches(); }
+function redo() { if (!redoStack.length) return; undoStack.push(edCtx.getImageData(0, 0, TW, TH)); edCtx.putImageData(redoStack.pop(), 0, 0); templateChanged(); persistPng(); refreshFileSwatches(); }
 function abortStroke() { if (!undoStack.length) return; edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); }
 
 /* ---- drawing ops (template coordinates) ---- */
 function putPx(x, y) {
-  if (x < 0 || y < 0 || x >= 160 || y >= 176) return;
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (tool === "eraser") edCtx.clearRect(x, y, 1, 1);
   else { edCtx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a / 255})`; edCtx.clearRect(x, y, 1, 1); edCtx.fillRect(x, y, 1, 1); }
 }
@@ -597,7 +685,7 @@ function lineTo(x0, y0, x1, y1) {
   }
 }
 function cellFill(x, y) {
-  if (x < 0 || y < 0 || x >= 160 || y >= 176) return;
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   const cx = Math.floor(x / TILE) * TILE, cy = Math.floor(y / TILE) * TILE;
   const img = edCtx.getImageData(cx, cy, TILE, TILE), d = img.data;
   const lx = x - cx, ly = y - cy, si = (ly * TILE + lx) * 4;
@@ -616,7 +704,7 @@ function cellFill(x, y) {
   edCtx.putImageData(img, cx, cy);
 }
 function pickAt(x, y) {
-  if (x < 0 || y < 0 || x >= 160 || y >= 176) return;
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   const d = edCtx.getImageData(x, y, 1, 1).data;
   if (d[3] === 0) { setTool("eraser"); status("Picked transparent — eraser armed."); return; }
   color = { r: d[0], g: d[1], b: d[2], a: d[3] };
@@ -626,7 +714,7 @@ function pickAt(x, y) {
 }
 
 /* ---- preview render (lazy when hidden) ---- */
-function rebuild() { cells = layoutMode === "zoo" ? buildZooCells() : buildCells(fills); resolved = resolveAll(cells); pvDirty = true; }
+function rebuild() { cells = layoutMode === "zoo" ? buildZooCells(CT) : buildCells(fills, CT); resolved = resolveAll(cells, CT); pvDirty = true; }
 function templateChanged() { pvDirty = true; if (activeTab === "ed") blit(); renderPreview(); }
 let rafQueued = false;
 function renderPreview() {
@@ -944,8 +1032,8 @@ $("btnReset").addEventListener("click", () => {
   rebuild(); renderPreview(); persistFills(); status("Playfield layout reset to the default.");
 });
 $("btnResetArt").addEventListener("click", () => {
-  if (!confirm("Reset the template art to the original shipped version? Your current drawing will be replaced.")) return;
-  loadPngIntoEditor(DEFAULT_PNG, "Template art reset to the shipped original.");
+  if (!confirm(`Reset the ${CT.label} sheet to the shipped original? Your current drawing will be replaced.`)) return;
+  loadPngIntoEditor(DEFAULT_PNGS[CT.id], "Sheet reset to the shipped original.");
 });
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
@@ -980,13 +1068,50 @@ $("filePal").addEventListener("change", async (e) => {
   }
 });
 
+/* ---- contracts: each format keeps its own artboard, undo history, and
+   autosave; switching stashes one and wakes the other ---- */
+function setContract(id, opts) {
+  if (CT && CT.id === id) return;
+  if (CT) { boards[CT.id].undo = undoStack; boards[CT.id].redo = redoStack; }
+  CT = CONTRACTS[id];
+  TW = TILE * CT.TCOLS; TH = TILE * CT.TROWS;
+  WORLD.ed.w = TW; WORLD.ed.h = TH;
+  let b = boards[id];
+  if (!b) {
+    const c = document.createElement("canvas"); c.width = TW; c.height = TH;
+    b = boards[id] = { canvas: c, ctx: c.getContext("2d", { willReadFrequently: true }), undo: [], redo: [], loaded: false };
+    b.ctx.imageSmoothingEnabled = false;
+  }
+  ed = b.canvas; edCtx = b.ctx;
+  undoStack = b.undo; redoStack = b.redo;
+  try { localStorage.setItem(LS.contract, id); } catch (e) {}
+  $("ctSelect").value = id;
+  hover = null;
+  rebuild();
+  fitView("ed");
+  if (opts && opts.skipArtLoad) { b.loaded = true; return; }
+  if (!b.loaded) {
+    b.loaded = true;
+    const saved = (() => { try { return localStorage.getItem(CT.lsKey); } catch (e) { return null; } })();
+    loadPngIntoEditor(saved || DEFAULT_PNGS[id], saved ? `${CT.label} — restored your last session.` : `${CT.label} — loaded the shipped sheet.`);
+  } else {
+    refreshFileSwatches(); blit(); drawGrid(); renderPreview();
+  }
+}
+$("ctSelect").addEventListener("change", (e) => setContract(e.target.value));
+
 /* ---- file IO / persistence ---- */
 function loadPngIntoEditor(src, note) {
   const img = new Image();
   img.onload = () => {
-    edCtx.clearRect(0, 0, 160, 176);
+    const other = Object.values(CONTRACTS).find((ct) => ct.id !== CT.id && img.width === TILE * ct.TCOLS && img.height === TILE * ct.TROWS);
+    if (other) {
+      setContract(other.id, { skipArtLoad: true });
+      note = `${other.label} sheet detected — switched format.`;
+    }
+    edCtx.clearRect(0, 0, TW, TH);
     edCtx.drawImage(img, 0, 0);
-    if (img.width !== 160 || img.height !== 176) status(`Note: image is ${img.width}\u00d7${img.height}, expected 160\u00d7176 — drawn top-left.`);
+    if (img.width !== TW || img.height !== TH) status(`Note: image is ${img.width}\u00d7${img.height}, expected ${TW}\u00d7${TH} — drawn top-left.`);
     else if (note) status(note);
     undoStack = []; redoStack = [];
     refreshFileSwatches(); templateChanged(); persistPng();
@@ -1001,16 +1126,16 @@ $("fileTpl").addEventListener("change", (e) => {
 });
 $("btnSave").addEventListener("click", () => {
   const a = document.createElement("a");
-  a.href = ed.toDataURL("image/png"); a.download = "autotile_template.png";
+  a.href = ed.toDataURL("image/png"); a.download = CT.filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  status("Saved autotile_template.png — drop it into levels/shared/Terrains/ or the template slot.");
+  status(`Saved ${CT.filename}.`);
 });
-function persistPng() { try { localStorage.setItem(LS.png, ed.toDataURL("image/png")); } catch (e) {} }
+function persistPng() { try { localStorage.setItem(CT.lsKey, ed.toDataURL("image/png")); } catch (e) {} }
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "2.1.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -1063,10 +1188,10 @@ document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () 
     if (savedFills && savedFills.length) { fills = {}; for (const k of savedFills) fills[k] = { t: 1 }; }
   } catch (e) {}
   if (!fills) fills = buildDefaultFills();
-  rebuild();
-  sizeOverlay(); fitView("ed"); fitView("pv");
-  const savedPng = (() => { try { return localStorage.getItem(LS.png); } catch (e) { return null; } })();
-  loadPngIntoEditor(savedPng || DEFAULT_PNG, savedPng ? "Restored your last session." : "Loaded your current autotile template. Pinch to zoom, two fingers to pan.");
+  sizeOverlay(); fitView("pv");
+  let choice = "v2";
+  try { const c = localStorage.getItem(LS.contract); if (c && CONTRACTS[c]) choice = c; } catch (e) {}
+  setContract(choice);
 })();
 </script>
 </body>
