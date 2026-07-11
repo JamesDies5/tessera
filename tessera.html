@@ -66,9 +66,9 @@
   <h1>TESSERA</h1>
   <button class="tab on" data-tab="ed">TEMPLATE</button>
   <button class="tab" data-tab="pv">LEVEL</button>
-  <select class="pal" id="ctSelect" title="Terrain sheet format — 4\u00d74 adds parity edge pairs and the rim ring (TESSERA-only until the ATLAS port); 3\u00d73 is the current production ATLAS/Godot contract">
-    <option value="v2">4\u00d74 terrain</option>
-    <option value="v1">3\u00d73 terrain</option>
+  <select class="pal" id="ctSelect" title="Terrain sheet format — 3&times;3 is the current production ATLAS/Godot contract; 4&times;4 adds parity edge pairs and depth bands (TESSERA-only until the ATLAS port)">
+    <option value="v1">3&times;3 terrain</option>
+    <option value="v2">4&times;4 terrain</option>
   </select>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
@@ -206,16 +206,15 @@ const CONTRACTS = {
       31:  { axis: "y", cells: [[0,1],[0,2]] },   // left
       241: { axis: "y", cells: [[3,1],[3,2]] },   // right
     },
-    /* RIM — a mask-255 cell with an edge tile in its 8-neighbourhood.
-       Slope cells do NOT count: a slope stamp is already the edge+rim
-       pair, so the core starts directly beneath the underlay.
-       Selection is DIRECTIONAL, so the 4x4 block scales
-       like an expanding square: cardinal edge above -> inner row 1, below
-       -> inner row 2, left -> inner col 1, right -> inner col 2; parity
-       fills the ambiguous axis (runs, sandwiches, diagonal-only corners),
-       which is what keeps 32px repeats seamless along runs.
-       DEEP — everything further in. */
-    RIM_CELLS: [[1,1],[2,1],[1,2],[2,2]],   // index = rimRow*2 + rimCol
+    /* RIM = horizontal BANDS, per James's annotated spec (2026-07-11):
+       inner row 1 (cells 0-1) is the single band directly UNDER any top
+       surface — an edge tile or a floor-slope cell in the N cardinal.
+       Inner row 2 (cells 2-3) is the band directly ABOVE any bottom
+       surface — an edge tile or ceiling-slope cell in the S cardinal.
+       Side faces and diagonal contact produce NO band (edge, then core).
+       Columns are pure variants, chosen by world parity. Top wins the
+       rare 3-tall sandwich. Every column reads: 1, 2, core. */
+    RIM_CELLS: [[1,1],[2,1],[1,2],[2,2]],   // index = band*2 + (c%2)
     DEEP_VARIANTS: [
       { ax: 9, ay: 0, weight: 88 },
       { ax: 9, ay: 1, weight: 4 }, { ax: 9, ay: 2, weight: 4 }, { ax: 9, ay: 3, weight: 4 },
@@ -265,13 +264,16 @@ function expandSlopeRun(run, ct) {
   const stamps = ct.SLOPE_STAMPS[TERR_SLOPE_KEYS[run.grad + "," + stampDir]];
   const out = {};
   const cols = run.steps * run.grad;
+  // the run's lowest column(s): its underlays carry the one seam band below
+  const baseGroup = (face === "c") === (run.dir === "asc") ? run.steps - 1 : 0;
   for (let j = 0; j < cols; j++) {
     const group = Math.floor(j / run.grad);
     const rr = run.r + (run.dir === "asc" ? -group : group);
     const col = stamps[j % run.grad];
     col.forEach((cell, i) => {
       out[K(run.c + j, face === "c" ? rr - i : rr + i)] =
-        { kind: "slope", part: i === 0 ? "s" : "u", face, ax: cell.ax, ay: cell.ay, flipV: face === "c" };
+        { kind: "slope", part: i === 0 ? "s" : "u", face, ax: cell.ax, ay: cell.ay,
+          flipV: face === "c", seamBand: i > 0 && group === baseGroup };
     });
   }
   return out;
@@ -335,26 +337,19 @@ function resolveAll(cells, ct) {
     const m = masks[k];
     if (m === 255) {
       if (ct.RIM_CELLS) {
-        // Slope cells NEVER read as edges here: the stamp is already the
-        // edge+rim pair (surface ~ top edge, underlay ~ rim), so fills below
-        // an underlay go straight to deep. Note slopes have no masks[] entry
-        // (undefined !== 255), hence the explicit kind check.
-        const edgeAt = (dx, dy) => {
-          const kk = K(c + dx, r + dy), n = cells[kk];
-          return !!(n && n.kind !== "slope" && masks[kk] !== 255);
-        };
-        let rim = edgeAt(0,-1) || edgeAt(0,1) || edgeAt(-1,0) || edgeAt(1,0)
-               || edgeAt(1,-1) || edgeAt(1,1) || edgeAt(-1,1) || edgeAt(-1,-1);
-        if (rim) {
-          // Orientation precedence: cardinal edges, then diagonal edges (so
-          // seam cells classified only by a corner still face the surface),
-          // then world parity (runs — diagonals on both sides cancel).
-          const eN = edgeAt(0,-1), eS = edgeAt(0,1), eW = edgeAt(-1,0), eE = edgeAt(1,0);
-          const dN = edgeAt(-1,-1) || edgeAt(1,-1), dS = edgeAt(-1,1) || edgeAt(1,1);
-          const dW = edgeAt(-1,-1) || edgeAt(-1,1), dE = edgeAt(1,-1) || edgeAt(1,1);
-          const rimRow = eN && !eS ? 0 : eS && !eN ? 1 : (!eN && !eS && dN !== dS) ? (dN ? 0 : 1) : (r % 2);
-          const rimCol = eW && !eE ? 0 : eE && !eW ? 1 : (!eW && !eE && dW !== dE) ? (dW ? 0 : 1) : (c % 2);
-          const cell = ct.RIM_CELLS[rimRow * 2 + rimCol];
+        // Bands look at the N/S cardinal ONLY. An edge fill = mask != 255;
+        // slopes have no masks[] entry, hence explicit kind checks.
+        // Slopes are 2 tall = edge + band already, so below them is CORE —
+        // except the run's lowest column, whose underlay carries one band
+        // to meet the flat ground's band (seamBand, tagged at expansion).
+        const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
+        const topBand = !!(above && (above.kind === "slope" ? (above.face !== "c" && above.seamBand)
+                                                            : masks[K(c, r - 1)] !== 255));
+        const botBand = !!(below && (below.kind === "slope" ? (below.face === "c" && below.seamBand)
+                                                            : masks[K(c, r + 1)] !== 255));
+        if (topBand || botBand) {
+          const band = topBand ? 0 : 1;   // top wins a 3-tall sandwich
+          const cell = ct.RIM_CELLS[band * 2 + (c % 2)];
           out[k] = { ax: cell[0], ay: cell[1] };
           continue;
         }
@@ -475,6 +470,9 @@ const status = (msg) => {
   clearTimeout(statusT); statusT = setTimeout(() => el.classList.remove("show"), 4000);
 };
 
+window.addEventListener("error", (e) => { try { status("Error: " + (e.message || "script error") + (e.lineno ? " @" + e.lineno : "")); } catch (err) {} });
+window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + (e.reason && e.reason.message || e.reason || "unhandled rejection")); } catch (err) {} });
+
 const ICONS = {
   pencil: '<path d="M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z"/>',
   eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/>',
@@ -569,6 +567,7 @@ const view = { ed: { s: 3, x: 0, y: 0 }, pv: { s: 1, x: 0, y: 0 } };
 const WORLD = { ed: { w: 0, h: 0 }, pv: { w: GCOLS * TILE, h: GROWS * TILE } };   // ed dims follow the contract
 const SMIN = 0.4, SMAX = 32;
 function blit() {
+  if (!CT || !ed) return;   // pre-contract boot calls are no-ops
   const r = viewport.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
   const v = view[activeTab];
   sctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1156,7 +1155,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "2.3.1";
+const APP_VERSION = "2.5.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -1209,10 +1208,10 @@ document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () 
     if (savedFills && savedFills.length) { fills = {}; for (const k of savedFills) fills[k] = { t: 1 }; }
   } catch (e) {}
   if (!fills) fills = buildDefaultFills();
-  sizeOverlay(); fitView("pv");
-  let choice = "v2";
+  let choice = "v1";   // 3x3 (the production ATLAS contract) unless a prior session chose otherwise
   try { const c = localStorage.getItem(LS.contract); if (c && CONTRACTS[c]) choice = c; } catch (e) {}
   setContract(choice);
+  sizeOverlay(); fitView("pv");
 })();
 </script>
 </body>
