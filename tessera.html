@@ -207,9 +207,13 @@ const CONTRACTS = {
       241: { axis: "y", cells: [[3,1],[3,2]] },   // right
     },
     /* RIM — a mask-255 cell with an edge tile (or slope cell) in its
-       8-neighbourhood. Inner 2x2 by (col%2, row%2): a continuous 32x32
-       repeating rim texture works. DEEP — everything further in. */
-    RIM_CELLS: [[1,1],[2,1],[1,2],[2,2]],   // index = (r%2)*2 + (c%2)
+       8-neighbourhood. Selection is DIRECTIONAL, so the 4x4 block scales
+       like an expanding square: cardinal edge above -> inner row 1, below
+       -> inner row 2, left -> inner col 1, right -> inner col 2; parity
+       fills the ambiguous axis (runs, sandwiches, diagonal-only corners),
+       which is what keeps 32px repeats seamless along runs.
+       DEEP — everything further in. */
+    RIM_CELLS: [[1,1],[2,1],[1,2],[2,2]],   // index = rimRow*2 + rimCol
     DEEP_VARIANTS: [
       { ax: 9, ay: 0, weight: 88 },
       { ax: 9, ay: 1, weight: 4 }, { ax: 9, ay: 2, weight: 4 }, { ax: 9, ay: 3, weight: 4 },
@@ -329,14 +333,20 @@ function resolveAll(cells, ct) {
     const m = masks[k];
     if (m === 255) {
       if (ct.RIM_CELLS) {
-        let rim = false;
-        outer: for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const kk = K(c + dx, r + dy);
-          const n = cells[kk];
-          if (n && (n.kind === "slope" || masks[kk] !== 255)) { rim = true; break outer; }
+        const edgeAt = (dx, dy) => {
+          const kk = K(c + dx, r + dy), n = cells[kk];
+          return !!(n && (n.kind === "slope" || masks[kk] !== 255));
+        };
+        let rim = edgeAt(0,-1) || edgeAt(0,1) || edgeAt(-1,0) || edgeAt(1,0)
+               || edgeAt(1,-1) || edgeAt(1,1) || edgeAt(-1,1) || edgeAt(-1,-1);
+        if (rim) {
+          const eN = edgeAt(0,-1), eS = edgeAt(0,1), eW = edgeAt(-1,0), eE = edgeAt(1,0);
+          const rimRow = eN && !eS ? 0 : eS && !eN ? 1 : (r % 2);   // orient to the surface…
+          const rimCol = eW && !eE ? 0 : eE && !eW ? 1 : (c % 2);   // …parity where ambiguous
+          const cell = ct.RIM_CELLS[rimRow * 2 + rimCol];
+          out[k] = { ax: cell[0], ay: cell[1] };
+          continue;
         }
-        if (rim) { const cell = ct.RIM_CELLS[(r % 2) * 2 + (c % 2)]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
       }
       out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
       continue;
@@ -1135,7 +1145,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.2.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
