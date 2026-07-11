@@ -206,8 +206,10 @@ const CONTRACTS = {
       31:  { axis: "y", cells: [[0,1],[0,2]] },   // left
       241: { axis: "y", cells: [[3,1],[3,2]] },   // right
     },
-    /* RIM — a mask-255 cell with an edge tile (or slope cell) in its
-       8-neighbourhood. Selection is DIRECTIONAL, so the 4x4 block scales
+    /* RIM — a mask-255 cell with an edge tile in its 8-neighbourhood.
+       Slope cells do NOT count: a slope stamp is already the edge+rim
+       pair, so the core starts directly beneath the underlay.
+       Selection is DIRECTIONAL, so the 4x4 block scales
        like an expanding square: cardinal edge above -> inner row 1, below
        -> inner row 2, left -> inner col 1, right -> inner col 2; parity
        fills the ambiguous axis (runs, sandwiches, diagonal-only corners),
@@ -333,16 +335,25 @@ function resolveAll(cells, ct) {
     const m = masks[k];
     if (m === 255) {
       if (ct.RIM_CELLS) {
+        // Slope cells NEVER read as edges here: the stamp is already the
+        // edge+rim pair (surface ~ top edge, underlay ~ rim), so fills below
+        // an underlay go straight to deep. Note slopes have no masks[] entry
+        // (undefined !== 255), hence the explicit kind check.
         const edgeAt = (dx, dy) => {
           const kk = K(c + dx, r + dy), n = cells[kk];
-          return !!(n && (n.kind === "slope" || masks[kk] !== 255));
+          return !!(n && n.kind !== "slope" && masks[kk] !== 255);
         };
         let rim = edgeAt(0,-1) || edgeAt(0,1) || edgeAt(-1,0) || edgeAt(1,0)
                || edgeAt(1,-1) || edgeAt(1,1) || edgeAt(-1,1) || edgeAt(-1,-1);
         if (rim) {
+          // Orientation precedence: cardinal edges, then diagonal edges (so
+          // seam cells classified only by a corner still face the surface),
+          // then world parity (runs — diagonals on both sides cancel).
           const eN = edgeAt(0,-1), eS = edgeAt(0,1), eW = edgeAt(-1,0), eE = edgeAt(1,0);
-          const rimRow = eN && !eS ? 0 : eS && !eN ? 1 : (r % 2);   // orient to the surface…
-          const rimCol = eW && !eE ? 0 : eE && !eW ? 1 : (c % 2);   // …parity where ambiguous
+          const dN = edgeAt(-1,-1) || edgeAt(1,-1), dS = edgeAt(-1,1) || edgeAt(1,1);
+          const dW = edgeAt(-1,-1) || edgeAt(-1,1), dE = edgeAt(1,-1) || edgeAt(1,1);
+          const rimRow = eN && !eS ? 0 : eS && !eN ? 1 : (!eN && !eS && dN !== dS) ? (dN ? 0 : 1) : (r % 2);
+          const rimCol = eW && !eE ? 0 : eE && !eW ? 1 : (!eW && !eE && dW !== dE) ? (dW ? 0 : 1) : (c % 2);
           const cell = ct.RIM_CELLS[rimRow * 2 + rimCol];
           out[k] = { ax: cell[0], ay: cell[1] };
           continue;
@@ -1145,7 +1156,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.3.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
