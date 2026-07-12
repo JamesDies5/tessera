@@ -85,6 +85,8 @@
     <span class="vsep"></span>
     <select class="pal" id="palSelect" title="Zone palette preview — the same gradient map the game uses"></select>
     <button class="ibtn" id="btnPalLoad" data-icon="droplet" title="Load PaletteResource .tres files from global/palettes/"></button>
+    <button class="ibtn" id="btnLayoutSave" data-icon="download" title="Save this layout as a JSON file — share it or load it on another device"></button>
+    <button class="ibtn" id="btnLayoutLoad" data-icon="upload" title="Load a layout JSON file"></button>
     <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
   </div>
   <span class="spacer"></span>
@@ -297,14 +299,29 @@ const CONTRACTS = {
       slope_2to1: [[{ax:1,ay:11},{ax:1,ay:10}],[{ax:2,ay:11},{ax:2,ay:10}]],
       slope_3to1: [[{ax:3,ay:11},{ax:3,ay:10}],[{ax:4,ay:11},{ax:4,ay:10}],[{ax:5,ay:11},{ax:5,ay:10}]],
     },
-    /* Open-end caps: one SURFACE variant per kind/face, applied when a
-       run's tip meets air. (Underlay-cap system reverted 2026-07-11 —
-       revisit with real sheets: slope into a vertical wall -> stock wall
-       tile below; slope onto horizontal floor -> connecting wedge.) */
+    /* Slope end treatment (settled against James's authored sheet, 2026-07-12):
+       TIP surface -> tip cap when facing air. TIP underlay -> resolves as
+       ORDINARY TERRAIN (standard wall tiles close the flat side; corners
+       come from the existing 90-degree joints). BASE surface -> base cap
+       when the base faces open air on both rows (a base merging into flat
+       ground stays plain). All mirror with the run. */
     SLOPE_CAPS: {
       slope_45:   { floor: {ax:6,ay:8}, ceil: {ax:6,ay:11} },
       slope_2to1: { floor: {ax:7,ay:8}, ceil: {ax:7,ay:11} },
       slope_3to1: { floor: {ax:8,ay:8}, ceil: {ax:8,ay:11} },
+    },
+    /* 45-only tip-underlay junction tiles (James-authored, final
+       orientation): east-opening tips use Y (wall stroke right + diagonal
+       shoulder), west-opening use R (top-left corner). Flatter gradients
+       keep the generic right-wall treatment. */
+    TIP45_UNDERLAY: { east: {ax:9,ay:8}, west: {ax:9,ay:9} },
+    /* reserved for the missing lit instances: floor Y at (9,10), ceiling R
+       at (9,11). Wire them here + drop the interim transform when authored. */
+    TIP45_RESERVED: { floorY: {ax:9,ay:10}, ceilR: {ax:9,ay:11} },
+    BASE_CAPS: {
+      slope_45:   { floor: {ax:6,ay:9}, ceil: {ax:6,ay:10} },
+      slope_2to1: { floor: {ax:7,ay:9}, ceil: {ax:7,ay:10} },
+      slope_3to1: { floor: {ax:8,ay:9}, ceil: {ax:8,ay:10} },
     },
   },
 };
@@ -359,12 +376,13 @@ function expandSlopeRun(run, ct) {
     const rr = run.r + (run.dir === "asc" ? -group : group);
     const sub = j % run.grad;
     const col = stamps[flipH ? run.grad - 1 - sub : sub];
+    const baseEndJ = cols - 1 - openJ;
     col.forEach((cell, i) => {
       out[K(run.c + j, face === "c" ? rr - i : rr + i)] =
         { kind: "slope", part: i === 0 ? "s" : "u", face, ax: cell.ax, ay: cell.ay,
           flipV: face === "c" && !dedicated, flipH,
           seamBand: i > 0 && group === baseGroup,
-          end: i === 0 && j === openJ ? "open" : null,
+          end: j === openJ ? "open" : (j === baseEndJ ? "base" : null),
           runKey, runDir: run.dir };
     });
   }
@@ -409,7 +427,7 @@ function addSlopeSupports(cells) {
       if (rr < 0 || rr >= GROWS) break;
       const kk = K(c, rr);
       if (cells[kk] || add[kk]) break;
-      add[kk] = { t: 1 };
+      add[kk] = { t: 1, support: true };   // auto-scaffold, not real ground
     }
   }
   Object.assign(cells, add);
@@ -432,13 +450,55 @@ function resolveAll(cells, ct) {
     const v = cells[k];
     if (v.kind === "slope") {
       let ax = v.ax, ay = v.ay;
-      if (v.end === "open" && ct.SLOPE_CAPS && ct.SLOPE_CAPS[v.runKey]) {
+      if (v.end && (ct.SLOPE_CAPS || ct.BASE_CAPS)) {
         const [c0, r0] = k.split(",").map(Number);
-        const dx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1);
-        if (!cells[K(c0 + dx, r0)]) {   // nothing beyond: air draws no edge, so we do
-          const cap = ct.SLOPE_CAPS[v.runKey];
-          const cc = v.face === "c" ? cap.ceil : cap.floor;
-          if (cc) { ax = cc.ax; ay = cc.ay; }
+        const tipDx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1);
+        const sRow = v.part === "s" ? r0 : (v.face === "c" ? r0 + 1 : r0 - 1);
+        if (v.end === "open" && !cells[K(c0 + tipDx, sRow)]) {
+          if (v.part === "s" && ct.SLOPE_CAPS && ct.SLOPE_CAPS[v.runKey]) {
+            const cc = ct.SLOPE_CAPS[v.runKey][v.face === "c" ? "ceil" : "floor"];
+            if (cc) { ax = cc.ax; ay = cc.ay; }
+          } else if (v.part === "u") {
+            // Tip underlays, per James's orientation guide (2026-07-12):
+            // floor east -> Y rotated 90cw; floor west -> R; ceiling east
+            // -> Y; ceiling west -> Y mirrored. Flatter gradients keep the
+            // generic right-wall tile, H-flipped when opening west.
+            if (v.runKey === "slope_45" && ct.TIP45_UNDERLAY) {
+              const Y = ct.TIP45_UNDERLAY.east, R = ct.TIP45_UNDERLAY.west;
+              if (v.face === "c") out[k] = tipDx === 1 ? { ax: Y.ax, ay: Y.ay } : { ax: Y.ax, ay: Y.ay, flipH: true };
+              // floor east uses the dedicated Yf cell (seeded as transformed
+              // Y; repaint it for floor lighting and the art takes over)
+              else out[k] = tipDx === 1 ? { ax: ct.TIP45_RESERVED.floorY.ax, ay: ct.TIP45_RESERVED.floorY.ay } : { ax: R.ax, ay: R.ay };
+            } else {
+              out[k] = { ax: 4, ay: 1, flipH: tipDx === -1 };
+            }
+            continue;
+          }
+        }
+        if (v.end === "base" && v.part === "u" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
+          // a slope-bottom underlay whose outward side is open wears the
+          // B end-cap art, mirrored with its run
+          const bDx = -tipDx;
+          if (!cells[K(c0 + bDx, r0)]) {
+            const bc = ct.BASE_CAPS[v.runKey][v.face === "c" ? "ceil" : "floor"];
+            if (bc) { out[k] = { ax: bc.ax, ay: bc.ay, flipH: !!v.flipH }; continue; }
+          }
+        }
+        if (v.end === "base" && v.part === "s" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
+          // A base SITTING ON GROUND continues its diagonal; only a base
+          // hanging over void gets the B cap (James's green/pink cases).
+          const bDx = -tipDx;
+          const below = v.face === "c" ? sRow - 1 : sRow + 1;
+          let grounded = false;
+          for (let i = 2; i <= 2 + SUPPORT_CAP; i++) {   // walk past auto-supports to real ground
+            const cc = cells[K(c0, v.face === "c" ? sRow - i : sRow + i)];
+            if (!cc) break;
+            if (!cc.support) { grounded = true; break; }
+          }
+          if (!grounded && !cells[K(c0 + bDx, sRow)] && !cells[K(c0 + bDx, below)]) {
+            const bc = ct.BASE_CAPS[v.runKey][v.face === "c" ? "ceil" : "floor"];
+            if (bc) { ax = bc.ax; ay = bc.ay; }
+          }
         }
       }
       out[k] = { ax, ay, flipV: !!v.flipV, flipH: !!v.flipH };
@@ -639,7 +699,7 @@ document.querySelectorAll("[data-icon]").forEach((b) => {
 });
 
 const DEFAULT_PNGS = {
-  v3: "data:image/png;base64,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",
+  v3: "data:image/png;base64,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",
   v1: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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",
   v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
 };
@@ -769,6 +829,9 @@ function drawGrid() {
       ovCtx.fillStyle = "#9be564"; ovCtx.fillText(txt, x, y);
     };
     if (CT.SLOPE_CAPS) for (const cap of Object.values(CT.SLOPE_CAPS)) { if (cap.floor) put(cap.floor, "E"); if (cap.ceil) put(cap.ceil, "E"); }
+    if (CT.BASE_CAPS) for (const cap of Object.values(CT.BASE_CAPS)) { if (cap.floor) put(cap.floor, "B"); if (cap.ceil) put(cap.ceil, "B"); }
+    if (CT.TIP45_UNDERLAY) { put(CT.TIP45_UNDERLAY.east, "Y"); put(CT.TIP45_UNDERLAY.west, "R"); }
+    if (CT.TIP45_RESERVED) { put(CT.TIP45_RESERVED.floorY, "Yf"); put(CT.TIP45_RESERVED.ceilR, "Rc"); }
     if (CT.CEIL_SLOPE_STAMPS) for (const cols of Object.values(CT.CEIL_SLOPE_STAMPS)) cols.forEach((col) => col.forEach((c, i) => put(c, i ? "Cu" : "Cs")));
   }
   if (hover && hover.x >= 0 && hover.y >= 0 && hover.x < W && hover.y < H) {
@@ -900,11 +963,12 @@ function renderPreviewNow() {
   for (const k of Object.keys(resolved)) {
     const [c, r] = k.split(",").map(Number);
     const t = resolved[k];
-    if (t.flipV || t.flipH) {
+    if (t.rot || t.flipV || t.flipH) {
       offCtx.save();
-      offCtx.translate(c * TILE + (t.flipH ? TILE : 0), r * TILE + (t.flipV ? TILE : 0));
-      offCtx.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1);
-      offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, 0, 0, TILE, TILE);
+      offCtx.translate(c * TILE + TILE / 2, r * TILE + TILE / 2);
+      offCtx.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1);   // mirror applied AFTER rotation
+      if (t.rot) offCtx.rotate(Math.PI / 2 * t.rot);
+      offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, -TILE / 2, -TILE / 2, TILE, TILE);
       offCtx.restore();
     } else {
       offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, c * TILE, r * TILE, TILE, TILE);
@@ -931,9 +995,12 @@ function levelToTemplate(px, py) {
   if (px < 0 || py < 0 || px >= off.width || py >= off.height) return null;
   const t = resolved[K(Math.floor(px / TILE), Math.floor(py / TILE))];
   if (!t) return null;
-  const lx = t.flipH ? (TILE - 1 - (px % TILE)) : (px % TILE);
-  const ly = t.flipV ? (TILE - 1 - (py % TILE)) : (py % TILE);
-  return { tx: t.ax * TILE + lx, ty: t.ay * TILE + ly };
+  // invert the render chain: undo flips (applied last), then rotation
+  let ox = px % TILE, oy = py % TILE;
+  if (t.flipH) ox = TILE - 1 - ox;
+  if (t.flipV) oy = TILE - 1 - oy;
+  if (t.rot === 1) { const s = ox; ox = oy; oy = TILE - 1 - s; }
+  return { tx: t.ax * TILE + ox, ty: t.ay * TILE + oy };
 }
 function pvLine(x0, y0, x1, y1) {
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
@@ -1189,6 +1256,32 @@ $("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gri
 $("btnPxGrid").addEventListener("click", () => { gridOn[activeTab].px = !gridOn[activeTab].px; syncGridButtons(); drawGrid(); });
 $("btnRoles").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
 $("btnFit").addEventListener("click", () => fitView(activeTab));
+$("btnLayoutSave").addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills }));
+  a.download = "tessera_layout.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  status("Layout saved as tessera_layout.json.");
+});
+const layoutFileInput = document.createElement("input");
+layoutFileInput.type = "file"; layoutFileInput.accept = ".json,application/json";
+layoutFileInput.addEventListener("change", () => {
+  const f = layoutFileInput.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const data = JSON.parse(rd.result);
+      if (!data || typeof data.fills !== "object") { status("Not a TESSERA layout file."); return; }
+      fills = data.fills;
+      persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
+      status("Layout loaded.");
+    } catch (e) { status("Could not read layout: " + e.message); }
+  };
+  rd.readAsText(f);
+  layoutFileInput.value = "";
+});
+$("btnLayoutLoad").addEventListener("click", () => layoutFileInput.click());
 $("btnReset").addEventListener("click", () => {
   const def = buildDefaultFills();
   const same = (() => {
@@ -1283,14 +1376,39 @@ function seedSpecialCells() {
     for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
     return true;
   };
-  const copy = (s, dax, day, flip) => {
+  const copy = (s, dax, day, flip, xform) => {
     edCtx.save();
-    if (flip) { edCtx.translate(dax * TILE, day * TILE + TILE); edCtx.scale(1, -1); }
-    else edCtx.translate(dax * TILE, day * TILE);
-    edCtx.drawImage(ed, s.ax * TILE, s.ay * TILE, TILE, TILE, 0, 0, TILE, TILE);
+    if (xform) {
+      edCtx.translate(dax * TILE + TILE / 2, day * TILE + TILE / 2);
+      if (xform.flipH) edCtx.scale(-1, 1);
+      if (xform.rot) edCtx.rotate(Math.PI / 2 * xform.rot);
+      edCtx.drawImage(ed, s.ax * TILE, s.ay * TILE, TILE, TILE, -TILE / 2, -TILE / 2, TILE, TILE);
+    } else if (flip) {
+      edCtx.translate(dax * TILE, day * TILE + TILE); edCtx.scale(1, -1);
+      edCtx.drawImage(ed, s.ax * TILE, s.ay * TILE, TILE, TILE, 0, 0, TILE, TILE);
+    } else {
+      edCtx.translate(dax * TILE, day * TILE);
+      edCtx.drawImage(ed, s.ax * TILE, s.ay * TILE, TILE, TILE, 0, 0, TILE, TILE);
+    }
     edCtx.restore();
     n++;
   };
+  if (CT.TIP45_UNDERLAY && CT.TIP45_RESERVED) {
+    const Y = CT.TIP45_UNDERLAY.east, R = CT.TIP45_UNDERLAY.west;
+    const Yf = CT.TIP45_RESERVED.floorY, Rc = CT.TIP45_RESERVED.ceilR;
+    // heal the short-lived bad Yf seed (transposed Y) before the empty check
+    const tmp = document.createElement("canvas"); tmp.width = TILE; tmp.height = TILE;
+    const tc = tmp.getContext("2d"); tc.imageSmoothingEnabled = false;
+    tc.translate(TILE / 2, TILE / 2); tc.scale(-1, 1); tc.rotate(Math.PI / 2);
+    tc.drawImage(ed, Y.ax * TILE, Y.ay * TILE, TILE, TILE, -TILE / 2, -TILE / 2, TILE, TILE);
+    const bad = tc.getImageData(-0 + 0, 0, TILE, TILE).data;
+    const cur = edCtx.getImageData(Yf.ax * TILE, Yf.ay * TILE, TILE, TILE).data;
+    let isBad = true;
+    for (let i = 0; i < bad.length; i++) if (bad[i] !== cur[i]) { isBad = false; break; }
+    if (isBad) { edCtx.clearRect(Yf.ax * TILE, Yf.ay * TILE, TILE, TILE); }
+    if (empty(Yf.ax, Yf.ay)) copy(Y, Yf.ax, Yf.ay, true);   // flipV(Y) = corrected orientation
+    if (empty(Rc.ax, Rc.ay)) copy(R, Rc.ax, Rc.ay, false, { flipH: true });
+  }
   if (CT.SLOPE_CAPS) for (const [key, cap] of Object.entries(CT.SLOPE_CAPS)) {
     const fc = CT.SLOPE_STAMPS[key];
     if (cap.floor && empty(cap.floor.ax, cap.floor.ay)) copy(fc[fc.length - 1][0], cap.floor.ax, cap.floor.ay, false);
@@ -1358,7 +1476,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "3.2.0";
+const APP_VERSION = "3.7.3";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
