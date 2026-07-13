@@ -90,6 +90,7 @@
     <button class="ibtn" id="btnLayoutSave" data-icon="download" title="Save this layout as a JSON file — share it or load it on another device"></button>
     <button class="ibtn" id="btnLayoutLoad" data-icon="upload" title="Load a layout JSON file"></button>
     <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
+    <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
   </div>
   <span class="spacer"></span>
   <button class="ibtn" id="btnLoad" data-icon="upload" title="Load a template PNG"></button>
@@ -127,12 +128,13 @@
     <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
     <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
     <button class="ibtn" id="btnRoles" data-icon="tag" title="Label special template cells: E = open-end slope cap (used when a run ends into air), C = dedicated ceiling stamps (surface/underlay)"></button>
-    <button class="ibtn" id="btnCoords" data-icon="grid" title="Show grid coordinates (A1..J12) on every template cell"></button>
+    <button class="ibtn" id="btnCoords" data-icon="grid" title="Show template coordinates (A1..J12) — on every template cell, and on every level/zoo tile (the tile it resolved to)"></button>
     <div class="hsep"></div>
     <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
   </div>
   <div id="revPanel" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:60;display:none;background:rgba(18,18,18,.96);border:1px solid #454545;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5)">
-    <div id="revTitle" style="font-size:12px;color:#9a9a9a;margin-bottom:8px"></div>
+    <div id="revTitle" style="font-size:12px;color:#9a9a9a;margin-bottom:4px"></div>
+    <div id="revInfo" style="font-size:11px;color:#8fb996;margin-bottom:8px;max-width:340px;display:none"></div>
     <div style="display:flex;gap:6px;align-items:center">
       <input id="revCoord" type="text" maxlength="3" autocapitalize="characters" autocomplete="off" placeholder="C10" style="width:3.6em;background:#111;border:1px solid #454545;border-radius:8px;color:#eee;padding:6px 8px;font:inherit;text-transform:uppercase;text-align:center">
       <button class="ibtn" id="revH" title="Mirror horizontally" style="font-size:12px;width:34px">H</button>
@@ -368,10 +370,24 @@ const terrPickDeep = (x, y, variants) => {
 
 const K = (c, r) => c + "," + r;
 
-/* Geometric role of a slope cell — the teach/rule key (v4.8):
-   face:runKey:direction:part(:end). Direction-explicit by design — asc
-   and desc may use separately authored tiles, so rules never mirror-infer. */
-const slopeRole = (v) => v.face + ":" + v.runKey + ":" + v.runDir + ":" + v.part + (v.end ? ":" + v.end : "");
+/* Geometric role of a slope cell — the teach/rule key (v5.1):
+   face:runKey:direction:part(:end:XY). Direction-explicit by design — asc
+   and desc may use separately authored tiles, so rules never mirror-infer.
+   End columns append their ABUTMENT signature: X = outward neighbour on the
+   cell's own row, Y = outward neighbour one row toward the run's support;
+   'o' = open air, 'f' = ground (fills + auto-supports), 'p' = another slope.
+   A base over a ledge (oo), a base landing on floor (of), and a tip meeting
+   an opposing slope (pp) are all DIFFERENT joints with separate rules. */
+const slopeRole = (cells, c, r, v) => {
+  let key = v.face + ":" + v.runKey + ":" + v.runDir + ":" + v.part;
+  if (v.end) {
+    const dx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1) * (v.end === "base" ? -1 : 1);
+    const dy = v.face === "c" ? -1 : 1;
+    const o = (ddx, ddy) => { const n = cells[K(c + ddx, r + ddy)]; return !n ? "o" : n.kind === "slope" ? "p" : "f"; };
+    key += ":" + v.end + ":" + o(dx, 0) + o(dx, dy);
+  }
+  return key;
+};
 
 /* Slope run -> cells. (c,r) is the SURFACE cell of the LEFTMOST column;
    'asc' surface rises as x increases (matches ATLAS drag semantics).
@@ -572,10 +588,6 @@ function resolveAll(cells, ct) {
 
 /* ---- default mock layout ---- */
 const DEFAULT_LAYOUT = {"fills":{"0,20":{"t":1},"1,20":{"t":1},"2,20":{"t":1},"3,20":{"t":1},"4,20":{"t":1},"5,20":{"t":1},"6,20":{"t":1},"7,20":{"t":1},"8,20":{"t":1},"9,20":{"t":1},"10,20":{"t":1},"11,20":{"t":1},"14,20":{"t":1},"15,20":{"t":1},"16,20":{"t":1},"17,20":{"t":1},"18,20":{"t":1},"19,20":{"t":1},"20,20":{"t":1},"21,20":{"t":1},"22,20":{"t":1},"23,20":{"t":1},"24,20":{"t":1},"25,20":{"t":1},"26,20":{"t":1},"27,20":{"t":1},"28,20":{"t":1},"29,20":{"t":1},"31,20":{"t":1},"32,20":{"t":1},"33,20":{"t":1},"34,20":{"t":1},"35,20":{"t":1},"36,20":{"t":1},"37,20":{"t":1},"38,20":{"t":1},"39,20":{"t":1},"40,20":{"t":1},"41,20":{"t":1},"42,20":{"t":1},"43,20":{"t":1},"0,21":{"t":1},"1,21":{"t":1},"2,21":{"t":1},"3,21":{"t":1},"4,21":{"t":1},"5,21":{"t":1},"6,21":{"t":1},"7,21":{"t":1},"8,21":{"t":1},"9,21":{"t":1},"10,21":{"t":1},"11,21":{"t":1},"12,21":{"t":1},"13,21":{"t":1},"14,21":{"t":1},"15,21":{"t":1},"16,21":{"t":1},"17,21":{"t":1},"18,21":{"t":1},"19,21":{"t":1},"20,21":{"t":1},"21,21":{"t":1},"22,21":{"t":1},"23,21":{"t":1},"24,21":{"t":1},"25,21":{"t":1},"26,21":{"t":1},"27,21":{"t":1},"28,21":{"t":1},"29,21":{"t":1},"30,21":{"t":1},"31,21":{"t":1},"32,21":{"t":1},"33,21":{"t":1},"34,21":{"t":1},"35,21":{"t":1},"36,21":{"t":1},"37,21":{"t":1},"38,21":{"t":1},"39,21":{"t":1},"40,21":{"t":1},"41,21":{"t":1},"42,21":{"t":1},"43,21":{"t":1},"0,22":{"t":1},"1,22":{"t":1},"2,22":{"t":1},"3,22":{"t":1},"4,22":{"t":1},"5,22":{"t":1},"6,22":{"t":1},"7,22":{"t":1},"8,22":{"t":1},"9,22":{"t":1},"10,22":{"t":1},"11,22":{"t":1},"12,22":{"t":1},"13,22":{"t":1},"14,22":{"t":1},"15,22":{"t":1},"16,22":{"t":1},"17,22":{"t":1},"18,22":{"t":1},"19,22":{"t":1},"20,22":{"t":1},"21,22":{"t":1},"22,22":{"t":1},"23,22":{"t":1},"24,22":{"t":1},"25,22":{"t":1},"26,22":{"t":1},"27,22":{"t":1},"28,22":{"t":1},"29,22":{"t":1},"30,22":{"t":1},"31,22":{"t":1},"32,22":{"t":1},"33,22":{"t":1},"34,22":{"t":1},"35,22":{"t":1},"36,22":{"t":1},"37,22":{"t":1},"38,22":{"t":1},"39,22":{"t":1},"40,22":{"t":1},"41,22":{"t":1},"42,22":{"t":1},"43,22":{"t":1},"0,23":{"t":1},"1,23":{"t":1},"2,23":{"t":1},"3,23":{"t":1},"4,23":{"t":1},"5,23":{"t":1},"6,23":{"t":1},"7,23":{"t":1},"8,23":{"t":1},"9,23":{"t":1},"10,23":{"t":1},"11,23":{"t":1},"12,23":{"t":1},"13,23":{"t":1},"14,23":{"t":1},"15,23":{"t":1},"16,23":{"t":1},"17,23":{"t":1},"18,23":{"t":1},"19,23":{"t":1},"20,23":{"t":1},"21,23":{"t":1},"22,23":{"t":1},"23,23":{"t":1},"24,23":{"t":1},"25,23":{"t":1},"26,23":{"t":1},"27,23":{"t":1},"28,23":{"t":1},"29,23":{"t":1},"30,23":{"t":1},"31,23":{"t":1},"32,23":{"t":1},"33,23":{"t":1},"34,23":{"t":1},"35,23":{"t":1},"36,23":{"t":1},"37,23":{"t":1},"38,23":{"t":1},"39,23":{"t":1},"40,23":{"t":1},"41,23":{"t":1},"42,23":{"t":1},"43,23":{"t":1},"0,24":{"t":1},"1,24":{"t":1},"2,24":{"t":1},"3,24":{"t":1},"4,24":{"t":1},"5,24":{"t":1},"6,24":{"t":1},"7,24":{"t":1},"8,24":{"t":1},"9,24":{"t":1},"10,24":{"t":1},"11,24":{"t":1},"12,24":{"t":1},"13,24":{"t":1},"14,24":{"t":1},"15,24":{"t":1},"16,24":{"t":1},"17,24":{"t":1},"18,24":{"t":1},"19,24":{"t":1},"20,24":{"t":1},"21,24":{"t":1},"22,24":{"t":1},"23,24":{"t":1},"24,24":{"t":1},"25,24":{"t":1},"26,24":{"t":1},"27,24":{"t":1},"28,24":{"t":1},"29,24":{"t":1},"30,24":{"t":1},"31,24":{"t":1},"32,24":{"t":1},"33,24":{"t":1},"34,24":{"t":1},"35,24":{"t":1},"36,24":{"t":1},"37,24":{"t":1},"38,24":{"t":1},"39,24":{"t":1},"40,24":{"t":1},"41,24":{"t":1},"42,24":{"t":1},"43,24":{"t":1},"0,25":{"t":1},"1,25":{"t":1},"2,25":{"t":1},"3,25":{"t":1},"4,25":{"t":1},"5,25":{"t":1},"6,25":{"t":1},"7,25":{"t":1},"8,25":{"t":1},"9,25":{"t":1},"10,25":{"t":1},"11,25":{"t":1},"12,25":{"t":1},"13,25":{"t":1},"14,25":{"t":1},"15,25":{"t":1},"16,25":{"t":1},"17,25":{"t":1},"18,25":{"t":1},"19,25":{"t":1},"20,25":{"t":1},"21,25":{"t":1},"22,25":{"t":1},"23,25":{"t":1},"24,25":{"t":1},"25,25":{"t":1},"26,25":{"t":1},"27,25":{"t":1},"28,25":{"t":1},"29,25":{"t":1},"30,25":{"t":1},"31,25":{"t":1},"32,25":{"t":1},"33,25":{"t":1},"34,25":{"t":1},"35,25":{"t":1},"36,25":{"t":1},"37,25":{"t":1},"38,25":{"t":1},"39,25":{"t":1},"40,25":{"t":1},"41,25":{"t":1},"42,25":{"t":1},"43,25":{"t":1},"18,17":{"t":1},"19,17":{"t":1},"20,17":{"t":1},"21,17":{"t":1},"22,17":{"t":1},"23,17":{"t":1},"24,17":{"t":1},"25,17":{"t":1},"18,18":{"t":1},"19,18":{"t":1},"20,18":{"t":1},"21,18":{"t":1},"22,18":{"t":1},"23,18":{"t":1},"24,18":{"t":1},"25,18":{"t":1},"18,19":{"t":1},"19,19":{"t":1},"20,19":{"t":1},"21,19":{"t":1},"22,19":{"t":1},"23,19":{"t":1},"24,19":{"t":1},"25,19":{"t":1},"38,17":{"t":1},"39,17":{"t":1},"40,17":{"t":1},"41,17":{"t":1},"42,17":{"t":1},"43,17":{"t":1},"38,18":{"t":1},"39,18":{"t":1},"40,18":{"t":1},"41,18":{"t":1},"42,18":{"t":1},"43,18":{"t":1},"38,19":{"t":1},"39,19":{"t":1},"40,19":{"t":1},"41,19":{"t":1},"42,19":{"t":1},"43,19":{"t":1},"8,18":{"t":1},"9,18":{"t":1},"8,19":{"t":1},"9,19":{"t":1},"0,0":{"t":1},"1,0":{"t":1},"2,0":{"t":1},"3,0":{"t":1},"4,0":{"t":1},"5,0":{"t":1},"6,0":{"t":1},"7,0":{"t":1},"8,0":{"t":1},"9,0":{"t":1},"10,0":{"t":1},"11,0":{"t":1},"12,0":{"t":1},"13,0":{"t":1},"14,0":{"t":1},"15,0":{"t":1},"16,0":{"t":1},"17,0":{"t":1},"18,0":{"t":1},"19,0":{"t":1},"20,0":{"t":1},"21,0":{"t":1},"22,0":{"t":1},"23,0":{"t":1},"24,0":{"t":1},"25,0":{"t":1},"26,0":{"t":1},"27,0":{"t":1},"28,0":{"t":1},"29,0":{"t":1},"30,0":{"t":1},"31,0":{"t":1},"32,0":{"t":1},"33,0":{"t":1},"34,0":{"t":1},"35,0":{"t":1},"36,0":{"t":1},"37,0":{"t":1},"38,0":{"t":1},"39,0":{"t":1},"40,0":{"t":1},"41,0":{"t":1},"42,0":{"t":1},"43,0":{"t":1},"0,1":{"t":1},"1,1":{"t":1},"2,1":{"t":1},"3,1":{"t":1},"4,1":{"t":1},"5,1":{"t":1},"6,1":{"t":1},"7,1":{"t":1},"8,1":{"t":1},"9,1":{"t":1},"10,1":{"t":1},"11,1":{"t":1},"14,1":{"t":1},"15,1":{"t":1},"16,1":{"t":1},"17,1":{"t":1},"18,1":{"t":1},"19,1":{"t":1},"20,1":{"t":1},"21,1":{"t":1},"22,1":{"t":1},"23,1":{"t":1},"24,1":{"t":1},"25,1":{"t":1},"26,1":{"t":1},"27,1":{"t":1},"28,1":{"t":1},"29,1":{"t":1},"30,1":{"t":1},"31,1":{"t":1},"32,1":{"t":1},"33,1":{"t":1},"34,1":{"t":1},"35,1":{"t":1},"36,1":{"t":1},"37,1":{"t":1},"38,1":{"t":1},"39,1":{"t":1},"40,1":{"t":1},"41,1":{"t":1},"42,1":{"t":1},"43,1":{"t":1},"20,2":{"t":1},"20,3":{"t":1},"33,2":{"t":1},"34,2":{"t":1},"35,2":{"t":1},"36,2":{"t":1},"37,2":{"t":1},"38,2":{"t":1},"33,3":{"t":1},"34,3":{"t":1},"35,3":{"t":1},"36,3":{"t":1},"37,3":{"t":1},"38,3":{"t":1},"33,4":{"t":1},"34,4":{"t":1},"35,4":{"t":1},"36,4":{"t":1},"37,4":{"t":1},"38,4":{"t":1},"17,9":{"t":1},"18,9":{"t":1},"19,9":{"t":1},"20,9":{"t":1},"21,9":{"t":1},"22,9":{"t":1},"23,9":{"t":1},"24,9":{"t":1},"17,10":{"t":1},"18,10":{"t":1},"19,10":{"t":1},"22,10":{"t":1},"23,10":{"t":1},"24,10":{"t":1},"17,11":{"t":1},"18,11":{"t":1},"19,11":{"t":1},"20,11":{"t":1},"21,11":{"t":1},"22,11":{"t":1},"23,11":{"t":1},"24,11":{"t":1},"17,12":{"t":1},"18,12":{"t":1},"19,12":{"t":1},"20,12":{"t":1},"21,12":{"t":1},"22,12":{"t":1},"23,12":{"t":1},"3,13":{"t":1},"6,13":{"t":1},"7,13":{"t":1},"10,13":{"t":1},"11,13":{"t":1},"12,13":{"t":1},"13,13":{"t":1},"28,8":{"t":1},"28,9":{"t":1},"28,10":{"t":1},"28,11":{"t":1},"28,12":{"t":1},"28,13":{"t":1},"31,10":{"t":1},"32,10":{"t":1},"33,10":{"t":1},"34,10":{"t":1},"35,10":{"t":1},"36,10":{"t":1},"12,16":{"t":1},"13,16":{"t":1},"12,17":{"t":1},"13,17":{"t":1},"1,15":{"t":1},"38,15":{"t":1},"39,14":{"t":1},"39,15":{"t":1},"40,13":{"t":1},"40,14":{"t":1},"40,15":{"t":1},"18,5":{"t":1},"18,6":{"t":1},"17,6":{"t":1},"16,6":{"t":1},"15,6":{"t":1},"14,6":{"t":1},"14,5":{"t":1},"15,5":{"t":1},"16,5":{"t":1},"17,5":{"t":1},"1,4":{"t":1},"1,5":{"t":1},"1,6":{"t":1},"1,7":{"t":1},"1,8":{"t":1},"2,8":{"t":1},"3,8":{"t":1},"4,8":{"t":1},"5,8":{"t":1},"6,8":{"t":1},"6,7":{"t":1},"6,6":{"t":1},"3,3":{"t":1},"2,3":{"t":1},"2,4":{"t":1},"3,4":{"t":1},"3,5":{"t":1},"2,5":{"t":1},"2,6":{"t":1},"2,7":{"t":1},"3,7":{"t":1},"4,7":{"t":1},"4,6":{"t":1},"3,6":{"t":1},"5,6":{"t":1},"5,7":{"t":1},"1,3":{"t":1},"6,3":{"t":1},"9,4":{"t":1},"10,4":{"t":1},"10,5":{"t":1},"10,6":{"t":1},"10,7":{"t":1},"10,8":{"t":1},"9,8":{"t":1},"9,7":{"t":1},"9,6":{"t":1},"9,5":{"t":1},"24,4":{"t":1},"25,4":{"t":1},"25,5":{"t":1},"24,5":{"t":1},"26,4":{"t":1},"26,5":{"t":1},"26,6":{"t":1},"25,6":{"t":1},"24,6":{"t":1}}};
-/* Default v3 slope ruleset — James's zoo ground truth (formerly per-cell
-   pins, converted 2026-07-13). Seeded into roleRemaps when the store is
-   empty; from then on the user's taught rules are the only authority. */
-const DEFAULT_ROLE_RULES = {"c:slope_45:desc:u:open":{"ax":6,"ay":10,"flipH":true},"c:slope_45:asc:u:open":{"ax":6,"ay":10},"c:slope_45:asc:u:base":{"ax":4,"ay":1},"c:slope_45:desc:u:base":{"ax":0,"ay":1},"f:slope_45:asc:s:base":{"ax":0,"ay":8},"f:slope_45:desc:s:base":{"ax":0,"ay":8,"flipH":true},"f:slope_2to1:asc:s:base":{"ax":1,"ay":8},"f:slope_2to1:desc:s:base":{"ax":1,"ay":8,"flipH":true},"f:slope_45:asc:u:open":{"ax":9,"ay":9},"f:slope_45:desc:u:open":{"ax":9,"ay":9,"flipH":true},"f:slope_2to1:asc:u:open":{"ax":6,"ay":1},"f:slope_2to1:desc:u:open":{"ax":6,"ay":1,"flipH":true},"f:slope_3to1:asc:u:open":{"ax":6,"ay":1},"f:slope_3to1:desc:u:open":{"ax":6,"ay":1,"flipH":true},"f:slope_3to1:asc:s:base":{"ax":3,"ay":8},"f:slope_3to1:desc:s:base":{"ax":3,"ay":8,"flipH":true},"f:slope_45:asc:u:base":{"ax":0,"ay":1},"f:slope_45:desc:u:base":{"ax":0,"ay":1,"flipH":true}};
 function buildDefaultFills() {
   return JSON.parse(JSON.stringify(DEFAULT_LAYOUT.fills));
 }
@@ -592,6 +604,40 @@ const DEFAULT_SLOPES = [
   { grad: 1, dir: "desc", c: 5,  r: 2, steps: 2, face: "c" },   // hanging ceiling ramp, open tip east
   { grad: 1, dir: "asc",  c: 16, r: 3, steps: 2, face: "c" },   // hanging ceiling ramp, open tip west
 ];
+/* Taught ground truth — James's 2026-07-13 layout export, filtered to the
+   23 role rules whose keys the current o/p/f abutment resolver actually
+   emits on the default field + zoo (node probe, same date). The 11 dropped
+   keys were pre-abutment 5-part fossils and o/s-alphabet-era keys; every
+   dropped meaning is covered or deliberately superseded by a live rule.
+   Seeded at boot ONLY when the localStorage key is ABSENT (fresh browser /
+   fresh device). A nuked rulebook persists as {} and therefore stays empty
+   across reloads — teaching experiments keep their clean slate. */
+const DEFAULT_ROLE_RULES = { v3: {
+  "f:slope_45:asc:s:base:oo":   { ax: 0, ay: 8 },
+  "f:slope_45:desc:s:base:oo":  { ax: 0, ay: 8, flipH: true },
+  "f:slope_2to1:asc:s:base:oo": { ax: 1, ay: 8 },
+  "f:slope_2to1:desc:s:base:oo":{ ax: 1, ay: 8, flipH: true },
+  "f:slope_3to1:asc:s:base:oo": { ax: 3, ay: 8 },
+  "f:slope_3to1:desc:s:base:oo":{ ax: 3, ay: 8, flipH: true },
+  "f:slope_45:asc:u:base:oo":   { ax: 0, ay: 1 },
+  "f:slope_45:desc:u:base:oo":  { ax: 4, ay: 1 },
+  "f:slope_45:desc:u:base:of":  { ax: 4, ay: 1 },
+  "f:slope_45:asc:u:open:of":   { ax: 6, ay: 9 },
+  "f:slope_45:asc:u:open:ff":   { ax: 0, ay: 9 },
+  "f:slope_45:desc:u:open:ff":  { ax: 0, ay: 9, flipH: true },
+  "f:slope_45:desc:u:open:pp":  { ax: 9, ay: 9, flipH: true },
+  "f:slope_2to1:asc:u:open:ff": { ax: 2, ay: 9 },
+  "f:slope_2to1:desc:u:open:ff":{ ax: 7, ay: 1 },
+  "f:slope_3to1:asc:u:open:ff": { ax: 5, ay: 9 },
+  "f:slope_3to1:desc:u:open:ff":{ ax: 7, ay: 1 },
+  "c:slope_45:asc:u:base:of":   { ax: 4, ay: 1 },
+  "c:slope_45:desc:u:base:of":  { ax: 0, ay: 1 },
+  "c:slope_45:asc:u:open:of":   { ax: 6, ay: 10 },
+  "c:slope_45:desc:u:open:of":  { ax: 6, ay: 10, flipH: true },
+  "c:slope_45:asc:u:open:oo":   { ax: 6, ay: 10 },
+  "c:slope_45:desc:u:open:oo":  { ax: 6, ay: 10, flipH: true },
+} };
+const DEFAULT_MASK_REMAPS = { v3: { 253: { ax: 6, ay: 1 } } };
 function buildCells(fills, ct, extraRuns) {
   const cells = {};
   for (const k of Object.keys(fills)) cells[k] = fills[k];
@@ -715,11 +761,7 @@ const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tesser
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
-let revKey = null, revRotVal = 0, revMask = null, revSlopeSig = null, revRole = null;
-let resolvedBase = {};
-let slopeRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.sloperemaps")) || {}; } catch (e) { return {}; } })();
-function persistSlopeRemaps() { try { localStorage.setItem("tessera.sloperemaps", JSON.stringify(slopeRemaps)); } catch (e) {} }
-function ctSlopeRemaps() { if (!slopeRemaps[CT.id]) slopeRemaps[CT.id] = {}; return slopeRemaps[CT.id]; }
+let revKey = null, revRotVal = 0, revMask = null, revRole = null;
 let roleRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.roleremaps")) || {}; } catch (e) { return {}; } })();
 function persistRoleRemaps() { try { localStorage.setItem("tessera.roleremaps", JSON.stringify(roleRemaps)); } catch (e) {} }
 function ctRoleRemaps() { if (!roleRemaps[CT.id]) roleRemaps[CT.id] = {}; return roleRemaps[CT.id]; }
@@ -848,6 +890,23 @@ function drawGrid() {
       const x = v.x + ax * TILE * v.s + 2, y = v.y + ay * TILE * v.s + 2;
       if (x < -30 || y < -20 || x > r.width || y > r.height) continue;
       const nm = cellName(ax, ay);
+      ovCtx.fillStyle = "rgba(0,0,0,0.65)";
+      ovCtx.fillRect(x - 1, y - 1, ovCtx.measureText(nm).width + 3, 11);
+      ovCtx.fillStyle = "#8ecbff";
+      ovCtx.fillText(nm, x, y);
+    }
+  }
+  if (activeTab === "pv" && CT && resolved && $("btnCoords").classList.contains("on") && v.s >= 1.2) {
+    // Level/zoo: label every RESOLVED cell with the template tile it draws
+    // (post-rules — the name always matches the art on screen, so a wrong
+    // joint reads out exactly what to retype in the revise panel).
+    ovCtx.font = "600 " + Math.max(8, Math.min(11, 5 * v.s)) + "px ui-monospace, monospace";
+    ovCtx.textBaseline = "top";
+    for (const k of Object.keys(resolved)) {
+      const [c, rr] = k.split(",").map(Number);
+      const x = v.x + c * TILE * v.s + 2, y = v.y + rr * TILE * v.s + 2;
+      if (x < -30 || y < -20 || x > r.width || y > r.height) continue;
+      const t = resolved[k], nm = cellName(t.ax, t.ay);
       ovCtx.fillStyle = "rgba(0,0,0,0.65)";
       ovCtx.fillRect(x - 1, y - 1, ovCtx.measureText(nm).width + 3, 11);
       ovCtx.fillStyle = "#8ecbff";
@@ -1017,29 +1076,16 @@ function pickAt(x, y) {
 function rebuild() {
   cells = layoutMode === "zoo" ? buildZooCells(CT) : buildCells(fills, CT, userSlopes);
   resolved = resolveAll(cells, CT);
-  resolvedBase = { ...resolved };
-  // slope remaps (taught via zoo slope revisions): wherever the resolver
-  // produced tile X on a slope cell, show the replacement — mirror-adjusted
-  const sr = slopeRemaps[CT.id];
-  if (sr && Object.keys(sr).length) {
-    for (const k of Object.keys(cells)) {
-      if (cells[k].kind !== "slope") continue;
-      const b = resolved[k];
-      const e = sr[b.ax + "," + b.ay];
-      if (!e) continue;
-      const adj = (!!b.flipH) !== (!!e.srcFlipH);
-      resolved[k] = { ax: e.ax, ay: e.ay, flipH: adj ? !e.flipH : !!e.flipH, flipV: e.flipV, rot: e.rot };
-    }
-  }
-  // role rules (taught via zoo slope revisions, v4.8+): keyed by the cell's
-  // geometric role — direction-explicit, no mirror inference. Winners over
-  // the legacy tile-signature rules above.
+  // role rules: keyed by the cell's geometric role — direction-explicit,
+  // no mirror inference. The ONLY slope-rule layer (legacy signature rules
+  // removed in v4.9.3 — what the inspector shows is all there is).
   const rl = roleRemaps[CT.id];
   if (rl && Object.keys(rl).length) {
     for (const k of Object.keys(cells)) {
       const v = cells[k];
       if (v.kind !== "slope") continue;
-      const e = rl[slopeRole(v)];
+      const [rc, rr2] = k.split(",").map(Number);
+      const e = rl[slopeRole(cells, rc, rr2, v)];
       if (e) resolved[k] = { ax: e.ax, ay: e.ay, flipH: !!e.flipH, flipV: !!e.flipV, rot: e.rot };
     }
   }
@@ -1260,9 +1306,15 @@ function endStroke() {
       const run = { grad, dir: dyr < 0 ? "asc" : "desc", c: c0, r: r0, steps };
       if (stroke.face === "c") run.face = "c";
       levelSnapshot();
+      // redrawing over existing slopes REPLACES them — stacked duplicate runs
+      // corrupt the geometry (same-role cells piled on one column)
+      const newCells = expandSlopeRun(run, CT);
+      const before = userSlopes.length;
+      userSlopes = userSlopes.filter((old) => !Object.keys(expandSlopeRun(old, CT)).some((kk) => newCells[kk]));
+      const replaced = before - userSlopes.length;
       userSlopes.push(run);
       persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
-      status((run.face === "c" ? "Ceiling" : "Floor") + " slope placed: " + (grad === 1 ? "45\u00b0" : grad + ":1") + " " + run.dir + ", " + steps + " step" + (steps > 1 ? "s" : "") + ".");
+      status((run.face === "c" ? "Ceiling" : "Floor") + " slope placed: " + (grad === 1 ? "45\u00b0" : grad + ":1") + " " + run.dir + ", " + steps + " step" + (steps > 1 ? "s" : "") + (replaced ? " — replaced " + replaced + " overlapping run" + (replaced > 1 ? "s" : "") + "." : "."));
     }
     stroke = null;
     return;
@@ -1418,19 +1470,19 @@ $("btnRedo").addEventListener("click", redo);
 $("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gridOn[activeTab].cell; syncGridButtons(); drawGrid(); });
 $("btnPxGrid").addEventListener("click", () => { gridOn[activeTab].px = !gridOn[activeTab].px; syncGridButtons(); drawGrid(); });
 $("btnRoles").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
-$("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
+$("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });   // drawGrid covers both tabs
 $("btnFit").addEventListener("click", () => fitView(activeTab));
 function openRevPanel(k) {
   revKey = k;
   const [kc, kr] = k.split(",").map(Number);
   // Fill cells teach by neighbour mask; slope cells teach by geometric role.
   // Level and zoo are identical teachers — every revision is a tileset rule.
-  revMask = null; revSlopeSig = null; revRole = null;
+  revMask = null; revRole = null;
   if (cells[k]) {
     if (cells[k].kind !== "slope") revMask = maskAt(cells, kc, kr, CT);
-    else { revRole = slopeRole(cells[k]); if (resolvedBase[k]) revSlopeSig = resolvedBase[k].ax + "," + resolvedBase[k].ay; }
+    else revRole = slopeRole(cells, kc, kr, cells[k]);
   }
-  const ov = revMask !== null ? ctRemaps()[revMask] : (revRole !== null ? (ctRoleRemaps()[revRole] || (revSlopeSig !== null ? ctSlopeRemaps()[revSlopeSig] : null)) : null);
+  const ov = revMask !== null ? ctRemaps()[revMask] : (revRole !== null ? ctRoleRemaps()[revRole] : null);
   const cur = ov || resolved[k];
   $("revTitle").textContent = (revMask !== null ? "Mask " + revMask + " (applies everywhere) — " :
     revRole !== null ? "Role " + revRole + " (applies everywhere) — " :
@@ -1440,6 +1492,27 @@ function openRevPanel(k) {
   $("revV").classList.toggle("on", !!(cur && cur.flipV));
   revRotVal = (cur && cur.rot) || 0;
   $("revRot").innerHTML = revRotVal * 90 + "&deg;";
+  // coupling report: how far this rule reaches, and which OTHER rules draw
+  // the same template cell (pixel edits to that cell affect them all).
+  const myKey = revMask !== null ? "mask " + revMask : revRole;
+  const info = $("revInfo");
+  if (myKey && cur) {
+    let reach = 0;
+    const sharers = new Set();
+    for (const kk of Object.keys(cells)) {
+      const vv = cells[kk];
+      const [cc, rr] = kk.split(",").map(Number);
+      const kkey = vv.kind === "slope" ? slopeRole(cells, cc, rr, vv) : "mask " + maskAt(cells, cc, rr, CT);
+      if (kkey === myKey) reach++;
+      else if (resolved[kk] && resolved[kk].ax === cur.ax && resolved[kk].ay === cur.ay) sharers.add(kkey);
+    }
+    const runsHere = layoutMode !== "zoo" && cells[k].kind === "slope" ? userSlopes.filter((run) => !!expandSlopeRun(run, CT)[k]).length : 0;
+    info.textContent = (runsHere > 1 ? "\u26a0 " + runsHere + " overlapping slope runs occupy this cell \u2014 redraw over them to replace, or erase-tap removes one at a time. " : "") +
+      "Rule covers " + reach + " cell" + (reach === 1 ? "" : "s") + " in this view. " +
+      (sharers.size ? "Tile " + cellName(cur.ax, cur.ay) + " is ALSO drawn by: " + [...sharers].slice(0, 4).join(", ") + (sharers.size > 4 ? ", …" : "") + " — pixel edits to it change those too."
+                    : "No other rule uses tile " + cellName(cur.ax, cur.ay) + ".");
+    info.style.display = "";
+  } else { info.style.display = "none"; }
   $("revPanel").style.display = "";
 }
 $("revH").addEventListener("click", (e) => e.currentTarget.classList.toggle("on"));
@@ -1451,12 +1524,11 @@ $("revClear").addEventListener("click", () => {
   if (revMask !== null) { delete ctRemaps()[revMask]; persistRemaps(); status("Mask " + revMask + " back to the resolver default."); }
   else if (revRole !== null) {
     delete ctRoleRemaps()[revRole]; persistRoleRemaps();
-    if (revSlopeSig !== null) { delete ctSlopeRemaps()[revSlopeSig]; persistSlopeRemaps(); }
     status("Role " + revRole + " back to the resolver default.");
   }
   else { status("Empty cell — nothing to clear."); }
   rebuild(); renderPreview(); blit(); drawGrid();
-  $("revPanel").style.display = "none"; revKey = null; revMask = null; revSlopeSig = null; revRole = null;
+  $("revPanel").style.display = "none"; revKey = null; revMask = null; revRole = null;
 });
 $("revApply").addEventListener("click", () => {
   if (!revKey) return;
@@ -1479,11 +1551,11 @@ $("revApply").addEventListener("click", () => {
     status(cellName(ax, ay) + " now defines " + revRole + " — everywhere, including the level.");
   }
   rebuild(); renderPreview(); blit(); drawGrid();
-  $("revPanel").style.display = "none"; revKey = null; revMask = null; revSlopeSig = null; revRole = null;
+  $("revPanel").style.display = "none"; revKey = null; revMask = null; revRole = null;
 });
 $("btnLayoutSave").addEventListener("click", () => {
   const a = document.createElement("a");
-  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes, remaps: maskRemaps, slopeRemaps, roleRemaps }));
+  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes, remaps: maskRemaps, roleRemaps }));
   a.download = "tessera_layout.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status("Layout saved as tessera_layout.json.");
@@ -1501,11 +1573,9 @@ layoutFileInput.addEventListener("change", () => {
       fills = data.fills;
       if (Array.isArray(data.slopes)) { userSlopes = data.slopes; persistUserSlopes(); }
       if (data.remaps) { maskRemaps = data.remaps; persistRemaps(); }
-      if (data.slopeRemaps) { slopeRemaps = data.slopeRemaps; persistSlopeRemaps(); }
       if (data.roleRemaps) { roleRemaps = data.roleRemaps; persistRoleRemaps(); }
-      const mig = data.overrides ? salvagePinObject(data.overrides) : 0;   // pre-4.9 layouts carried per-cell pins
       persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
-      status("Layout loaded." + (mig ? " " + mig + " legacy zoo pin" + (mig > 1 ? "s" : "") + " upgraded to role rules." : ""));
+      status("Layout loaded." + (data.overrides ? " (Pin-era data in this file was ignored — rules are taught in-app now.)" : ""));
     } catch (e) { status("Could not read layout: " + e.message); }
   };
   rd.readAsText(f);
@@ -1530,6 +1600,15 @@ $("btnReset").addEventListener("click", () => {
     document.querySelectorAll(".lmode").forEach((q) => q.classList.toggle("on", q.dataset.lmode === "field"));
   }
   rebuild(); renderPreview(); persistFills(); blit(); drawGrid(); status("Playfield reset to the default.");
+});
+$("btnRulesReset").addEventListener("click", () => {
+  const nMask = Object.keys(ctRemaps()).length, nRole = Object.keys(ctRoleRemaps()).length;
+  if (!nMask && !nRole) { status("No taught rules for " + CT.label + " — already at pure resolver defaults."); return; }
+  if (!confirm("Delete ALL " + (nMask + nRole) + " taught rules for " + CT.label + " (" + nMask + " mask, " + nRole + " role)? The resolver's built-in behavior takes over everywhere. This cannot be undone.")) return;
+  maskRemaps[CT.id] = {}; roleRemaps[CT.id] = {};
+  persistRemaps(); persistRoleRemaps();
+  rebuild(); renderPreview(); blit(); drawGrid();
+  status("All rules cleared — " + CT.label + " is at pure resolver defaults. Teach fresh from here.");
 });
 $("btnResetArt").addEventListener("click", () => {
   if (!confirm(`Reset the ${CT.label} sheet to the shipped original? Your current drawing will be replaced.`)) return;
@@ -1708,30 +1787,9 @@ $("btnSave").addEventListener("click", () => {
 function persistPng() { try { localStorage.setItem(CT.lsKey, ed.toDataURL("image/png")); } catch (e) {} }
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
-/* Pins are gone (v4.9) — pre-4.9 data (localStorage or layout files) may
-   still carry them. Zoo slope pins convert to role rules (existing rules
-   win); field pins and non-slope zoo pins are dropped: per-coordinate
-   decals carried no rule content. */
-function salvagePinObject(ov) {
-  if (!ov || !ov.zoo) return 0;
-  const zc = buildZooCells(CONTRACTS.v3);
-  const store = (roleRemaps.v3 = roleRemaps.v3 || {});
-  let moved = 0;
-  for (const k of Object.keys(ov.zoo)) {
-    const v = zc[k];
-    if (!v || v.kind !== "slope") continue;
-    const role = slopeRole(v);
-    if (store[role]) continue;
-    store[role] = { ...ov.zoo[k] };
-    moved++;
-  }
-  if (moved) persistRoleRemaps();
-  return moved;
-}
-
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "4.9.0";
+const APP_VERSION = "5.3.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -1789,18 +1847,18 @@ document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () 
     else if (localStorage.getItem("tessera.migr_defslopes") === null) { userSlopes = JSON.parse(JSON.stringify(DEFAULT_SLOPES)).concat(userSlopes); persistUserSlopes(); }
     localStorage.setItem("tessera.migr_defslopes", "1");
   } catch (e) {}
-  const salvaged = (() => {
-    let ov = null;
-    try { ov = JSON.parse(localStorage.getItem("tessera.overrides")); } catch (e) {}
-    const n = ov ? salvagePinObject(ov) : 0;
-    try { localStorage.removeItem("tessera.overrides"); localStorage.removeItem("tessera.migr_fieldpins"); } catch (e) {}
-    return n;
-  })();
-  if (!roleRemaps.v3 || !Object.keys(roleRemaps.v3).length) { roleRemaps.v3 = JSON.parse(JSON.stringify(DEFAULT_ROLE_RULES)); persistRoleRemaps(); }
+  // v5.0: pin-era data is never salvaged or seeded — rules exist only if
+  // taught against the current resolver. Stale keys are simply removed.
+  // v5.2: DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS honor that stance — they
+  // WERE taught against this resolver, and they seed only a virgin store.
+  try { localStorage.removeItem("tessera.overrides"); localStorage.removeItem("tessera.migr_fieldpins"); localStorage.removeItem("tessera.sloperemaps"); } catch (e) {}
+  try {
+    if (localStorage.getItem("tessera.roleremaps") === null) { roleRemaps = JSON.parse(JSON.stringify(DEFAULT_ROLE_RULES)); persistRoleRemaps(); }
+    if (localStorage.getItem("tessera.remaps") === null) { maskRemaps = JSON.parse(JSON.stringify(DEFAULT_MASK_REMAPS)); persistRemaps(); }
+  } catch (e) {}
   let choice = "v1";   // 3x3 (the production ATLAS contract) unless a prior session chose otherwise
   try { const c = localStorage.getItem(LS.contract); if (c && CONTRACTS[c]) choice = c; } catch (e) {}
   setContract(choice);
-  if (salvaged) status(salvaged + " legacy zoo pin" + (salvaged > 1 ? "s" : "") + " upgraded to role rules.");
   sizeOverlay(); fitView("pv");
 })();
 </script>
