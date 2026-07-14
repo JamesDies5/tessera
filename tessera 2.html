@@ -340,6 +340,34 @@ const CONTRACTS = {
        beside the run's open tip surface carries the attach shoulder — A11,
        the ceil-45 underlay art — facing the run; flipped for the mirror. */
     CEIL_ATTACH: { ax: 0, ay: 10 },
+    /* THIN-wall attach variants (James, 2026-07-14, superseding the solo
+       special case): when the attach cell's FAR side (opposite the run) is
+       air — a 1-wide wall — the A-shoulder art is wrong (it assumes the mass
+       continues) and the G-cap art closes the joint instead. All four field
+       instances to date split on wall thickness, not run length: thick walls
+       take A10/A11, thin walls take G10/G11, flipped with the run. */
+    CEIL_ATTACH_THIN: { ax: 6, ay: 10 },
+    FLOOR_ATTACH_THIN: { ax: 6, ay: 9 },
+    /* G/H band-termination joints for GRADUAL runs meeting walls (James,
+       2026-07-14, superseding CEIL_TIP_WALL). Two placements:
+       - run open-tip UNDERLAY truncating into a real solid: G* when the
+         truncation is eastward, H* westward; row-1 tiles for floors,
+         row-2 for ceilings. Requires REAL solid outward (scaffolds never
+         count — the bit the role alphabet folds away) with air outward on
+         the support row. What sits ABOVE the tip does NOT matter: field
+         evidence 2026-07-14 shows scaffold-above tips take the joint too.
+       - WALL fill beside a run's BASE underlay: the band terminates inside
+         a continuous vertical wall (real fill above and below). Floor bases
+         hand the wall the row-2 tile, ceiling bases the row-1 tile (the
+         band sits on the opposite row relative to the run's face).
+       45 runs excluded throughout — their underlays are the A10/A11
+       diagonal shoulders with their own treatments. */
+    SLOPE_WALL_JOINTS: {
+      runFloor:  { east: { ax: 6, ay: 0 }, west: { ax: 7, ay: 0 } },   // G1 / H1
+      runCeil:   { east: { ax: 6, ay: 1 }, west: { ax: 7, ay: 1 } },   // G2 / H2
+      wallFloor: { east: { ax: 6, ay: 1 }, west: { ax: 7, ay: 1 } },   // run E -> G2
+      wallCeil:  { east: { ax: 6, ay: 0 }, west: { ax: 7, ay: 0 } },   // run E -> G1
+    },
     FLOOR_ATTACH: { ax: 0, ay: 9 },
     /* reserved for the missing lit instances: floor Y at (9,10), ceiling R
        at (9,11). Wire them here + drop the interim transform when authored. */
@@ -470,7 +498,7 @@ function addSlopeSupports(cells) {
   const add = {};
   for (const k of Object.keys(cells)) {
     const v = cells[k];
-    if (v.kind !== "slope") continue;
+    if (v.kind !== "slope" || v.anchored) continue;
     const [c, r] = k.split(",").map(Number);
     const dir = v.face === "c" ? -1 : 1;
     // Probe first, commit second: supports exist to BRIDGE a shallow gap to
@@ -529,6 +557,18 @@ function resolveAll(cells, ct) {
             continue;
           }
         }
+        // Gradual run open tip truncating into a real solid: the underlay
+        // carries the G/H band-termination art (see SLOPE_WALL_JOINTS note).
+        if (v.part === "u" && v.end === "open" && v.runKey !== "slope_45" && ct.SLOPE_WALL_JOINTS) {
+          const outw = cells[K(c0 + tipDx, r0)];
+          const supDy = v.face === "c" ? -1 : 1;
+          if (outw && outw.kind !== "slope" && !outw.support && !cells[K(c0 + tipDx, r0 + supDy)]) {
+            const fam = v.face === "c" ? ct.SLOPE_WALL_JOINTS.runCeil : ct.SLOPE_WALL_JOINTS.runFloor;
+            const t = tipDx === 1 ? fam.east : fam.west;
+            out[k] = { ax: t.ax, ay: t.ay };
+            continue;
+          }
+        }
         if (v.end === "open" && !cells[K(c0 + tipDx, sRow)]) {
           if (v.part === "s" && ct.SLOPE_CAPS && ct.SLOPE_CAPS[v.runKey]) {
             const cc = ct.SLOPE_CAPS[v.runKey][v.face === "c" ? "ceil" : "floor"];
@@ -570,7 +610,10 @@ function resolveAll(cells, ct) {
             if (bc) { out[k] = { ax: bc.ax, ay: bc.ay, flipH: !!v.flipH }; continue; }
           }
         }
-        if (v.end === "base" && v.part === "s" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
+        // Floating-base SURFACE cap: floors only. The six floor islands in
+        // the zoo validate it; its first ceiling firing (2026-07-14, hanging
+        // 3:1 wedge) was wrong — ceiling base surfaces keep their stamps.
+        if (v.end === "base" && v.part === "s" && v.face !== "c" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
           const bDx = -tipDx;
           const below = v.face === "c" ? sRow - 1 : sRow + 1;
           let grounded = false;
@@ -590,6 +633,22 @@ function resolveAll(cells, ct) {
     }
     const [c, r] = k.split(",").map(Number);
     const m = masks[k];
+    // Wall fill beside a gradual run's BASE underlay: band terminates inside
+    // a continuous vertical wall. Checked before the interior path because
+    // 2-wide walls read mask 255 here (see SLOPE_WALL_JOINTS note).
+    if (ct.SLOPE_WALL_JOINTS) {
+      const solidV = (dy) => { const n = cells[K(c, r + dy)]; return !!(n && n.kind !== "slope" && !n.support); };
+      const baseU = (dx) => { const n = cells[K(c + dx, r)]; return n && n.kind === "slope" && n.part === "u" && n.end === "base" && n.runKey !== "slope_45" ? n : null; };
+      if (solidV(-1) && solidV(1)) {
+        const bE = baseU(1), bW = baseU(-1), b = bE || bW;
+        if (b) {
+          const fam = b.face === "c" ? ct.SLOPE_WALL_JOINTS.wallCeil : ct.SLOPE_WALL_JOINTS.wallFloor;
+          const t = bE ? fam.east : fam.west;
+          out[k] = { ax: t.ax, ay: t.ay };
+          continue;
+        }
+      }
+    }
     if (m === 255) {
       if (ct.TRANSITION) {
         const T = ct.TRANSITION;
@@ -634,15 +693,28 @@ function resolveAll(cells, ct) {
     // solo connectors intact, since those need their corner stroke.
     const att = (dx, face, needDir) => {
       const n = cells[K(c + dx, r)];
-      return !!(n && n.kind === "slope" && n.face === face && n.part === "s" && n.end === "open" && n.runDir === needDir);
+      return (n && n.kind === "slope" && n.face === face && n.part === "s" && n.end === "open" && n.runDir === needDir) ? n : null;
     };
+    const thin = (dxRun) => !cells[K(c - dxRun, r)];   // far side (opposite the run) is air
     if (ct.CEIL_ATTACH && (m & 16)) {
-      if (!(m & 4) && att(1, "c", "asc"))    { out[k] = { ax: ct.CEIL_ATTACH.ax, ay: ct.CEIL_ATTACH.ay };              continue; }
-      if (!(m & 64) && att(-1, "c", "desc")) { out[k] = { ax: ct.CEIL_ATTACH.ax, ay: ct.CEIL_ATTACH.ay, flipH: true }; continue; }
+      if (!(m & 4) && att(1, "c", "asc")) {
+        const t = (thin(1) && ct.CEIL_ATTACH_THIN) || ct.CEIL_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay }; continue;
+      }
+      if (!(m & 64) && att(-1, "c", "desc")) {
+        const t = (thin(-1) && ct.CEIL_ATTACH_THIN) || ct.CEIL_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay, flipH: true }; continue;
+      }
     }
     if (ct.FLOOR_ATTACH && (m & 1)) {
-      if (!(m & 4) && att(1, "f", "desc"))   { out[k] = { ax: ct.FLOOR_ATTACH.ax, ay: ct.FLOOR_ATTACH.ay, flipH: true }; continue; }
-      if (!(m & 64) && att(-1, "f", "asc"))  { out[k] = { ax: ct.FLOOR_ATTACH.ax, ay: ct.FLOOR_ATTACH.ay };              continue; }
+      if (!(m & 4) && att(1, "f", "desc")) {
+        const t = (thin(1) && ct.FLOOR_ATTACH_THIN) || ct.FLOOR_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay, flipH: true }; continue;
+      }
+      if (!(m & 64) && att(-1, "f", "asc")) {
+        const t = (thin(-1) && ct.FLOOR_ATTACH_THIN) || ct.FLOOR_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay }; continue;
+      }
     }
     const ev = ct.EDGE_VARIANTS[m];
     if (ev) { const cell = ev.cells[(ev.axis === "x" ? c : r) % ev.cells.length]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
@@ -702,6 +774,8 @@ const DEFAULT_ROLE_RULES = { v3: {
   "c:slope_45:desc:u:open:of":  { ax: 6, ay: 10, flipH: true },
   "c:slope_45:asc:u:open:oo":   { ax: 6, ay: 10 },
   "c:slope_45:desc:u:open:oo":  { ax: 6, ay: 10, flipH: true },
+  "f:slope_45:asc:u:open:oo":   { ax: 6, ay: 9 },
+  "f:slope_45:desc:u:open:oo":  { ax: 6, ay: 9, flipH: true },
 } };
 const DEFAULT_MASK_REMAPS = { v3: { 253: { ax: 6, ay: 1 } } };
 function buildCells(fills, ct, extraRuns) {
@@ -709,7 +783,14 @@ function buildCells(fills, ct, extraRuns) {
   for (const k of Object.keys(fills)) cells[k] = fills[k];
   // v4.8.2: DEFAULT_SLOPES are no longer baked here — the app seeds them into
   // userSlopes (boot/reset), so every run on the field is erasable as a unit.
-  if (extraRuns) for (const run of extraRuns) Object.assign(cells, expandSlopeRun(run, ct));
+  if (extraRuns) for (const run of extraRuns) {
+    const rc = expandSlopeRun(run, ct);
+    // Cells that REPLACE a fill are carved into terrain — the run is
+    // self-anchored there and must never grow scaffolding (v6.1: a chamfer
+    // of a solid block is backed by the block, not by bridges to whatever
+    // unrelated geometry happens to sit within the support cap).
+    for (const k of Object.keys(rc)) { if (cells[k] && cells[k].kind !== "slope") rc[k].anchored = true; cells[k] = rc[k]; }
+  }
   return addSlopeSupports(cells);
 }
 
@@ -745,6 +826,14 @@ function buildZooCells(ct) {
   const rect = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (!cells[K(c, r)]) cells[K(c, r)] = { t: 1 }; };
   rect(3, 24, 3, 25); rect(11, 24, 11, 25); rect(23, 24, 23, 25);   // floor pair notches
   rect(12, 17, 16, 18); rect(18, 17, 26, 18); rect(28, 17, 40, 18); // ceiling anchor slabs
+  /* Crest showcases (2026-07-14): a 45 cresting a pedestal — the tip
+     underlay sits on REAL ground with air outward both rows (the oo keys
+     the crest rules teach against). One per facing. */
+  for (const run of [
+    { grad: 1, dir: "desc", c: 32, r: 22, steps: 2 },
+    { grad: 1, dir: "asc",  c: 37, r: 23, steps: 2 },
+  ]) Object.assign(cells, expandSlopeRun(run, ct));
+  rect(32, 24, 33, 25); rect(37, 24, 38, 25);   // crest pedestals
   return addSlopeSupports(cells);
 }
 
@@ -834,6 +923,24 @@ function ctRoleRemaps() { if (!roleRemaps[CT.id]) roleRemaps[CT.id] = {}; return
 let maskRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.remaps")) || {}; } catch (e) { return {}; } })();
 function persistRemaps() { try { localStorage.setItem("tessera.remaps", JSON.stringify(maskRemaps)); } catch (e) {} }
 function ctRemaps() { if (!maskRemaps[CT.id]) maskRemaps[CT.id] = {}; return maskRemaps[CT.id]; }
+/* v6.0 — ONE ruleset. The baked DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS
+   tables ARE the app's rule set. The localStorage store holds only the
+   corrections taught since the last bake; reads layer store-over-baked,
+   writes go to the store, and each integration folds the store into the
+   bake. No seeding, no adoption, no imports needed to stay current — a
+   new build's rules apply everywhere the moment it loads. */
+function roleRuleFor(key) {
+  const s = roleRemaps[CT.id];
+  if (s && key in s) return s[key];
+  const d = DEFAULT_ROLE_RULES[CT.id];
+  return d ? d[key] : undefined;
+}
+function maskRemapFor(m) {
+  const s = maskRemaps[CT.id];
+  if (s && m in s) return s[m];
+  const d = DEFAULT_MASK_REMAPS[CT.id];
+  return d ? d[m] : undefined;
+}
 let userSlopes = (() => { try { return JSON.parse(localStorage.getItem(LS.slopes)) || []; } catch (e) { return []; } })();
 function persistUserSlopes() { try { localStorage.setItem(LS.slopes, JSON.stringify(userSlopes)); } catch (e) {} }
 const cellName = (ax, ay) => String.fromCharCode(65 + ax) + (ay + 1);
@@ -1158,27 +1265,21 @@ function rebuild() {
   cells = layoutMode === "zoo" ? buildZooCells(CT) : buildCells(fills, CT, userSlopes);
   resolved = resolveAll(cells, CT);
   // role rules: keyed by the cell's geometric role — direction-explicit,
-  // no mirror inference. The ONLY slope-rule layer (legacy signature rules
-  // removed in v4.9.3 — what the inspector shows is all there is).
-  const rl = roleRemaps[CT.id];
-  if (rl && Object.keys(rl).length) {
-    for (const k of Object.keys(cells)) {
-      const v = cells[k];
-      if (v.kind !== "slope") continue;
-      const [rc, rr2] = k.split(",").map(Number);
-      const e = rl[slopeRole(cells, rc, rr2, v)];
-      if (e) resolved[k] = { ax: e.ax, ay: e.ay, flipH: !!e.flipH, flipV: !!e.flipV, rot: e.rot };
-    }
+  // no mirror inference. ONE ruleset: baked defaults with the store's
+  // in-progress corrections layered on top (v6.0).
+  for (const k of Object.keys(cells)) {
+    const v = cells[k];
+    if (v.kind !== "slope") continue;
+    const [rc, rr2] = k.split(",").map(Number);
+    const e = roleRuleFor(slopeRole(cells, rc, rr2, v));
+    if (e) resolved[k] = { ax: e.ax, ay: e.ay, flipH: !!e.flipH, flipV: !!e.flipV, rot: e.rot };
   }
-  // mask remaps (taught via zoo island revisions) apply everywhere next
-  const rm = maskRemaps[CT.id];
-  if (rm && Object.keys(rm).length) {
-    for (const k of Object.keys(cells)) {
-      if (cells[k].kind === "slope") continue;
-      const [c, r] = k.split(",").map(Number);
-      const e = rm[maskAt(cells, c, r, CT)];
-      if (e) resolved[k] = { ...e };
-    }
+  // mask remaps apply everywhere next — same layering
+  for (const k of Object.keys(cells)) {
+    if (cells[k].kind === "slope") continue;
+    const [c, r] = k.split(",").map(Number);
+    const e = maskRemapFor(maskAt(cells, c, r, CT));
+    if (e) resolved[k] = { ...e };
   }
   pvDirty = true;
 }
@@ -1587,7 +1688,7 @@ function openRevPanel(k) {
     if (cells[k].kind !== "slope") revMask = maskAt(cells, kc, kr, CT);
     else revRole = slopeRole(cells, kc, kr, cells[k]);
   }
-  const ov = revMask !== null ? ctRemaps()[revMask] : (revRole !== null ? ctRoleRemaps()[revRole] : null);
+  const ov = revMask !== null ? maskRemapFor(revMask) : (revRole !== null ? roleRuleFor(revRole) : null);
   const cur = ov || resolved[k];
   $("revTitle").textContent = (revMask !== null ? "Mask " + revMask + " (applies everywhere) — " :
     revRole !== null ? "Role " + revRole + " (applies everywhere) — " :
@@ -1626,10 +1727,10 @@ $("revRot").addEventListener("click", () => { revRotVal = (revRotVal + 1) % 4; $
 $("revClose").addEventListener("click", () => { $("revPanel").style.display = "none"; revKey = null; });
 $("revClear").addEventListener("click", () => {
   if (!revKey) return;
-  if (revMask !== null) { delete ctRemaps()[revMask]; persistRemaps(); status("Mask " + revMask + " back to the resolver default."); }
+  if (revMask !== null) { delete ctRemaps()[revMask]; persistRemaps(); status("Mask " + revMask + " override cleared — back to the app's rule set."); }
   else if (revRole !== null) {
     delete ctRoleRemaps()[revRole]; persistRoleRemaps();
-    status("Role " + revRole + " back to the resolver default.");
+    status("Role " + revRole + " override cleared — back to the app's rule set.");
   }
   else { status("Empty cell — nothing to clear."); }
   rebuild(); renderPreview(); blit(); drawGrid();
@@ -1660,7 +1761,9 @@ $("revApply").addEventListener("click", () => {
 });
 $("btnLayoutSave").addEventListener("click", () => {
   const a = document.createElement("a");
-  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes, remaps: maskRemaps, roleRemaps }));
+  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes,
+    remaps:     { [CT.id]: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) } },
+    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } } }));
   a.download = "tessera_layout.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status("Layout saved as tessera_layout.json.");
@@ -1708,12 +1811,12 @@ $("btnReset").addEventListener("click", () => {
 });
 $("btnRulesReset").addEventListener("click", () => {
   const nMask = Object.keys(ctRemaps()).length, nRole = Object.keys(ctRoleRemaps()).length;
-  if (!nMask && !nRole) { status("No taught rules for " + CT.label + " — already at pure resolver defaults."); return; }
-  if (!confirm("Delete ALL " + (nMask + nRole) + " taught rules for " + CT.label + " (" + nMask + " mask, " + nRole + " role)? The resolver's built-in behavior takes over everywhere. This cannot be undone.")) return;
+  if (!nMask && !nRole) { status("No overrides for " + CT.label + " — already showing the app's baked rule set."); return; }
+  if (!confirm("Clear ALL " + (nMask + nRole) + " in-progress overrides for " + CT.label + " (" + nMask + " mask, " + nRole + " role)? The app's baked rule set takes over everywhere. This cannot be undone.")) return;
   maskRemaps[CT.id] = {}; roleRemaps[CT.id] = {};
   persistRemaps(); persistRoleRemaps();
   rebuild(); renderPreview(); blit(); drawGrid();
-  status("All rules cleared — " + CT.label + " is at pure resolver defaults. Teach fresh from here.");
+  status("Overrides cleared — " + CT.label + " is showing the app's baked rule set.");
 });
 $("btnResetArt").addEventListener("click", () => {
   if (!confirm(`Reset the ${CT.label} sheet to the shipped original? Your current drawing will be replaced.`)) return;
@@ -1894,7 +1997,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "5.9.0";
+const APP_VERSION = "6.1.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -1957,10 +2060,6 @@ document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () 
   // v5.2: DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS honor that stance — they
   // WERE taught against this resolver, and they seed only a virgin store.
   try { localStorage.removeItem("tessera.overrides"); localStorage.removeItem("tessera.migr_fieldpins"); localStorage.removeItem("tessera.sloperemaps"); } catch (e) {}
-  try {
-    if (localStorage.getItem("tessera.roleremaps") === null) { roleRemaps = JSON.parse(JSON.stringify(DEFAULT_ROLE_RULES)); persistRoleRemaps(); }
-    if (localStorage.getItem("tessera.remaps") === null) { maskRemaps = JSON.parse(JSON.stringify(DEFAULT_MASK_REMAPS)); persistRemaps(); }
-  } catch (e) {}
   // v5.7.1 one-time repair (James, 2026-07-13): the two fossil H2 tip rules.
   // Rewrites a stored rule ONLY if it still targets H2 (7,1) verbatim — any
   // re-taught association is left alone. Remove this block in a future pass.
