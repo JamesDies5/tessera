@@ -81,8 +81,8 @@
     <span id="cellTools" style="display:none">
       <button class="ibtn ptool on" data-ptool="paint" data-icon="sqplus" title="Paint terrain cells"></button>
       <button class="ibtn ptool" data-ptool="erase" data-icon="sqx" title="Erase terrain cells — erasing any cell of a slope removes that whole run"></button>
-      <button class="ibtn tool" data-tool="slopeF" data-icon="slopeF" title="Draw FLOOR slope: drag from one end to the other — height sets the steps, width picks the gradient (1:1, 2:1, 3:1). Tap a drawn slope to remove it."></button>
-      <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it."></button>
+      <button class="ibtn tool" data-tool="slopeF" data-icon="slopeF" title="Draw FLOOR slope: drag from one end to the other — height sets the steps, width picks the gradient (1:1, 2:1, 3:1). Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
+      <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
     </span>
     <span class="vsep"></span>
     <select class="pal" id="palSelect" title="Zone palette preview — the same gradient map the game uses"></select>
@@ -336,6 +336,11 @@ const CONTRACTS = {
        shoulder), west-opening use R (top-left corner). Flatter gradients
        keep the generic right-wall treatment. */
     TIP45_UNDERLAY: { east: {ax:9,ay:8}, west: {ax:9,ay:9} },
+    /* Ceiling ramp attaching into a wall (James, 2026-07-13): the WALL cell
+       beside the run's open tip surface carries the attach shoulder — A11,
+       the ceil-45 underlay art — facing the run; flipped for the mirror. */
+    CEIL_ATTACH: { ax: 0, ay: 10 },
+    FLOOR_ATTACH: { ax: 0, ay: 9 },
     /* reserved for the missing lit instances: floor Y at (9,10), ceiling R
        at (9,11). Wire them here + drop the interim transform when authored. */
     TIP45_RESERVED: { floorY: {ax:9,ay:10}, ceilR: {ax:9,ay:11} },
@@ -370,21 +375,26 @@ const terrPickDeep = (x, y, variants) => {
 
 const K = (c, r) => c + "," + r;
 
-/* Geometric role of a slope cell — the teach/rule key (v5.1):
-   face:runKey:direction:part(:end:XY). Direction-explicit by design — asc
-   and desc may use separately authored tiles, so rules never mirror-infer.
+/* Geometric role of a slope cell — the teach/rule key (v5.5):
+   face:runKey:direction:part(:end:XY[ZW]). Direction-explicit by design —
+   asc and desc may use separately authored tiles, so rules never mirror-infer.
    End columns append their ABUTMENT signature: X = outward neighbour on the
    cell's own row, Y = outward neighbour one row toward the run's support;
    'o' = open air, 'f' = ground (fills + auto-supports), 'p' = another slope.
    A base over a ledge (oo), a base landing on floor (of), and a tip meeting
-   an opposing slope (pp) are all DIFFERENT joints with separate rules. */
+   an opposing slope (pp) are all DIFFERENT joints with separate rules.
+   SOLO columns (1-step runs — corner connectors) are open and base at once:
+   for multi-column runs the low side is always more run, but a solo's low
+   side is whatever the world provides. They append a SECOND pair (ZW) probing
+   the low side, so solo joints never share rule slots with tips of longer
+   runs — a corner connector and a wall-truncating tip are different joints. */
 const slopeRole = (cells, c, r, v) => {
   let key = v.face + ":" + v.runKey + ":" + v.runDir + ":" + v.part;
   if (v.end) {
     const dx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1) * (v.end === "base" ? -1 : 1);
     const dy = v.face === "c" ? -1 : 1;
     const o = (ddx, ddy) => { const n = cells[K(c + ddx, r + ddy)]; return !n ? "o" : n.kind === "slope" ? "p" : "f"; };
-    key += ":" + v.end + ":" + o(dx, 0) + o(dx, dy);
+    key += ":" + v.end + ":" + o(dx, 0) + o(dx, dy) + (v.solo ? o(-dx, 0) + o(-dx, dy) : "");
   }
   return key;
 };
@@ -423,6 +433,7 @@ function expandSlopeRun(run, ct) {
           flipV: face === "c" && !dedicated, flipH,
           seamBand: i > 0 && group === baseGroup,
           end: j === openJ ? "open" : (j === baseEndJ ? "base" : null),
+          solo: cols === 1,
           runKey, runDir: run.dir };
     });
   }
@@ -462,13 +473,24 @@ function addSlopeSupports(cells) {
     if (v.kind !== "slope") continue;
     const [c, r] = k.split(",").map(Number);
     const dir = v.face === "c" ? -1 : 1;
-    for (let i = 1; i <= SUPPORT_CAP; i++) {
+    // Probe first, commit second: supports exist to BRIDGE a shallow gap to
+    // real backing. If the walk exhausts the cap without reaching existing
+    // content or the level border, there is nothing to bridge — add nothing.
+    // (A hanging stub under an open run is never right, and it poisons the
+    // neighbouring masks: an island corner beside a stub reads as a wall
+    // continuation instead of a corner. The run's own end treatments close
+    // an overhanging column instead.)
+    const gap = [];
+    let grounded = false;
+    for (let i = 1; i <= SUPPORT_CAP + 1; i++) {
       const rr = r + dir * i;
-      if (rr < 0 || rr >= GROWS) break;
+      if (rr < 0 || rr >= GROWS) { grounded = true; break; }   // border = backing
       const kk = K(c, rr);
-      if (cells[kk] || add[kk]) break;
-      add[kk] = { t: 1, support: true };   // auto-scaffold, not real ground
+      if (cells[kk] || add[kk]) { grounded = true; break; }
+      if (gap.length >= SUPPORT_CAP) break;   // cap spent, nothing reached
+      gap.push(kk);
     }
+    if (grounded) for (const kk of gap) add[kk] = { t: 1, support: true };   // auto-scaffold, not real ground
   }
   Object.assign(cells, add);
   return cells;
@@ -494,6 +516,19 @@ function resolveAll(cells, ct) {
         const [c0, r0] = k.split(",").map(Number);
         const tipDx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1);
         const sRow = v.part === "s" ? r0 : (v.face === "c" ? r0 + 1 : r0 - 1);
+        // 1-tall bar attaching at a floor-45 underlay's low side (James,
+        // 2026-07-13): the underlay carries the floor-Y junction rotated 90
+        // degrees CCW — the bar is a Y turned on its side. Mirrored when the
+        // bar attaches on the west (asc runs) instead of the east.
+        if (v.part === "u" && v.face !== "c" && v.runKey === "slope_45" && ct.TIP45_RESERVED) {
+          const dLow = v.runDir === "desc" ? 1 : -1;
+          const bar = cells[K(c0 + dLow, r0)];
+          if (bar && bar.kind !== "slope" && !cells[K(c0 + dLow, r0 - 1)] && !cells[K(c0 + dLow, r0 + 1)]) {
+            const Yf = ct.TIP45_RESERVED.floorY;
+            out[k] = { ax: Yf.ax, ay: Yf.ay, rot: 3, flipH: dLow === -1 };
+            continue;
+          }
+        }
         if (v.end === "open" && !cells[K(c0 + tipDx, sRow)]) {
           if (v.part === "s" && ct.SLOPE_CAPS && ct.SLOPE_CAPS[v.runKey]) {
             const cc = ct.SLOPE_CAPS[v.runKey][v.face === "c" ? "ceil" : "floor"];
@@ -514,6 +549,19 @@ function resolveAll(cells, ct) {
             }
             continue;
           }
+        }
+        // Solo columns: when the high side truncates into ground but the low
+        // side faces air, the plain underlay stamp leaves the silhouette open
+        // — close it as ORDINARY TERRAIN, so the wall family (and its variant
+        // cadence) is picked exactly like the fills around it.
+        if (v.end === "open" && v.solo && v.part === "u" && cells[K(c0 + tipDx, r0)] && !cells[K(c0 - tipDx, r0)]) {
+          const m = maskAt(cells, c0, r0, ct);
+          const ev = ct.EDGE_VARIANTS && ct.EDGE_VARIANTS[m];
+          if (ev) { const vc = ev.cells[(ev.axis === "x" ? c0 : r0) % ev.cells.length]; out[k] = { ax: vc[0], ay: vc[1] }; continue; }
+          const lu = ct.LOOKUP[m];
+          if (lu) { out[k] = { ax: lu.ax, ay: lu.ay }; continue; }
+          out[k] = { ax: 4, ay: 1, flipH: tipDx === 1 };   // straight-wall fallback
+          continue;
         }
         if (v.end === "base" && v.part === "u" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
           const bDx = -tipDx;
@@ -578,6 +626,24 @@ function resolveAll(cells, ct) {
       out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
       continue;
     }
+    // Slope-ramp wall attach: the WALL cell beside a run's open tip surface
+    // carries the attach shoulder (A11 ceilings / A10 floors), flipped with
+    // the run. Guards: the attach side must already read open (interior rows
+    // stay plain), AND the wall must continue on its anchored side (N solid
+    // for floors, S solid for ceilings) — this keeps corner cells beside
+    // solo connectors intact, since those need their corner stroke.
+    const att = (dx, face, needDir) => {
+      const n = cells[K(c + dx, r)];
+      return !!(n && n.kind === "slope" && n.face === face && n.part === "s" && n.end === "open" && n.runDir === needDir);
+    };
+    if (ct.CEIL_ATTACH && (m & 16)) {
+      if (!(m & 4) && att(1, "c", "asc"))    { out[k] = { ax: ct.CEIL_ATTACH.ax, ay: ct.CEIL_ATTACH.ay };              continue; }
+      if (!(m & 64) && att(-1, "c", "desc")) { out[k] = { ax: ct.CEIL_ATTACH.ax, ay: ct.CEIL_ATTACH.ay, flipH: true }; continue; }
+    }
+    if (ct.FLOOR_ATTACH && (m & 1)) {
+      if (!(m & 4) && att(1, "f", "desc"))   { out[k] = { ax: ct.FLOOR_ATTACH.ax, ay: ct.FLOOR_ATTACH.ay, flipH: true }; continue; }
+      if (!(m & 64) && att(-1, "f", "asc"))  { out[k] = { ax: ct.FLOOR_ATTACH.ax, ay: ct.FLOOR_ATTACH.ay };              continue; }
+    }
     const ev = ct.EDGE_VARIANTS[m];
     if (ev) { const cell = ev.cells[(ev.axis === "x" ? c : r) % ev.cells.length]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
     const cell = ct.LOOKUP[m];
@@ -627,9 +693,9 @@ const DEFAULT_ROLE_RULES = { v3: {
   "f:slope_45:desc:u:open:ff":  { ax: 0, ay: 9, flipH: true },
   "f:slope_45:desc:u:open:pp":  { ax: 9, ay: 9, flipH: true },
   "f:slope_2to1:asc:u:open:ff": { ax: 2, ay: 9 },
-  "f:slope_2to1:desc:u:open:ff":{ ax: 7, ay: 1 },
+  "f:slope_2to1:desc:u:open:ff":{ ax: 2, ay: 9, flipH: true },
   "f:slope_3to1:asc:u:open:ff": { ax: 5, ay: 9 },
-  "f:slope_3to1:desc:u:open:ff":{ ax: 7, ay: 1 },
+  "f:slope_3to1:desc:u:open:ff":{ ax: 5, ay: 9, flipH: true },
   "c:slope_45:asc:u:base:of":   { ax: 4, ay: 1 },
   "c:slope_45:desc:u:base:of":  { ax: 0, ay: 1 },
   "c:slope_45:asc:u:open:of":   { ax: 6, ay: 10 },
@@ -895,6 +961,21 @@ function drawGrid() {
       ovCtx.fillStyle = "#8ecbff";
       ovCtx.fillText(nm, x, y);
     }
+  }
+  if (activeTab === "pv" && CT && stroke && stroke.kind === "slope" && stroke.ghost) {
+    // live drag ghost: run footprint (surface strong, underlay faint) + hypotenuse
+    const run = stroke.ghost, g = expandSlopeRun(run, CT);
+    for (const k of Object.keys(g)) {
+      const [gc, gr] = k.split(",").map(Number);
+      ovCtx.fillStyle = g[k].part === "s" ? "rgba(155,229,100,0.30)" : "rgba(155,229,100,0.14)";
+      ovCtx.fillRect(v.x + gc * TILE * v.s, v.y + gr * TILE * v.s, TILE * v.s, TILE * v.s);
+    }
+    const cols = run.steps * run.grad;
+    const gx0 = v.x + run.c * TILE * v.s, gx1 = v.x + (run.c + cols) * TILE * v.s;
+    const gy0 = v.y + (run.dir === "asc" ? run.r + 1 : run.r) * TILE * v.s;
+    const gy1 = v.y + (run.dir === "asc" ? run.r + 1 - run.steps : run.r + run.steps) * TILE * v.s;
+    ovCtx.strokeStyle = "rgba(155,229,100,0.9)"; ovCtx.lineWidth = 2;
+    ovCtx.beginPath(); ovCtx.moveTo(gx0, gy0); ovCtx.lineTo(gx1, gy1); ovCtx.stroke();
   }
   if (activeTab === "pv" && CT && resolved && $("btnCoords").classList.contains("on") && v.s >= 1.2) {
     // Level/zoo: label every RESOLVED cell with the template tile it draws
@@ -1275,48 +1356,72 @@ function moveStroke(e) {
     if (px !== stroke.last[0] || py !== stroke.last[1]) { pvLine(stroke.last[0], stroke.last[1], px, py); stroke.last = [px, py]; templateChanged(); }
   } else if (stroke.kind === "slope") {
     const [px, py] = pvPos(e);
-    stroke.c1 = Math.floor(px / TILE); stroke.r1 = Math.floor(py / TILE);
-    let c0 = stroke.c0, r0 = stroke.r0, c1 = stroke.c1, r1 = stroke.r1;
-    if (!(c0 === c1 && r0 === r1)) {
-      if (c1 < c0) { [c0, c1] = [c1, c0]; [r0, r1] = [r1, r0]; }
-      const steps = Math.max(1, Math.abs(r1 - r0));
-      const grad = Math.max(1, Math.min(3, Math.round((c1 - c0 + 1) / steps)));
-      status((stroke.face === "c" ? "Ceiling" : "Floor") + " slope: " + (grad === 1 ? "45\u00b0" : grad + ":1") + " " + (r1 - r0 < 0 ? "asc" : "desc") + ", " + steps + " step" + (steps > 1 ? "s" : "") + " \u2014 release to place.");
-    }
+    const nc = Math.floor(px / TILE), nr = Math.floor(py / TILE);
+    if (nc === stroke.c1 && nr === stroke.r1) return;   // same cell — ghost is current
+    stroke.c1 = nc; stroke.r1 = nr;
+    stroke.ghost = slopeStrokeRun(stroke);   // live footprint, drawn by drawGrid
+    drawGrid();
+    const run = stroke.ghost;
+    if (run) status((run.face === "c" ? "Ceiling" : "Floor") + " slope: " + (run.grad === 1 ? "45\u00b0" : run.grad + ":1") + " " + run.dir + ", " + run.steps + " step" + (run.steps > 1 ? "s" : "") + " \u2014 release to place.");
   } else if (stroke.kind === "pvcell") {
     const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE));
   }
 }
+/* Candidate run from a slope stroke — identical math for the live ghost
+   (moveStroke), the status line, and final placement (endStroke). Returns
+   null for a degenerate (same-cell) stroke, which endStroke treats as a tap. */
+function slopeStrokeRun(s) {
+  let c0 = s.c0, r0 = s.r0, c1 = s.c1 !== undefined ? s.c1 : s.c0, r1 = s.r1 !== undefined ? s.r1 : s.r0;
+  if (c0 === c1 && r0 === r1) return null;
+  if (c1 < c0) { [c0, c1] = [c1, c0]; [r0, r1] = [r1, r0]; }
+  const steps = Math.max(1, Math.abs(r1 - r0));
+  const grad = Math.max(1, Math.min(3, Math.round((c1 - c0 + 1) / steps)));
+  const run = { grad, dir: r1 - r0 < 0 ? "asc" : "desc", c: c0, r: r0, steps };
+  if (s.face === "c") run.face = "c";
+  return run;
+}
+function placeSlopeRun(run) {
+  levelSnapshot();
+  // redrawing over existing slopes REPLACES them — stacked duplicate runs
+  // corrupt the geometry (same-role cells piled on one column)
+  const newCells = expandSlopeRun(run, CT);
+  const before = userSlopes.length;
+  userSlopes = userSlopes.filter((old) => !Object.keys(expandSlopeRun(old, CT)).some((kk) => newCells[kk]));
+  userSlopes.push(run);
+  persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
+  return before - (userSlopes.length - 1);
+}
 function endStroke() {
   clearHold();
   if (stroke && stroke.kind === "slope") {
-    let c0 = stroke.c0, r0 = stroke.r0;
-    let c1 = stroke.c1 !== undefined ? stroke.c1 : c0, r1 = stroke.r1 !== undefined ? stroke.r1 : r0;
-    if (c0 === c1 && r0 === r1) {
-      // tap: remove the drawn slope containing this cell, if any
-      const k = K(c0, r0);
-      const idx = userSlopes.findIndex((run) => !!expandSlopeRun(run, CT)[k]);
-      if (idx >= 0) { levelSnapshot(); userSlopes.splice(idx, 1); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid(); status("Slope removed."); }
-      else status("Drag to draw a " + (stroke.face === "c" ? "ceiling" : "floor") + " slope; tap a drawn slope to remove it.");
+    const run = slopeStrokeRun(stroke);
+    if (!run) {
+      // tap: remove the drawn slope containing this cell — or, on an empty
+      // inside corner (solid anchor above/below + solid wall on exactly one
+      // side), drop a single 45\u00b0 connector chamfering the right angle
+      const c0 = stroke.c0, r0 = stroke.r0, k = K(c0, r0);
+      const idx = userSlopes.findIndex((rn) => !!expandSlopeRun(rn, CT)[k]);
+      if (idx >= 0) { levelSnapshot(); userSlopes.splice(idx, 1); persistUserSlopes(); rebuild(); renderPreview(); blit(); status("Slope removed."); }
+      else {
+        const solid = (dx, dy) => !!cells[K(c0 + dx, r0 + dy)];
+        const anchored = !cells[k] && (stroke.face === "c" ? solid(0, -1) : solid(0, 1));
+        const wSolid = solid(-1, 0), eSolid = solid(1, 0);
+        if (anchored && wSolid !== eSolid) {
+          // wall side fixes the facing: floors rise INTO the wall (E wall =
+          // asc, W wall = desc); ceilings mirror (W wall = asc, E wall = desc)
+          const dir = stroke.face === "c" ? (wSolid ? "asc" : "desc") : (wSolid ? "desc" : "asc");
+          const cRun = { grad: 1, dir, c: c0, r: r0, steps: 1 };
+          if (stroke.face === "c") cRun.face = "c";
+          const replaced = placeSlopeRun(cRun);
+          status("45\u00b0 corner connector placed (" + (stroke.face === "c" ? "ceiling " : "floor ") + dir + ")" + (replaced ? " — replaced " + replaced + " overlapping run" + (replaced > 1 ? "s" : "") + "." : "."));
+        } else status("Drag to draw a " + (stroke.face === "c" ? "ceiling" : "floor") + " slope; tap a drawn slope to remove it; tap an empty inside corner to drop a 45\u00b0 connector.");
+      }
     } else {
-      if (c1 < c0) { [c0, c1] = [c1, c0]; [r0, r1] = [r1, r0]; }
-      const dyr = r1 - r0;
-      const steps = Math.max(1, Math.abs(dyr));
-      const grad = Math.max(1, Math.min(3, Math.round((c1 - c0 + 1) / steps)));
-      const run = { grad, dir: dyr < 0 ? "asc" : "desc", c: c0, r: r0, steps };
-      if (stroke.face === "c") run.face = "c";
-      levelSnapshot();
-      // redrawing over existing slopes REPLACES them — stacked duplicate runs
-      // corrupt the geometry (same-role cells piled on one column)
-      const newCells = expandSlopeRun(run, CT);
-      const before = userSlopes.length;
-      userSlopes = userSlopes.filter((old) => !Object.keys(expandSlopeRun(old, CT)).some((kk) => newCells[kk]));
-      const replaced = before - userSlopes.length;
-      userSlopes.push(run);
-      persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
-      status((run.face === "c" ? "Ceiling" : "Floor") + " slope placed: " + (grad === 1 ? "45\u00b0" : grad + ":1") + " " + run.dir + ", " + steps + " step" + (steps > 1 ? "s" : "") + (replaced ? " — replaced " + replaced + " overlapping run" + (replaced > 1 ? "s" : "") + "." : "."));
+      const replaced = placeSlopeRun(run);
+      status((run.face === "c" ? "Ceiling" : "Floor") + " slope placed: " + (run.grad === 1 ? "45\u00b0" : run.grad + ":1") + " " + run.dir + ", " + run.steps + " step" + (run.steps > 1 ? "s" : "") + (replaced ? " — replaced " + replaced + " overlapping run" + (replaced > 1 ? "s" : "") + "." : "."));
     }
     stroke = null;
+    drawGrid();   // clears the drag ghost on every exit path
     return;
   }
   if (stroke && stroke.snap) { persistPng(); refreshFileSwatches(); }
@@ -1789,7 +1894,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "5.3.0";
+const APP_VERSION = "5.9.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -1855,6 +1960,22 @@ document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () 
   try {
     if (localStorage.getItem("tessera.roleremaps") === null) { roleRemaps = JSON.parse(JSON.stringify(DEFAULT_ROLE_RULES)); persistRoleRemaps(); }
     if (localStorage.getItem("tessera.remaps") === null) { maskRemaps = JSON.parse(JSON.stringify(DEFAULT_MASK_REMAPS)); persistRemaps(); }
+  } catch (e) {}
+  // v5.7.1 one-time repair (James, 2026-07-13): the two fossil H2 tip rules.
+  // Rewrites a stored rule ONLY if it still targets H2 (7,1) verbatim — any
+  // re-taught association is left alone. Remove this block in a future pass.
+  try {
+    const rr = roleRemaps.v3;
+    const fix = {
+      "f:slope_2to1:desc:u:open:ff": { ax: 2, ay: 9, flipH: true },
+      "f:slope_3to1:desc:u:open:ff": { ax: 5, ay: 9, flipH: true },
+    };
+    let changed = false;
+    for (const kk of Object.keys(fix)) {
+      const cur = rr && rr[kk];
+      if (cur && cur.ax === 7 && cur.ay === 1 && !cur.flipH && !cur.flipV && !cur.rot) { rr[kk] = fix[kk]; changed = true; }
+    }
+    if (changed) persistRoleRemaps();
   } catch (e) {}
   let choice = "v1";   // 3x3 (the production ATLAS contract) unless a prior session chose otherwise
   try { const c = localStorage.getItem(LS.contract); if (c && CONTRACTS[c]) choice = c; } catch (e) {}
