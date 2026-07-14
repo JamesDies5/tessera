@@ -298,6 +298,12 @@ const CONTRACTS = {
       iL:  [1,2],            iR:  [3,2],
       iBL: [1,3], iB: [2,3], iBR: [3,3],
     },
+    /* Plain band rows carry the SAME x-cadence as the edges they sit against
+       (James, 2026-07-14): B1 transitions to B2 below it, C1 to C2, D1 to D2,
+       and the core hands off through B4/C4/D4 into B5/C5/D5. Order matches
+       EDGE_VARIANTS[124]/[199] so the same c%3 index lands in the same
+       family. Corner and side transitions (iTL/iL/...) are untouched. */
+    RIM_VARIANTS: { top: [[1,1],[2,1],[3,1]], bottom: [[1,3],[2,3],[3,3]] },
     DEEP_VARIANTS: [
       { ax: 2, ay: 2, weight: 88 },
       { ax: 9, ay: 0, weight: 4 }, { ax: 9, ay: 1, weight: 4 }, { ax: 9, ay: 2, weight: 4 }, { ax: 9, ay: 3, weight: 4 },
@@ -659,6 +665,12 @@ function resolveAll(cells, ct) {
         const eW = isEdge(-1,0), eE = isEdge(1,0);
         const row = eN && !eS ? "T" : eS && !eN ? "B" : "";
         const col = eW && !eE ? "L" : eE && !eW ? "R" : "";
+        if (row && !col && ct.RIM_VARIANTS) {
+          const rv = ct.RIM_VARIANTS[row === "T" ? "top" : "bottom"];
+          const vc = rv[c % rv.length];
+          out[k] = { ax: vc[0], ay: vc[1] };
+          continue;
+        }
         const cell = row && col ? T["i" + row + col] : row ? T["i" + row] : col ? T["i" + col] : null;
         if (cell) { out[k] = { ax: cell[0], ay: cell[1] }; continue; }
         out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
@@ -1997,7 +2009,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.1.0";
+const APP_VERSION = "6.2.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
