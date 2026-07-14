@@ -81,8 +81,8 @@
     <span id="cellTools" style="display:none">
       <button class="ibtn ptool on" data-ptool="paint" data-icon="sqplus" title="Paint terrain cells"></button>
       <button class="ibtn ptool" data-ptool="erase" data-icon="sqx" title="Erase terrain cells — erasing any cell of a slope removes that whole run"></button>
-      <button class="ibtn tool" data-tool="slopeF" data-icon="slopeF" title="Draw FLOOR slope: drag from one end to the other — height sets the steps, width picks the gradient (1:1, 2:1, 3:1). Tap a drawn slope to remove it."></button>
-      <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it."></button>
+      <button class="ibtn tool" data-tool="slopeF" data-icon="slopeF" title="Draw FLOOR slope: drag from one end to the other — height sets the steps, width picks the gradient (1:1, 2:1, 3:1). Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
+      <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
     </span>
     <span class="vsep"></span>
     <select class="pal" id="palSelect" title="Zone palette preview — the same gradient map the game uses"></select>
@@ -90,6 +90,7 @@
     <button class="ibtn" id="btnLayoutSave" data-icon="download" title="Save this layout as a JSON file — share it or load it on another device"></button>
     <button class="ibtn" id="btnLayoutLoad" data-icon="upload" title="Load a layout JSON file"></button>
     <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
+    <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
   </div>
   <span class="spacer"></span>
   <button class="ibtn" id="btnLoad" data-icon="upload" title="Load a template PNG"></button>
@@ -127,12 +128,13 @@
     <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
     <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
     <button class="ibtn" id="btnRoles" data-icon="tag" title="Label special template cells: E = open-end slope cap (used when a run ends into air), C = dedicated ceiling stamps (surface/underlay)"></button>
-    <button class="ibtn" id="btnCoords" data-icon="grid" title="Show grid coordinates (A1..J12) on every template cell"></button>
+    <button class="ibtn" id="btnCoords" data-icon="grid" title="Show template coordinates (A1..J12) — on every template cell, and on every level/zoo tile (the tile it resolved to)"></button>
     <div class="hsep"></div>
     <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
   </div>
   <div id="revPanel" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:60;display:none;background:rgba(18,18,18,.96);border:1px solid #454545;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5)">
-    <div id="revTitle" style="font-size:12px;color:#9a9a9a;margin-bottom:8px"></div>
+    <div id="revTitle" style="font-size:12px;color:#9a9a9a;margin-bottom:4px"></div>
+    <div id="revInfo" style="font-size:11px;color:#8fb996;margin-bottom:8px;max-width:340px;display:none"></div>
     <div style="display:flex;gap:6px;align-items:center">
       <input id="revCoord" type="text" maxlength="3" autocapitalize="characters" autocomplete="off" placeholder="C10" style="width:3.6em;background:#111;border:1px solid #454545;border-radius:8px;color:#eee;padding:6px 8px;font:inherit;text-transform:uppercase;text-align:center">
       <button class="ibtn" id="revH" title="Mirror horizontally" style="font-size:12px;width:34px">H</button>
@@ -334,6 +336,39 @@ const CONTRACTS = {
        shoulder), west-opening use R (top-left corner). Flatter gradients
        keep the generic right-wall treatment. */
     TIP45_UNDERLAY: { east: {ax:9,ay:8}, west: {ax:9,ay:9} },
+    /* Ceiling ramp attaching into a wall (James, 2026-07-13): the WALL cell
+       beside the run's open tip surface carries the attach shoulder — A11,
+       the ceil-45 underlay art — facing the run; flipped for the mirror. */
+    CEIL_ATTACH: { ax: 0, ay: 10 },
+    /* THIN-wall attach variants (James, 2026-07-14, superseding the solo
+       special case): when the attach cell's FAR side (opposite the run) is
+       air — a 1-wide wall — the A-shoulder art is wrong (it assumes the mass
+       continues) and the G-cap art closes the joint instead. All four field
+       instances to date split on wall thickness, not run length: thick walls
+       take A10/A11, thin walls take G10/G11, flipped with the run. */
+    CEIL_ATTACH_THIN: { ax: 6, ay: 10 },
+    FLOOR_ATTACH_THIN: { ax: 6, ay: 9 },
+    /* G/H band-termination joints for GRADUAL runs meeting walls (James,
+       2026-07-14, superseding CEIL_TIP_WALL). Two placements:
+       - run open-tip UNDERLAY truncating into a real solid: G* when the
+         truncation is eastward, H* westward; row-1 tiles for floors,
+         row-2 for ceilings. Requires REAL solid outward (scaffolds never
+         count — the bit the role alphabet folds away) with air outward on
+         the support row. What sits ABOVE the tip does NOT matter: field
+         evidence 2026-07-14 shows scaffold-above tips take the joint too.
+       - WALL fill beside a run's BASE underlay: the band terminates inside
+         a continuous vertical wall (real fill above and below). Floor bases
+         hand the wall the row-2 tile, ceiling bases the row-1 tile (the
+         band sits on the opposite row relative to the run's face).
+       45 runs excluded throughout — their underlays are the A10/A11
+       diagonal shoulders with their own treatments. */
+    SLOPE_WALL_JOINTS: {
+      runFloor:  { east: { ax: 6, ay: 0 }, west: { ax: 7, ay: 0 } },   // G1 / H1
+      runCeil:   { east: { ax: 6, ay: 1 }, west: { ax: 7, ay: 1 } },   // G2 / H2
+      wallFloor: { east: { ax: 6, ay: 1 }, west: { ax: 7, ay: 1 } },   // run E -> G2
+      wallCeil:  { east: { ax: 6, ay: 0 }, west: { ax: 7, ay: 0 } },   // run E -> G1
+    },
+    FLOOR_ATTACH: { ax: 0, ay: 9 },
     /* reserved for the missing lit instances: floor Y at (9,10), ceiling R
        at (9,11). Wire them here + drop the interim transform when authored. */
     TIP45_RESERVED: { floorY: {ax:9,ay:10}, ceilR: {ax:9,ay:11} },
@@ -368,10 +403,29 @@ const terrPickDeep = (x, y, variants) => {
 
 const K = (c, r) => c + "," + r;
 
-/* Geometric role of a slope cell — the teach/rule key (v4.8):
-   face:runKey:direction:part(:end). Direction-explicit by design — asc
-   and desc may use separately authored tiles, so rules never mirror-infer. */
-const slopeRole = (v) => v.face + ":" + v.runKey + ":" + v.runDir + ":" + v.part + (v.end ? ":" + v.end : "");
+/* Geometric role of a slope cell — the teach/rule key (v5.5):
+   face:runKey:direction:part(:end:XY[ZW]). Direction-explicit by design —
+   asc and desc may use separately authored tiles, so rules never mirror-infer.
+   End columns append their ABUTMENT signature: X = outward neighbour on the
+   cell's own row, Y = outward neighbour one row toward the run's support;
+   'o' = open air, 'f' = ground (fills + auto-supports), 'p' = another slope.
+   A base over a ledge (oo), a base landing on floor (of), and a tip meeting
+   an opposing slope (pp) are all DIFFERENT joints with separate rules.
+   SOLO columns (1-step runs — corner connectors) are open and base at once:
+   for multi-column runs the low side is always more run, but a solo's low
+   side is whatever the world provides. They append a SECOND pair (ZW) probing
+   the low side, so solo joints never share rule slots with tips of longer
+   runs — a corner connector and a wall-truncating tip are different joints. */
+const slopeRole = (cells, c, r, v) => {
+  let key = v.face + ":" + v.runKey + ":" + v.runDir + ":" + v.part;
+  if (v.end) {
+    const dx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1) * (v.end === "base" ? -1 : 1);
+    const dy = v.face === "c" ? -1 : 1;
+    const o = (ddx, ddy) => { const n = cells[K(c + ddx, r + ddy)]; return !n ? "o" : n.kind === "slope" ? "p" : "f"; };
+    key += ":" + v.end + ":" + o(dx, 0) + o(dx, dy) + (v.solo ? o(-dx, 0) + o(-dx, dy) : "");
+  }
+  return key;
+};
 
 /* Slope run -> cells. (c,r) is the SURFACE cell of the LEFTMOST column;
    'asc' surface rises as x increases (matches ATLAS drag semantics).
@@ -407,6 +461,7 @@ function expandSlopeRun(run, ct) {
           flipV: face === "c" && !dedicated, flipH,
           seamBand: i > 0 && group === baseGroup,
           end: j === openJ ? "open" : (j === baseEndJ ? "base" : null),
+          solo: cols === 1,
           runKey, runDir: run.dir };
     });
   }
@@ -443,16 +498,27 @@ function addSlopeSupports(cells) {
   const add = {};
   for (const k of Object.keys(cells)) {
     const v = cells[k];
-    if (v.kind !== "slope") continue;
+    if (v.kind !== "slope" || v.anchored) continue;
     const [c, r] = k.split(",").map(Number);
     const dir = v.face === "c" ? -1 : 1;
-    for (let i = 1; i <= SUPPORT_CAP; i++) {
+    // Probe first, commit second: supports exist to BRIDGE a shallow gap to
+    // real backing. If the walk exhausts the cap without reaching existing
+    // content or the level border, there is nothing to bridge — add nothing.
+    // (A hanging stub under an open run is never right, and it poisons the
+    // neighbouring masks: an island corner beside a stub reads as a wall
+    // continuation instead of a corner. The run's own end treatments close
+    // an overhanging column instead.)
+    const gap = [];
+    let grounded = false;
+    for (let i = 1; i <= SUPPORT_CAP + 1; i++) {
       const rr = r + dir * i;
-      if (rr < 0 || rr >= GROWS) break;
+      if (rr < 0 || rr >= GROWS) { grounded = true; break; }   // border = backing
       const kk = K(c, rr);
-      if (cells[kk] || add[kk]) break;
-      add[kk] = { t: 1, support: true };   // auto-scaffold, not real ground
+      if (cells[kk] || add[kk]) { grounded = true; break; }
+      if (gap.length >= SUPPORT_CAP) break;   // cap spent, nothing reached
+      gap.push(kk);
     }
+    if (grounded) for (const kk of gap) add[kk] = { t: 1, support: true };   // auto-scaffold, not real ground
   }
   Object.assign(cells, add);
   return cells;
@@ -478,6 +544,31 @@ function resolveAll(cells, ct) {
         const [c0, r0] = k.split(",").map(Number);
         const tipDx = (v.runDir === "asc" ? 1 : -1) * (v.face === "c" ? -1 : 1);
         const sRow = v.part === "s" ? r0 : (v.face === "c" ? r0 + 1 : r0 - 1);
+        // 1-tall bar attaching at a floor-45 underlay's low side (James,
+        // 2026-07-13): the underlay carries the floor-Y junction rotated 90
+        // degrees CCW — the bar is a Y turned on its side. Mirrored when the
+        // bar attaches on the west (asc runs) instead of the east.
+        if (v.part === "u" && v.face !== "c" && v.runKey === "slope_45" && ct.TIP45_RESERVED) {
+          const dLow = v.runDir === "desc" ? 1 : -1;
+          const bar = cells[K(c0 + dLow, r0)];
+          if (bar && bar.kind !== "slope" && !cells[K(c0 + dLow, r0 - 1)] && !cells[K(c0 + dLow, r0 + 1)]) {
+            const Yf = ct.TIP45_RESERVED.floorY;
+            out[k] = { ax: Yf.ax, ay: Yf.ay, rot: 3, flipH: dLow === -1 };
+            continue;
+          }
+        }
+        // Gradual run open tip truncating into a real solid: the underlay
+        // carries the G/H band-termination art (see SLOPE_WALL_JOINTS note).
+        if (v.part === "u" && v.end === "open" && v.runKey !== "slope_45" && ct.SLOPE_WALL_JOINTS) {
+          const outw = cells[K(c0 + tipDx, r0)];
+          const supDy = v.face === "c" ? -1 : 1;
+          if (outw && outw.kind !== "slope" && !outw.support && !cells[K(c0 + tipDx, r0 + supDy)]) {
+            const fam = v.face === "c" ? ct.SLOPE_WALL_JOINTS.runCeil : ct.SLOPE_WALL_JOINTS.runFloor;
+            const t = tipDx === 1 ? fam.east : fam.west;
+            out[k] = { ax: t.ax, ay: t.ay };
+            continue;
+          }
+        }
         if (v.end === "open" && !cells[K(c0 + tipDx, sRow)]) {
           if (v.part === "s" && ct.SLOPE_CAPS && ct.SLOPE_CAPS[v.runKey]) {
             const cc = ct.SLOPE_CAPS[v.runKey][v.face === "c" ? "ceil" : "floor"];
@@ -499,6 +590,19 @@ function resolveAll(cells, ct) {
             continue;
           }
         }
+        // Solo columns: when the high side truncates into ground but the low
+        // side faces air, the plain underlay stamp leaves the silhouette open
+        // — close it as ORDINARY TERRAIN, so the wall family (and its variant
+        // cadence) is picked exactly like the fills around it.
+        if (v.end === "open" && v.solo && v.part === "u" && cells[K(c0 + tipDx, r0)] && !cells[K(c0 - tipDx, r0)]) {
+          const m = maskAt(cells, c0, r0, ct);
+          const ev = ct.EDGE_VARIANTS && ct.EDGE_VARIANTS[m];
+          if (ev) { const vc = ev.cells[(ev.axis === "x" ? c0 : r0) % ev.cells.length]; out[k] = { ax: vc[0], ay: vc[1] }; continue; }
+          const lu = ct.LOOKUP[m];
+          if (lu) { out[k] = { ax: lu.ax, ay: lu.ay }; continue; }
+          out[k] = { ax: 4, ay: 1, flipH: tipDx === 1 };   // straight-wall fallback
+          continue;
+        }
         if (v.end === "base" && v.part === "u" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
           const bDx = -tipDx;
           if (!cells[K(c0 + bDx, r0)]) {
@@ -506,7 +610,10 @@ function resolveAll(cells, ct) {
             if (bc) { out[k] = { ax: bc.ax, ay: bc.ay, flipH: !!v.flipH }; continue; }
           }
         }
-        if (v.end === "base" && v.part === "s" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
+        // Floating-base SURFACE cap: floors only. The six floor islands in
+        // the zoo validate it; its first ceiling firing (2026-07-14, hanging
+        // 3:1 wedge) was wrong — ceiling base surfaces keep their stamps.
+        if (v.end === "base" && v.part === "s" && v.face !== "c" && ct.BASE_CAPS && ct.BASE_CAPS[v.runKey]) {
           const bDx = -tipDx;
           const below = v.face === "c" ? sRow - 1 : sRow + 1;
           let grounded = false;
@@ -526,6 +633,22 @@ function resolveAll(cells, ct) {
     }
     const [c, r] = k.split(",").map(Number);
     const m = masks[k];
+    // Wall fill beside a gradual run's BASE underlay: band terminates inside
+    // a continuous vertical wall. Checked before the interior path because
+    // 2-wide walls read mask 255 here (see SLOPE_WALL_JOINTS note).
+    if (ct.SLOPE_WALL_JOINTS) {
+      const solidV = (dy) => { const n = cells[K(c, r + dy)]; return !!(n && n.kind !== "slope" && !n.support); };
+      const baseU = (dx) => { const n = cells[K(c + dx, r)]; return n && n.kind === "slope" && n.part === "u" && n.end === "base" && n.runKey !== "slope_45" ? n : null; };
+      if (solidV(-1) && solidV(1)) {
+        const bE = baseU(1), bW = baseU(-1), b = bE || bW;
+        if (b) {
+          const fam = b.face === "c" ? ct.SLOPE_WALL_JOINTS.wallCeil : ct.SLOPE_WALL_JOINTS.wallFloor;
+          const t = bE ? fam.east : fam.west;
+          out[k] = { ax: t.ax, ay: t.ay };
+          continue;
+        }
+      }
+    }
     if (m === 255) {
       if (ct.TRANSITION) {
         const T = ct.TRANSITION;
@@ -562,6 +685,37 @@ function resolveAll(cells, ct) {
       out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
       continue;
     }
+    // Slope-ramp wall attach: the WALL cell beside a run's open tip surface
+    // carries the attach shoulder (A11 ceilings / A10 floors), flipped with
+    // the run. Guards: the attach side must already read open (interior rows
+    // stay plain), AND the wall must continue on its anchored side (N solid
+    // for floors, S solid for ceilings) — this keeps corner cells beside
+    // solo connectors intact, since those need their corner stroke.
+    const att = (dx, face, needDir) => {
+      const n = cells[K(c + dx, r)];
+      return (n && n.kind === "slope" && n.face === face && n.part === "s" && n.end === "open" && n.runDir === needDir) ? n : null;
+    };
+    const thin = (dxRun) => !cells[K(c - dxRun, r)];   // far side (opposite the run) is air
+    if (ct.CEIL_ATTACH && (m & 16)) {
+      if (!(m & 4) && att(1, "c", "asc")) {
+        const t = (thin(1) && ct.CEIL_ATTACH_THIN) || ct.CEIL_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay }; continue;
+      }
+      if (!(m & 64) && att(-1, "c", "desc")) {
+        const t = (thin(-1) && ct.CEIL_ATTACH_THIN) || ct.CEIL_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay, flipH: true }; continue;
+      }
+    }
+    if (ct.FLOOR_ATTACH && (m & 1)) {
+      if (!(m & 4) && att(1, "f", "desc")) {
+        const t = (thin(1) && ct.FLOOR_ATTACH_THIN) || ct.FLOOR_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay, flipH: true }; continue;
+      }
+      if (!(m & 64) && att(-1, "f", "asc")) {
+        const t = (thin(-1) && ct.FLOOR_ATTACH_THIN) || ct.FLOOR_ATTACH;
+        out[k] = { ax: t.ax, ay: t.ay }; continue;
+      }
+    }
     const ev = ct.EDGE_VARIANTS[m];
     if (ev) { const cell = ev.cells[(ev.axis === "x" ? c : r) % ev.cells.length]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
     const cell = ct.LOOKUP[m];
@@ -572,10 +726,6 @@ function resolveAll(cells, ct) {
 
 /* ---- default mock layout ---- */
 const DEFAULT_LAYOUT = {"fills":{"0,20":{"t":1},"1,20":{"t":1},"2,20":{"t":1},"3,20":{"t":1},"4,20":{"t":1},"5,20":{"t":1},"6,20":{"t":1},"7,20":{"t":1},"8,20":{"t":1},"9,20":{"t":1},"10,20":{"t":1},"11,20":{"t":1},"14,20":{"t":1},"15,20":{"t":1},"16,20":{"t":1},"17,20":{"t":1},"18,20":{"t":1},"19,20":{"t":1},"20,20":{"t":1},"21,20":{"t":1},"22,20":{"t":1},"23,20":{"t":1},"24,20":{"t":1},"25,20":{"t":1},"26,20":{"t":1},"27,20":{"t":1},"28,20":{"t":1},"29,20":{"t":1},"31,20":{"t":1},"32,20":{"t":1},"33,20":{"t":1},"34,20":{"t":1},"35,20":{"t":1},"36,20":{"t":1},"37,20":{"t":1},"38,20":{"t":1},"39,20":{"t":1},"40,20":{"t":1},"41,20":{"t":1},"42,20":{"t":1},"43,20":{"t":1},"0,21":{"t":1},"1,21":{"t":1},"2,21":{"t":1},"3,21":{"t":1},"4,21":{"t":1},"5,21":{"t":1},"6,21":{"t":1},"7,21":{"t":1},"8,21":{"t":1},"9,21":{"t":1},"10,21":{"t":1},"11,21":{"t":1},"12,21":{"t":1},"13,21":{"t":1},"14,21":{"t":1},"15,21":{"t":1},"16,21":{"t":1},"17,21":{"t":1},"18,21":{"t":1},"19,21":{"t":1},"20,21":{"t":1},"21,21":{"t":1},"22,21":{"t":1},"23,21":{"t":1},"24,21":{"t":1},"25,21":{"t":1},"26,21":{"t":1},"27,21":{"t":1},"28,21":{"t":1},"29,21":{"t":1},"30,21":{"t":1},"31,21":{"t":1},"32,21":{"t":1},"33,21":{"t":1},"34,21":{"t":1},"35,21":{"t":1},"36,21":{"t":1},"37,21":{"t":1},"38,21":{"t":1},"39,21":{"t":1},"40,21":{"t":1},"41,21":{"t":1},"42,21":{"t":1},"43,21":{"t":1},"0,22":{"t":1},"1,22":{"t":1},"2,22":{"t":1},"3,22":{"t":1},"4,22":{"t":1},"5,22":{"t":1},"6,22":{"t":1},"7,22":{"t":1},"8,22":{"t":1},"9,22":{"t":1},"10,22":{"t":1},"11,22":{"t":1},"12,22":{"t":1},"13,22":{"t":1},"14,22":{"t":1},"15,22":{"t":1},"16,22":{"t":1},"17,22":{"t":1},"18,22":{"t":1},"19,22":{"t":1},"20,22":{"t":1},"21,22":{"t":1},"22,22":{"t":1},"23,22":{"t":1},"24,22":{"t":1},"25,22":{"t":1},"26,22":{"t":1},"27,22":{"t":1},"28,22":{"t":1},"29,22":{"t":1},"30,22":{"t":1},"31,22":{"t":1},"32,22":{"t":1},"33,22":{"t":1},"34,22":{"t":1},"35,22":{"t":1},"36,22":{"t":1},"37,22":{"t":1},"38,22":{"t":1},"39,22":{"t":1},"40,22":{"t":1},"41,22":{"t":1},"42,22":{"t":1},"43,22":{"t":1},"0,23":{"t":1},"1,23":{"t":1},"2,23":{"t":1},"3,23":{"t":1},"4,23":{"t":1},"5,23":{"t":1},"6,23":{"t":1},"7,23":{"t":1},"8,23":{"t":1},"9,23":{"t":1},"10,23":{"t":1},"11,23":{"t":1},"12,23":{"t":1},"13,23":{"t":1},"14,23":{"t":1},"15,23":{"t":1},"16,23":{"t":1},"17,23":{"t":1},"18,23":{"t":1},"19,23":{"t":1},"20,23":{"t":1},"21,23":{"t":1},"22,23":{"t":1},"23,23":{"t":1},"24,23":{"t":1},"25,23":{"t":1},"26,23":{"t":1},"27,23":{"t":1},"28,23":{"t":1},"29,23":{"t":1},"30,23":{"t":1},"31,23":{"t":1},"32,23":{"t":1},"33,23":{"t":1},"34,23":{"t":1},"35,23":{"t":1},"36,23":{"t":1},"37,23":{"t":1},"38,23":{"t":1},"39,23":{"t":1},"40,23":{"t":1},"41,23":{"t":1},"42,23":{"t":1},"43,23":{"t":1},"0,24":{"t":1},"1,24":{"t":1},"2,24":{"t":1},"3,24":{"t":1},"4,24":{"t":1},"5,24":{"t":1},"6,24":{"t":1},"7,24":{"t":1},"8,24":{"t":1},"9,24":{"t":1},"10,24":{"t":1},"11,24":{"t":1},"12,24":{"t":1},"13,24":{"t":1},"14,24":{"t":1},"15,24":{"t":1},"16,24":{"t":1},"17,24":{"t":1},"18,24":{"t":1},"19,24":{"t":1},"20,24":{"t":1},"21,24":{"t":1},"22,24":{"t":1},"23,24":{"t":1},"24,24":{"t":1},"25,24":{"t":1},"26,24":{"t":1},"27,24":{"t":1},"28,24":{"t":1},"29,24":{"t":1},"30,24":{"t":1},"31,24":{"t":1},"32,24":{"t":1},"33,24":{"t":1},"34,24":{"t":1},"35,24":{"t":1},"36,24":{"t":1},"37,24":{"t":1},"38,24":{"t":1},"39,24":{"t":1},"40,24":{"t":1},"41,24":{"t":1},"42,24":{"t":1},"43,24":{"t":1},"0,25":{"t":1},"1,25":{"t":1},"2,25":{"t":1},"3,25":{"t":1},"4,25":{"t":1},"5,25":{"t":1},"6,25":{"t":1},"7,25":{"t":1},"8,25":{"t":1},"9,25":{"t":1},"10,25":{"t":1},"11,25":{"t":1},"12,25":{"t":1},"13,25":{"t":1},"14,25":{"t":1},"15,25":{"t":1},"16,25":{"t":1},"17,25":{"t":1},"18,25":{"t":1},"19,25":{"t":1},"20,25":{"t":1},"21,25":{"t":1},"22,25":{"t":1},"23,25":{"t":1},"24,25":{"t":1},"25,25":{"t":1},"26,25":{"t":1},"27,25":{"t":1},"28,25":{"t":1},"29,25":{"t":1},"30,25":{"t":1},"31,25":{"t":1},"32,25":{"t":1},"33,25":{"t":1},"34,25":{"t":1},"35,25":{"t":1},"36,25":{"t":1},"37,25":{"t":1},"38,25":{"t":1},"39,25":{"t":1},"40,25":{"t":1},"41,25":{"t":1},"42,25":{"t":1},"43,25":{"t":1},"18,17":{"t":1},"19,17":{"t":1},"20,17":{"t":1},"21,17":{"t":1},"22,17":{"t":1},"23,17":{"t":1},"24,17":{"t":1},"25,17":{"t":1},"18,18":{"t":1},"19,18":{"t":1},"20,18":{"t":1},"21,18":{"t":1},"22,18":{"t":1},"23,18":{"t":1},"24,18":{"t":1},"25,18":{"t":1},"18,19":{"t":1},"19,19":{"t":1},"20,19":{"t":1},"21,19":{"t":1},"22,19":{"t":1},"23,19":{"t":1},"24,19":{"t":1},"25,19":{"t":1},"38,17":{"t":1},"39,17":{"t":1},"40,17":{"t":1},"41,17":{"t":1},"42,17":{"t":1},"43,17":{"t":1},"38,18":{"t":1},"39,18":{"t":1},"40,18":{"t":1},"41,18":{"t":1},"42,18":{"t":1},"43,18":{"t":1},"38,19":{"t":1},"39,19":{"t":1},"40,19":{"t":1},"41,19":{"t":1},"42,19":{"t":1},"43,19":{"t":1},"8,18":{"t":1},"9,18":{"t":1},"8,19":{"t":1},"9,19":{"t":1},"0,0":{"t":1},"1,0":{"t":1},"2,0":{"t":1},"3,0":{"t":1},"4,0":{"t":1},"5,0":{"t":1},"6,0":{"t":1},"7,0":{"t":1},"8,0":{"t":1},"9,0":{"t":1},"10,0":{"t":1},"11,0":{"t":1},"12,0":{"t":1},"13,0":{"t":1},"14,0":{"t":1},"15,0":{"t":1},"16,0":{"t":1},"17,0":{"t":1},"18,0":{"t":1},"19,0":{"t":1},"20,0":{"t":1},"21,0":{"t":1},"22,0":{"t":1},"23,0":{"t":1},"24,0":{"t":1},"25,0":{"t":1},"26,0":{"t":1},"27,0":{"t":1},"28,0":{"t":1},"29,0":{"t":1},"30,0":{"t":1},"31,0":{"t":1},"32,0":{"t":1},"33,0":{"t":1},"34,0":{"t":1},"35,0":{"t":1},"36,0":{"t":1},"37,0":{"t":1},"38,0":{"t":1},"39,0":{"t":1},"40,0":{"t":1},"41,0":{"t":1},"42,0":{"t":1},"43,0":{"t":1},"0,1":{"t":1},"1,1":{"t":1},"2,1":{"t":1},"3,1":{"t":1},"4,1":{"t":1},"5,1":{"t":1},"6,1":{"t":1},"7,1":{"t":1},"8,1":{"t":1},"9,1":{"t":1},"10,1":{"t":1},"11,1":{"t":1},"14,1":{"t":1},"15,1":{"t":1},"16,1":{"t":1},"17,1":{"t":1},"18,1":{"t":1},"19,1":{"t":1},"20,1":{"t":1},"21,1":{"t":1},"22,1":{"t":1},"23,1":{"t":1},"24,1":{"t":1},"25,1":{"t":1},"26,1":{"t":1},"27,1":{"t":1},"28,1":{"t":1},"29,1":{"t":1},"30,1":{"t":1},"31,1":{"t":1},"32,1":{"t":1},"33,1":{"t":1},"34,1":{"t":1},"35,1":{"t":1},"36,1":{"t":1},"37,1":{"t":1},"38,1":{"t":1},"39,1":{"t":1},"40,1":{"t":1},"41,1":{"t":1},"42,1":{"t":1},"43,1":{"t":1},"20,2":{"t":1},"20,3":{"t":1},"33,2":{"t":1},"34,2":{"t":1},"35,2":{"t":1},"36,2":{"t":1},"37,2":{"t":1},"38,2":{"t":1},"33,3":{"t":1},"34,3":{"t":1},"35,3":{"t":1},"36,3":{"t":1},"37,3":{"t":1},"38,3":{"t":1},"33,4":{"t":1},"34,4":{"t":1},"35,4":{"t":1},"36,4":{"t":1},"37,4":{"t":1},"38,4":{"t":1},"17,9":{"t":1},"18,9":{"t":1},"19,9":{"t":1},"20,9":{"t":1},"21,9":{"t":1},"22,9":{"t":1},"23,9":{"t":1},"24,9":{"t":1},"17,10":{"t":1},"18,10":{"t":1},"19,10":{"t":1},"22,10":{"t":1},"23,10":{"t":1},"24,10":{"t":1},"17,11":{"t":1},"18,11":{"t":1},"19,11":{"t":1},"20,11":{"t":1},"21,11":{"t":1},"22,11":{"t":1},"23,11":{"t":1},"24,11":{"t":1},"17,12":{"t":1},"18,12":{"t":1},"19,12":{"t":1},"20,12":{"t":1},"21,12":{"t":1},"22,12":{"t":1},"23,12":{"t":1},"3,13":{"t":1},"6,13":{"t":1},"7,13":{"t":1},"10,13":{"t":1},"11,13":{"t":1},"12,13":{"t":1},"13,13":{"t":1},"28,8":{"t":1},"28,9":{"t":1},"28,10":{"t":1},"28,11":{"t":1},"28,12":{"t":1},"28,13":{"t":1},"31,10":{"t":1},"32,10":{"t":1},"33,10":{"t":1},"34,10":{"t":1},"35,10":{"t":1},"36,10":{"t":1},"12,16":{"t":1},"13,16":{"t":1},"12,17":{"t":1},"13,17":{"t":1},"1,15":{"t":1},"38,15":{"t":1},"39,14":{"t":1},"39,15":{"t":1},"40,13":{"t":1},"40,14":{"t":1},"40,15":{"t":1},"18,5":{"t":1},"18,6":{"t":1},"17,6":{"t":1},"16,6":{"t":1},"15,6":{"t":1},"14,6":{"t":1},"14,5":{"t":1},"15,5":{"t":1},"16,5":{"t":1},"17,5":{"t":1},"1,4":{"t":1},"1,5":{"t":1},"1,6":{"t":1},"1,7":{"t":1},"1,8":{"t":1},"2,8":{"t":1},"3,8":{"t":1},"4,8":{"t":1},"5,8":{"t":1},"6,8":{"t":1},"6,7":{"t":1},"6,6":{"t":1},"3,3":{"t":1},"2,3":{"t":1},"2,4":{"t":1},"3,4":{"t":1},"3,5":{"t":1},"2,5":{"t":1},"2,6":{"t":1},"2,7":{"t":1},"3,7":{"t":1},"4,7":{"t":1},"4,6":{"t":1},"3,6":{"t":1},"5,6":{"t":1},"5,7":{"t":1},"1,3":{"t":1},"6,3":{"t":1},"9,4":{"t":1},"10,4":{"t":1},"10,5":{"t":1},"10,6":{"t":1},"10,7":{"t":1},"10,8":{"t":1},"9,8":{"t":1},"9,7":{"t":1},"9,6":{"t":1},"9,5":{"t":1},"24,4":{"t":1},"25,4":{"t":1},"25,5":{"t":1},"24,5":{"t":1},"26,4":{"t":1},"26,5":{"t":1},"26,6":{"t":1},"25,6":{"t":1},"24,6":{"t":1}}};
-/* Default v3 slope ruleset — James's zoo ground truth (formerly per-cell
-   pins, converted 2026-07-13). Seeded into roleRemaps when the store is
-   empty; from then on the user's taught rules are the only authority. */
-const DEFAULT_ROLE_RULES = {"c:slope_45:desc:u:open":{"ax":6,"ay":10,"flipH":true},"c:slope_45:asc:u:open":{"ax":6,"ay":10},"c:slope_45:asc:u:base":{"ax":4,"ay":1},"c:slope_45:desc:u:base":{"ax":0,"ay":1},"f:slope_45:asc:s:base":{"ax":0,"ay":8},"f:slope_45:desc:s:base":{"ax":0,"ay":8,"flipH":true},"f:slope_2to1:asc:s:base":{"ax":1,"ay":8},"f:slope_2to1:desc:s:base":{"ax":1,"ay":8,"flipH":true},"f:slope_45:asc:u:open":{"ax":9,"ay":9},"f:slope_45:desc:u:open":{"ax":9,"ay":9,"flipH":true},"f:slope_2to1:asc:u:open":{"ax":6,"ay":1},"f:slope_2to1:desc:u:open":{"ax":6,"ay":1,"flipH":true},"f:slope_3to1:asc:u:open":{"ax":6,"ay":1},"f:slope_3to1:desc:u:open":{"ax":6,"ay":1,"flipH":true},"f:slope_3to1:asc:s:base":{"ax":3,"ay":8},"f:slope_3to1:desc:s:base":{"ax":3,"ay":8,"flipH":true},"f:slope_45:asc:u:base":{"ax":0,"ay":1},"f:slope_45:desc:u:base":{"ax":0,"ay":1,"flipH":true}};
 function buildDefaultFills() {
   return JSON.parse(JSON.stringify(DEFAULT_LAYOUT.fills));
 }
@@ -592,12 +742,55 @@ const DEFAULT_SLOPES = [
   { grad: 1, dir: "desc", c: 5,  r: 2, steps: 2, face: "c" },   // hanging ceiling ramp, open tip east
   { grad: 1, dir: "asc",  c: 16, r: 3, steps: 2, face: "c" },   // hanging ceiling ramp, open tip west
 ];
+/* Taught ground truth — James's 2026-07-13 layout export, filtered to the
+   23 role rules whose keys the current o/p/f abutment resolver actually
+   emits on the default field + zoo (node probe, same date). The 11 dropped
+   keys were pre-abutment 5-part fossils and o/s-alphabet-era keys; every
+   dropped meaning is covered or deliberately superseded by a live rule.
+   Seeded at boot ONLY when the localStorage key is ABSENT (fresh browser /
+   fresh device). A nuked rulebook persists as {} and therefore stays empty
+   across reloads — teaching experiments keep their clean slate. */
+const DEFAULT_ROLE_RULES = { v3: {
+  "f:slope_45:asc:s:base:oo":   { ax: 0, ay: 8 },
+  "f:slope_45:desc:s:base:oo":  { ax: 0, ay: 8, flipH: true },
+  "f:slope_2to1:asc:s:base:oo": { ax: 1, ay: 8 },
+  "f:slope_2to1:desc:s:base:oo":{ ax: 1, ay: 8, flipH: true },
+  "f:slope_3to1:asc:s:base:oo": { ax: 3, ay: 8 },
+  "f:slope_3to1:desc:s:base:oo":{ ax: 3, ay: 8, flipH: true },
+  "f:slope_45:asc:u:base:oo":   { ax: 0, ay: 1 },
+  "f:slope_45:desc:u:base:oo":  { ax: 4, ay: 1 },
+  "f:slope_45:desc:u:base:of":  { ax: 4, ay: 1 },
+  "f:slope_45:asc:u:open:of":   { ax: 6, ay: 9 },
+  "f:slope_45:asc:u:open:ff":   { ax: 0, ay: 9 },
+  "f:slope_45:desc:u:open:ff":  { ax: 0, ay: 9, flipH: true },
+  "f:slope_45:desc:u:open:pp":  { ax: 9, ay: 9, flipH: true },
+  "f:slope_2to1:asc:u:open:ff": { ax: 2, ay: 9 },
+  "f:slope_2to1:desc:u:open:ff":{ ax: 2, ay: 9, flipH: true },
+  "f:slope_3to1:asc:u:open:ff": { ax: 5, ay: 9 },
+  "f:slope_3to1:desc:u:open:ff":{ ax: 5, ay: 9, flipH: true },
+  "c:slope_45:asc:u:base:of":   { ax: 4, ay: 1 },
+  "c:slope_45:desc:u:base:of":  { ax: 0, ay: 1 },
+  "c:slope_45:asc:u:open:of":   { ax: 6, ay: 10 },
+  "c:slope_45:desc:u:open:of":  { ax: 6, ay: 10, flipH: true },
+  "c:slope_45:asc:u:open:oo":   { ax: 6, ay: 10 },
+  "c:slope_45:desc:u:open:oo":  { ax: 6, ay: 10, flipH: true },
+  "f:slope_45:asc:u:open:oo":   { ax: 6, ay: 9 },
+  "f:slope_45:desc:u:open:oo":  { ax: 6, ay: 9, flipH: true },
+} };
+const DEFAULT_MASK_REMAPS = { v3: { 253: { ax: 6, ay: 1 } } };
 function buildCells(fills, ct, extraRuns) {
   const cells = {};
   for (const k of Object.keys(fills)) cells[k] = fills[k];
   // v4.8.2: DEFAULT_SLOPES are no longer baked here — the app seeds them into
   // userSlopes (boot/reset), so every run on the field is erasable as a unit.
-  if (extraRuns) for (const run of extraRuns) Object.assign(cells, expandSlopeRun(run, ct));
+  if (extraRuns) for (const run of extraRuns) {
+    const rc = expandSlopeRun(run, ct);
+    // Cells that REPLACE a fill are carved into terrain — the run is
+    // self-anchored there and must never grow scaffolding (v6.1: a chamfer
+    // of a solid block is backed by the block, not by bridges to whatever
+    // unrelated geometry happens to sit within the support cap).
+    for (const k of Object.keys(rc)) { if (cells[k] && cells[k].kind !== "slope") rc[k].anchored = true; cells[k] = rc[k]; }
+  }
   return addSlopeSupports(cells);
 }
 
@@ -633,6 +826,14 @@ function buildZooCells(ct) {
   const rect = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (!cells[K(c, r)]) cells[K(c, r)] = { t: 1 }; };
   rect(3, 24, 3, 25); rect(11, 24, 11, 25); rect(23, 24, 23, 25);   // floor pair notches
   rect(12, 17, 16, 18); rect(18, 17, 26, 18); rect(28, 17, 40, 18); // ceiling anchor slabs
+  /* Crest showcases (2026-07-14): a 45 cresting a pedestal — the tip
+     underlay sits on REAL ground with air outward both rows (the oo keys
+     the crest rules teach against). One per facing. */
+  for (const run of [
+    { grad: 1, dir: "desc", c: 32, r: 22, steps: 2 },
+    { grad: 1, dir: "asc",  c: 37, r: 23, steps: 2 },
+  ]) Object.assign(cells, expandSlopeRun(run, ct));
+  rect(32, 24, 33, 25); rect(37, 24, 38, 25);   // crest pedestals
   return addSlopeSupports(cells);
 }
 
@@ -715,17 +916,31 @@ const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tesser
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
-let revKey = null, revRotVal = 0, revMask = null, revSlopeSig = null, revRole = null;
-let resolvedBase = {};
-let slopeRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.sloperemaps")) || {}; } catch (e) { return {}; } })();
-function persistSlopeRemaps() { try { localStorage.setItem("tessera.sloperemaps", JSON.stringify(slopeRemaps)); } catch (e) {} }
-function ctSlopeRemaps() { if (!slopeRemaps[CT.id]) slopeRemaps[CT.id] = {}; return slopeRemaps[CT.id]; }
+let revKey = null, revRotVal = 0, revMask = null, revRole = null;
 let roleRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.roleremaps")) || {}; } catch (e) { return {}; } })();
 function persistRoleRemaps() { try { localStorage.setItem("tessera.roleremaps", JSON.stringify(roleRemaps)); } catch (e) {} }
 function ctRoleRemaps() { if (!roleRemaps[CT.id]) roleRemaps[CT.id] = {}; return roleRemaps[CT.id]; }
 let maskRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.remaps")) || {}; } catch (e) { return {}; } })();
 function persistRemaps() { try { localStorage.setItem("tessera.remaps", JSON.stringify(maskRemaps)); } catch (e) {} }
 function ctRemaps() { if (!maskRemaps[CT.id]) maskRemaps[CT.id] = {}; return maskRemaps[CT.id]; }
+/* v6.0 — ONE ruleset. The baked DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS
+   tables ARE the app's rule set. The localStorage store holds only the
+   corrections taught since the last bake; reads layer store-over-baked,
+   writes go to the store, and each integration folds the store into the
+   bake. No seeding, no adoption, no imports needed to stay current — a
+   new build's rules apply everywhere the moment it loads. */
+function roleRuleFor(key) {
+  const s = roleRemaps[CT.id];
+  if (s && key in s) return s[key];
+  const d = DEFAULT_ROLE_RULES[CT.id];
+  return d ? d[key] : undefined;
+}
+function maskRemapFor(m) {
+  const s = maskRemaps[CT.id];
+  if (s && m in s) return s[m];
+  const d = DEFAULT_MASK_REMAPS[CT.id];
+  return d ? d[m] : undefined;
+}
 let userSlopes = (() => { try { return JSON.parse(localStorage.getItem(LS.slopes)) || []; } catch (e) { return []; } })();
 function persistUserSlopes() { try { localStorage.setItem(LS.slopes, JSON.stringify(userSlopes)); } catch (e) {} }
 const cellName = (ax, ay) => String.fromCharCode(65 + ax) + (ay + 1);
@@ -848,6 +1063,38 @@ function drawGrid() {
       const x = v.x + ax * TILE * v.s + 2, y = v.y + ay * TILE * v.s + 2;
       if (x < -30 || y < -20 || x > r.width || y > r.height) continue;
       const nm = cellName(ax, ay);
+      ovCtx.fillStyle = "rgba(0,0,0,0.65)";
+      ovCtx.fillRect(x - 1, y - 1, ovCtx.measureText(nm).width + 3, 11);
+      ovCtx.fillStyle = "#8ecbff";
+      ovCtx.fillText(nm, x, y);
+    }
+  }
+  if (activeTab === "pv" && CT && stroke && stroke.kind === "slope" && stroke.ghost) {
+    // live drag ghost: run footprint (surface strong, underlay faint) + hypotenuse
+    const run = stroke.ghost, g = expandSlopeRun(run, CT);
+    for (const k of Object.keys(g)) {
+      const [gc, gr] = k.split(",").map(Number);
+      ovCtx.fillStyle = g[k].part === "s" ? "rgba(155,229,100,0.30)" : "rgba(155,229,100,0.14)";
+      ovCtx.fillRect(v.x + gc * TILE * v.s, v.y + gr * TILE * v.s, TILE * v.s, TILE * v.s);
+    }
+    const cols = run.steps * run.grad;
+    const gx0 = v.x + run.c * TILE * v.s, gx1 = v.x + (run.c + cols) * TILE * v.s;
+    const gy0 = v.y + (run.dir === "asc" ? run.r + 1 : run.r) * TILE * v.s;
+    const gy1 = v.y + (run.dir === "asc" ? run.r + 1 - run.steps : run.r + run.steps) * TILE * v.s;
+    ovCtx.strokeStyle = "rgba(155,229,100,0.9)"; ovCtx.lineWidth = 2;
+    ovCtx.beginPath(); ovCtx.moveTo(gx0, gy0); ovCtx.lineTo(gx1, gy1); ovCtx.stroke();
+  }
+  if (activeTab === "pv" && CT && resolved && $("btnCoords").classList.contains("on") && v.s >= 1.2) {
+    // Level/zoo: label every RESOLVED cell with the template tile it draws
+    // (post-rules — the name always matches the art on screen, so a wrong
+    // joint reads out exactly what to retype in the revise panel).
+    ovCtx.font = "600 " + Math.max(8, Math.min(11, 5 * v.s)) + "px ui-monospace, monospace";
+    ovCtx.textBaseline = "top";
+    for (const k of Object.keys(resolved)) {
+      const [c, rr] = k.split(",").map(Number);
+      const x = v.x + c * TILE * v.s + 2, y = v.y + rr * TILE * v.s + 2;
+      if (x < -30 || y < -20 || x > r.width || y > r.height) continue;
+      const t = resolved[k], nm = cellName(t.ax, t.ay);
       ovCtx.fillStyle = "rgba(0,0,0,0.65)";
       ovCtx.fillRect(x - 1, y - 1, ovCtx.measureText(nm).width + 3, 11);
       ovCtx.fillStyle = "#8ecbff";
@@ -1017,41 +1264,22 @@ function pickAt(x, y) {
 function rebuild() {
   cells = layoutMode === "zoo" ? buildZooCells(CT) : buildCells(fills, CT, userSlopes);
   resolved = resolveAll(cells, CT);
-  resolvedBase = { ...resolved };
-  // slope remaps (taught via zoo slope revisions): wherever the resolver
-  // produced tile X on a slope cell, show the replacement — mirror-adjusted
-  const sr = slopeRemaps[CT.id];
-  if (sr && Object.keys(sr).length) {
-    for (const k of Object.keys(cells)) {
-      if (cells[k].kind !== "slope") continue;
-      const b = resolved[k];
-      const e = sr[b.ax + "," + b.ay];
-      if (!e) continue;
-      const adj = (!!b.flipH) !== (!!e.srcFlipH);
-      resolved[k] = { ax: e.ax, ay: e.ay, flipH: adj ? !e.flipH : !!e.flipH, flipV: e.flipV, rot: e.rot };
-    }
+  // role rules: keyed by the cell's geometric role — direction-explicit,
+  // no mirror inference. ONE ruleset: baked defaults with the store's
+  // in-progress corrections layered on top (v6.0).
+  for (const k of Object.keys(cells)) {
+    const v = cells[k];
+    if (v.kind !== "slope") continue;
+    const [rc, rr2] = k.split(",").map(Number);
+    const e = roleRuleFor(slopeRole(cells, rc, rr2, v));
+    if (e) resolved[k] = { ax: e.ax, ay: e.ay, flipH: !!e.flipH, flipV: !!e.flipV, rot: e.rot };
   }
-  // role rules (taught via zoo slope revisions, v4.8+): keyed by the cell's
-  // geometric role — direction-explicit, no mirror inference. Winners over
-  // the legacy tile-signature rules above.
-  const rl = roleRemaps[CT.id];
-  if (rl && Object.keys(rl).length) {
-    for (const k of Object.keys(cells)) {
-      const v = cells[k];
-      if (v.kind !== "slope") continue;
-      const e = rl[slopeRole(v)];
-      if (e) resolved[k] = { ax: e.ax, ay: e.ay, flipH: !!e.flipH, flipV: !!e.flipV, rot: e.rot };
-    }
-  }
-  // mask remaps (taught via zoo island revisions) apply everywhere next
-  const rm = maskRemaps[CT.id];
-  if (rm && Object.keys(rm).length) {
-    for (const k of Object.keys(cells)) {
-      if (cells[k].kind === "slope") continue;
-      const [c, r] = k.split(",").map(Number);
-      const e = rm[maskAt(cells, c, r, CT)];
-      if (e) resolved[k] = { ...e };
-    }
+  // mask remaps apply everywhere next — same layering
+  for (const k of Object.keys(cells)) {
+    if (cells[k].kind === "slope") continue;
+    const [c, r] = k.split(",").map(Number);
+    const e = maskRemapFor(maskAt(cells, c, r, CT));
+    if (e) resolved[k] = { ...e };
   }
   pvDirty = true;
 }
@@ -1229,42 +1457,72 @@ function moveStroke(e) {
     if (px !== stroke.last[0] || py !== stroke.last[1]) { pvLine(stroke.last[0], stroke.last[1], px, py); stroke.last = [px, py]; templateChanged(); }
   } else if (stroke.kind === "slope") {
     const [px, py] = pvPos(e);
-    stroke.c1 = Math.floor(px / TILE); stroke.r1 = Math.floor(py / TILE);
-    let c0 = stroke.c0, r0 = stroke.r0, c1 = stroke.c1, r1 = stroke.r1;
-    if (!(c0 === c1 && r0 === r1)) {
-      if (c1 < c0) { [c0, c1] = [c1, c0]; [r0, r1] = [r1, r0]; }
-      const steps = Math.max(1, Math.abs(r1 - r0));
-      const grad = Math.max(1, Math.min(3, Math.round((c1 - c0 + 1) / steps)));
-      status((stroke.face === "c" ? "Ceiling" : "Floor") + " slope: " + (grad === 1 ? "45\u00b0" : grad + ":1") + " " + (r1 - r0 < 0 ? "asc" : "desc") + ", " + steps + " step" + (steps > 1 ? "s" : "") + " \u2014 release to place.");
-    }
+    const nc = Math.floor(px / TILE), nr = Math.floor(py / TILE);
+    if (nc === stroke.c1 && nr === stroke.r1) return;   // same cell — ghost is current
+    stroke.c1 = nc; stroke.r1 = nr;
+    stroke.ghost = slopeStrokeRun(stroke);   // live footprint, drawn by drawGrid
+    drawGrid();
+    const run = stroke.ghost;
+    if (run) status((run.face === "c" ? "Ceiling" : "Floor") + " slope: " + (run.grad === 1 ? "45\u00b0" : run.grad + ":1") + " " + run.dir + ", " + run.steps + " step" + (run.steps > 1 ? "s" : "") + " \u2014 release to place.");
   } else if (stroke.kind === "pvcell") {
     const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE));
   }
 }
+/* Candidate run from a slope stroke — identical math for the live ghost
+   (moveStroke), the status line, and final placement (endStroke). Returns
+   null for a degenerate (same-cell) stroke, which endStroke treats as a tap. */
+function slopeStrokeRun(s) {
+  let c0 = s.c0, r0 = s.r0, c1 = s.c1 !== undefined ? s.c1 : s.c0, r1 = s.r1 !== undefined ? s.r1 : s.r0;
+  if (c0 === c1 && r0 === r1) return null;
+  if (c1 < c0) { [c0, c1] = [c1, c0]; [r0, r1] = [r1, r0]; }
+  const steps = Math.max(1, Math.abs(r1 - r0));
+  const grad = Math.max(1, Math.min(3, Math.round((c1 - c0 + 1) / steps)));
+  const run = { grad, dir: r1 - r0 < 0 ? "asc" : "desc", c: c0, r: r0, steps };
+  if (s.face === "c") run.face = "c";
+  return run;
+}
+function placeSlopeRun(run) {
+  levelSnapshot();
+  // redrawing over existing slopes REPLACES them — stacked duplicate runs
+  // corrupt the geometry (same-role cells piled on one column)
+  const newCells = expandSlopeRun(run, CT);
+  const before = userSlopes.length;
+  userSlopes = userSlopes.filter((old) => !Object.keys(expandSlopeRun(old, CT)).some((kk) => newCells[kk]));
+  userSlopes.push(run);
+  persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
+  return before - (userSlopes.length - 1);
+}
 function endStroke() {
   clearHold();
   if (stroke && stroke.kind === "slope") {
-    let c0 = stroke.c0, r0 = stroke.r0;
-    let c1 = stroke.c1 !== undefined ? stroke.c1 : c0, r1 = stroke.r1 !== undefined ? stroke.r1 : r0;
-    if (c0 === c1 && r0 === r1) {
-      // tap: remove the drawn slope containing this cell, if any
-      const k = K(c0, r0);
-      const idx = userSlopes.findIndex((run) => !!expandSlopeRun(run, CT)[k]);
-      if (idx >= 0) { levelSnapshot(); userSlopes.splice(idx, 1); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid(); status("Slope removed."); }
-      else status("Drag to draw a " + (stroke.face === "c" ? "ceiling" : "floor") + " slope; tap a drawn slope to remove it.");
+    const run = slopeStrokeRun(stroke);
+    if (!run) {
+      // tap: remove the drawn slope containing this cell — or, on an empty
+      // inside corner (solid anchor above/below + solid wall on exactly one
+      // side), drop a single 45\u00b0 connector chamfering the right angle
+      const c0 = stroke.c0, r0 = stroke.r0, k = K(c0, r0);
+      const idx = userSlopes.findIndex((rn) => !!expandSlopeRun(rn, CT)[k]);
+      if (idx >= 0) { levelSnapshot(); userSlopes.splice(idx, 1); persistUserSlopes(); rebuild(); renderPreview(); blit(); status("Slope removed."); }
+      else {
+        const solid = (dx, dy) => !!cells[K(c0 + dx, r0 + dy)];
+        const anchored = !cells[k] && (stroke.face === "c" ? solid(0, -1) : solid(0, 1));
+        const wSolid = solid(-1, 0), eSolid = solid(1, 0);
+        if (anchored && wSolid !== eSolid) {
+          // wall side fixes the facing: floors rise INTO the wall (E wall =
+          // asc, W wall = desc); ceilings mirror (W wall = asc, E wall = desc)
+          const dir = stroke.face === "c" ? (wSolid ? "asc" : "desc") : (wSolid ? "desc" : "asc");
+          const cRun = { grad: 1, dir, c: c0, r: r0, steps: 1 };
+          if (stroke.face === "c") cRun.face = "c";
+          const replaced = placeSlopeRun(cRun);
+          status("45\u00b0 corner connector placed (" + (stroke.face === "c" ? "ceiling " : "floor ") + dir + ")" + (replaced ? " — replaced " + replaced + " overlapping run" + (replaced > 1 ? "s" : "") + "." : "."));
+        } else status("Drag to draw a " + (stroke.face === "c" ? "ceiling" : "floor") + " slope; tap a drawn slope to remove it; tap an empty inside corner to drop a 45\u00b0 connector.");
+      }
     } else {
-      if (c1 < c0) { [c0, c1] = [c1, c0]; [r0, r1] = [r1, r0]; }
-      const dyr = r1 - r0;
-      const steps = Math.max(1, Math.abs(dyr));
-      const grad = Math.max(1, Math.min(3, Math.round((c1 - c0 + 1) / steps)));
-      const run = { grad, dir: dyr < 0 ? "asc" : "desc", c: c0, r: r0, steps };
-      if (stroke.face === "c") run.face = "c";
-      levelSnapshot();
-      userSlopes.push(run);
-      persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
-      status((run.face === "c" ? "Ceiling" : "Floor") + " slope placed: " + (grad === 1 ? "45\u00b0" : grad + ":1") + " " + run.dir + ", " + steps + " step" + (steps > 1 ? "s" : "") + ".");
+      const replaced = placeSlopeRun(run);
+      status((run.face === "c" ? "Ceiling" : "Floor") + " slope placed: " + (run.grad === 1 ? "45\u00b0" : run.grad + ":1") + " " + run.dir + ", " + run.steps + " step" + (run.steps > 1 ? "s" : "") + (replaced ? " — replaced " + replaced + " overlapping run" + (replaced > 1 ? "s" : "") + "." : "."));
     }
     stroke = null;
+    drawGrid();   // clears the drag ghost on every exit path
     return;
   }
   if (stroke && stroke.snap) { persistPng(); refreshFileSwatches(); }
@@ -1418,19 +1676,19 @@ $("btnRedo").addEventListener("click", redo);
 $("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gridOn[activeTab].cell; syncGridButtons(); drawGrid(); });
 $("btnPxGrid").addEventListener("click", () => { gridOn[activeTab].px = !gridOn[activeTab].px; syncGridButtons(); drawGrid(); });
 $("btnRoles").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
-$("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
+$("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });   // drawGrid covers both tabs
 $("btnFit").addEventListener("click", () => fitView(activeTab));
 function openRevPanel(k) {
   revKey = k;
   const [kc, kr] = k.split(",").map(Number);
   // Fill cells teach by neighbour mask; slope cells teach by geometric role.
   // Level and zoo are identical teachers — every revision is a tileset rule.
-  revMask = null; revSlopeSig = null; revRole = null;
+  revMask = null; revRole = null;
   if (cells[k]) {
     if (cells[k].kind !== "slope") revMask = maskAt(cells, kc, kr, CT);
-    else { revRole = slopeRole(cells[k]); if (resolvedBase[k]) revSlopeSig = resolvedBase[k].ax + "," + resolvedBase[k].ay; }
+    else revRole = slopeRole(cells, kc, kr, cells[k]);
   }
-  const ov = revMask !== null ? ctRemaps()[revMask] : (revRole !== null ? (ctRoleRemaps()[revRole] || (revSlopeSig !== null ? ctSlopeRemaps()[revSlopeSig] : null)) : null);
+  const ov = revMask !== null ? maskRemapFor(revMask) : (revRole !== null ? roleRuleFor(revRole) : null);
   const cur = ov || resolved[k];
   $("revTitle").textContent = (revMask !== null ? "Mask " + revMask + " (applies everywhere) — " :
     revRole !== null ? "Role " + revRole + " (applies everywhere) — " :
@@ -1440,6 +1698,27 @@ function openRevPanel(k) {
   $("revV").classList.toggle("on", !!(cur && cur.flipV));
   revRotVal = (cur && cur.rot) || 0;
   $("revRot").innerHTML = revRotVal * 90 + "&deg;";
+  // coupling report: how far this rule reaches, and which OTHER rules draw
+  // the same template cell (pixel edits to that cell affect them all).
+  const myKey = revMask !== null ? "mask " + revMask : revRole;
+  const info = $("revInfo");
+  if (myKey && cur) {
+    let reach = 0;
+    const sharers = new Set();
+    for (const kk of Object.keys(cells)) {
+      const vv = cells[kk];
+      const [cc, rr] = kk.split(",").map(Number);
+      const kkey = vv.kind === "slope" ? slopeRole(cells, cc, rr, vv) : "mask " + maskAt(cells, cc, rr, CT);
+      if (kkey === myKey) reach++;
+      else if (resolved[kk] && resolved[kk].ax === cur.ax && resolved[kk].ay === cur.ay) sharers.add(kkey);
+    }
+    const runsHere = layoutMode !== "zoo" && cells[k].kind === "slope" ? userSlopes.filter((run) => !!expandSlopeRun(run, CT)[k]).length : 0;
+    info.textContent = (runsHere > 1 ? "\u26a0 " + runsHere + " overlapping slope runs occupy this cell \u2014 redraw over them to replace, or erase-tap removes one at a time. " : "") +
+      "Rule covers " + reach + " cell" + (reach === 1 ? "" : "s") + " in this view. " +
+      (sharers.size ? "Tile " + cellName(cur.ax, cur.ay) + " is ALSO drawn by: " + [...sharers].slice(0, 4).join(", ") + (sharers.size > 4 ? ", …" : "") + " — pixel edits to it change those too."
+                    : "No other rule uses tile " + cellName(cur.ax, cur.ay) + ".");
+    info.style.display = "";
+  } else { info.style.display = "none"; }
   $("revPanel").style.display = "";
 }
 $("revH").addEventListener("click", (e) => e.currentTarget.classList.toggle("on"));
@@ -1448,15 +1727,14 @@ $("revRot").addEventListener("click", () => { revRotVal = (revRotVal + 1) % 4; $
 $("revClose").addEventListener("click", () => { $("revPanel").style.display = "none"; revKey = null; });
 $("revClear").addEventListener("click", () => {
   if (!revKey) return;
-  if (revMask !== null) { delete ctRemaps()[revMask]; persistRemaps(); status("Mask " + revMask + " back to the resolver default."); }
+  if (revMask !== null) { delete ctRemaps()[revMask]; persistRemaps(); status("Mask " + revMask + " override cleared — back to the app's rule set."); }
   else if (revRole !== null) {
     delete ctRoleRemaps()[revRole]; persistRoleRemaps();
-    if (revSlopeSig !== null) { delete ctSlopeRemaps()[revSlopeSig]; persistSlopeRemaps(); }
-    status("Role " + revRole + " back to the resolver default.");
+    status("Role " + revRole + " override cleared — back to the app's rule set.");
   }
   else { status("Empty cell — nothing to clear."); }
   rebuild(); renderPreview(); blit(); drawGrid();
-  $("revPanel").style.display = "none"; revKey = null; revMask = null; revSlopeSig = null; revRole = null;
+  $("revPanel").style.display = "none"; revKey = null; revMask = null; revRole = null;
 });
 $("revApply").addEventListener("click", () => {
   if (!revKey) return;
@@ -1479,11 +1757,13 @@ $("revApply").addEventListener("click", () => {
     status(cellName(ax, ay) + " now defines " + revRole + " — everywhere, including the level.");
   }
   rebuild(); renderPreview(); blit(); drawGrid();
-  $("revPanel").style.display = "none"; revKey = null; revMask = null; revSlopeSig = null; revRole = null;
+  $("revPanel").style.display = "none"; revKey = null; revMask = null; revRole = null;
 });
 $("btnLayoutSave").addEventListener("click", () => {
   const a = document.createElement("a");
-  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes, remaps: maskRemaps, slopeRemaps, roleRemaps }));
+  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes,
+    remaps:     { [CT.id]: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) } },
+    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } } }));
   a.download = "tessera_layout.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status("Layout saved as tessera_layout.json.");
@@ -1501,11 +1781,9 @@ layoutFileInput.addEventListener("change", () => {
       fills = data.fills;
       if (Array.isArray(data.slopes)) { userSlopes = data.slopes; persistUserSlopes(); }
       if (data.remaps) { maskRemaps = data.remaps; persistRemaps(); }
-      if (data.slopeRemaps) { slopeRemaps = data.slopeRemaps; persistSlopeRemaps(); }
       if (data.roleRemaps) { roleRemaps = data.roleRemaps; persistRoleRemaps(); }
-      const mig = data.overrides ? salvagePinObject(data.overrides) : 0;   // pre-4.9 layouts carried per-cell pins
       persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
-      status("Layout loaded." + (mig ? " " + mig + " legacy zoo pin" + (mig > 1 ? "s" : "") + " upgraded to role rules." : ""));
+      status("Layout loaded." + (data.overrides ? " (Pin-era data in this file was ignored — rules are taught in-app now.)" : ""));
     } catch (e) { status("Could not read layout: " + e.message); }
   };
   rd.readAsText(f);
@@ -1530,6 +1808,15 @@ $("btnReset").addEventListener("click", () => {
     document.querySelectorAll(".lmode").forEach((q) => q.classList.toggle("on", q.dataset.lmode === "field"));
   }
   rebuild(); renderPreview(); persistFills(); blit(); drawGrid(); status("Playfield reset to the default.");
+});
+$("btnRulesReset").addEventListener("click", () => {
+  const nMask = Object.keys(ctRemaps()).length, nRole = Object.keys(ctRoleRemaps()).length;
+  if (!nMask && !nRole) { status("No overrides for " + CT.label + " — already showing the app's baked rule set."); return; }
+  if (!confirm("Clear ALL " + (nMask + nRole) + " in-progress overrides for " + CT.label + " (" + nMask + " mask, " + nRole + " role)? The app's baked rule set takes over everywhere. This cannot be undone.")) return;
+  maskRemaps[CT.id] = {}; roleRemaps[CT.id] = {};
+  persistRemaps(); persistRoleRemaps();
+  rebuild(); renderPreview(); blit(); drawGrid();
+  status("Overrides cleared — " + CT.label + " is showing the app's baked rule set.");
 });
 $("btnResetArt").addEventListener("click", () => {
   if (!confirm(`Reset the ${CT.label} sheet to the shipped original? Your current drawing will be replaced.`)) return;
@@ -1708,30 +1995,9 @@ $("btnSave").addEventListener("click", () => {
 function persistPng() { try { localStorage.setItem(CT.lsKey, ed.toDataURL("image/png")); } catch (e) {} }
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
-/* Pins are gone (v4.9) — pre-4.9 data (localStorage or layout files) may
-   still carry them. Zoo slope pins convert to role rules (existing rules
-   win); field pins and non-slope zoo pins are dropped: per-coordinate
-   decals carried no rule content. */
-function salvagePinObject(ov) {
-  if (!ov || !ov.zoo) return 0;
-  const zc = buildZooCells(CONTRACTS.v3);
-  const store = (roleRemaps.v3 = roleRemaps.v3 || {});
-  let moved = 0;
-  for (const k of Object.keys(ov.zoo)) {
-    const v = zc[k];
-    if (!v || v.kind !== "slope") continue;
-    const role = slopeRole(v);
-    if (store[role]) continue;
-    store[role] = { ...ov.zoo[k] };
-    moved++;
-  }
-  if (moved) persistRoleRemaps();
-  return moved;
-}
-
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "4.9.0";
+const APP_VERSION = "6.1.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -1789,18 +2055,30 @@ document.querySelectorAll(".bgo").forEach((b) => b.addEventListener("click", () 
     else if (localStorage.getItem("tessera.migr_defslopes") === null) { userSlopes = JSON.parse(JSON.stringify(DEFAULT_SLOPES)).concat(userSlopes); persistUserSlopes(); }
     localStorage.setItem("tessera.migr_defslopes", "1");
   } catch (e) {}
-  const salvaged = (() => {
-    let ov = null;
-    try { ov = JSON.parse(localStorage.getItem("tessera.overrides")); } catch (e) {}
-    const n = ov ? salvagePinObject(ov) : 0;
-    try { localStorage.removeItem("tessera.overrides"); localStorage.removeItem("tessera.migr_fieldpins"); } catch (e) {}
-    return n;
-  })();
-  if (!roleRemaps.v3 || !Object.keys(roleRemaps.v3).length) { roleRemaps.v3 = JSON.parse(JSON.stringify(DEFAULT_ROLE_RULES)); persistRoleRemaps(); }
+  // v5.0: pin-era data is never salvaged or seeded — rules exist only if
+  // taught against the current resolver. Stale keys are simply removed.
+  // v5.2: DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS honor that stance — they
+  // WERE taught against this resolver, and they seed only a virgin store.
+  try { localStorage.removeItem("tessera.overrides"); localStorage.removeItem("tessera.migr_fieldpins"); localStorage.removeItem("tessera.sloperemaps"); } catch (e) {}
+  // v5.7.1 one-time repair (James, 2026-07-13): the two fossil H2 tip rules.
+  // Rewrites a stored rule ONLY if it still targets H2 (7,1) verbatim — any
+  // re-taught association is left alone. Remove this block in a future pass.
+  try {
+    const rr = roleRemaps.v3;
+    const fix = {
+      "f:slope_2to1:desc:u:open:ff": { ax: 2, ay: 9, flipH: true },
+      "f:slope_3to1:desc:u:open:ff": { ax: 5, ay: 9, flipH: true },
+    };
+    let changed = false;
+    for (const kk of Object.keys(fix)) {
+      const cur = rr && rr[kk];
+      if (cur && cur.ax === 7 && cur.ay === 1 && !cur.flipH && !cur.flipV && !cur.rot) { rr[kk] = fix[kk]; changed = true; }
+    }
+    if (changed) persistRoleRemaps();
+  } catch (e) {}
   let choice = "v1";   // 3x3 (the production ATLAS contract) unless a prior session chose otherwise
   try { const c = localStorage.getItem(LS.contract); if (c && CONTRACTS[c]) choice = c; } catch (e) {}
   setContract(choice);
-  if (salvaged) status(salvaged + " legacy zoo pin" + (salvaged > 1 ? "s" : "") + " upgraded to role rules.");
   sizeOverlay(); fitView("pv");
 })();
 </script>
