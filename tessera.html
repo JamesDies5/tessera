@@ -2164,9 +2164,28 @@ $("fileTpl").addEventListener("change", (e) => {
   const rd = new FileReader(); rd.onload = () => loadPngIntoEditor(rd.result, `Loaded ${f.name}.`); rd.readAsDataURL(f);
   e.target.value = "";
 });
+/* Export: on share-capable devices (iPad/iPhone) the native share sheet
+   opens — Save Image lands the PNG in Photos. The blob is built
+   SYNCHRONOUSLY from the data URL so navigator.share still runs inside
+   the user-activation window (WebKit requirement; async toBlob loses it).
+   Elsewhere, the classic anchor download. */
 $("btnSave").addEventListener("click", () => {
+  const url = ed.toDataURL("image/png");
+  try {
+    if (navigator.share && navigator.canShare) {
+      const b64 = url.split(",")[1], bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const file = new File([bytes], CT.filename, { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file] })
+          .then(() => status(`Shared ${CT.filename}.`))
+          .catch((err) => { if (err && err.name !== "AbortError") status("Share failed: " + err.message); });
+        return;
+      }
+    }
+  } catch (e) {}   // any share-path surprise falls through to the download
   const a = document.createElement("a");
-  a.href = ed.toDataURL("image/png"); a.download = CT.filename;
+  a.href = url; a.download = CT.filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status(`Saved ${CT.filename}.`);
 });
@@ -2175,7 +2194,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.11.1";
+const APP_VERSION = "6.11.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
