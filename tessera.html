@@ -60,6 +60,18 @@
      shrink-to-fit, tucking the last swatch under. Five stops never need to
      wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
   #stopSwatches { flex-wrap: nowrap; }
+  #brushMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 8px; width: max-content;
+    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #brushMenu .cmRow { display: flex; gap: 8px; align-items: center; }
+  #brushMenu .cmRow > .lbl { flex: 0 0 52px; }
+  #brushMenu input[type="range"] { width: 150px; accent-color: var(--accent); }
+  #brushSizeVal { flex: 0 0 20px; text-align: right; font-size: 12px; color: var(--text); }
+  .bshape { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 38px; height: 38px;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  .bshape.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .bshape .bsq { width: 16px; height: 16px; background: var(--accent); }
+  .bshape .bci { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
   #cellbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   #optMenu { position: fixed; z-index: 70; display: none; gap: 6px;
@@ -113,6 +125,7 @@
     <button class="ibtn pvmode" data-pvmode="cells" data-icon="layout" title="Cells — paint or erase whole terrain cells"></button>
   </div>
   <span class="spacer"></span>
+  <button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size and shape, shared by pencil and eraser"></button>
   <button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
   <input type="file" id="fileTpl" accept="image/png" hidden>
 </header>
@@ -137,6 +150,15 @@
   <button class="optItem" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span><span class="olbl">Reset</span></button>
   <button class="optItem" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span><span class="olbl">Import</span></button>
   <button class="optItem" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span><span class="olbl">Export</span></button>
+</div>
+
+<!-- Brush flyout: pixel size + stamp shape, shared by pencil and eraser -->
+<div id="brushMenu">
+  <div class="cmRow"><span class="lbl">SIZE</span><input type="range" id="brushSizeSlider" min="1" max="8" step="1" value="1"><span id="brushSizeVal">1</span></div>
+  <div class="cmRow"><span class="lbl">SHAPE</span>
+    <button class="bshape on" data-bshape="square" title="Square brush"><span class="bsq"></span></button>
+    <button class="bshape" data-bshape="circle" title="Circle brush"><span class="bci"></span></button>
+  </div>
 </div>
 
 <!-- Color flyout: stops row, in-file row, then the zone palette picker.
@@ -978,7 +1000,7 @@ const DEFAULT_PNGS = {
   v1: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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",
   v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
 };
-const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes" };
+const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush" };
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
@@ -1226,10 +1248,29 @@ function drawGrid() {
     // hovering pen/mouse tip: outline the pixel it would touch (or the whole
     // cell in Cells mode), dark halo behind an accent line for contrast
     const cellMode = activeTab === "pv" && pvMode === "cells";
-    const u = cellMode ? TILE : 1;
-    const hx = v.x + Math.floor(hover.x / u) * u * v.s, hy = v.y + Math.floor(hover.y / u) * u * v.s, hs = u * v.s;
-    ovCtx.strokeStyle = "rgba(0,0,0,0.7)"; ovCtx.lineWidth = 3; ovCtx.strokeRect(hx - 1, hy - 1, hs + 2, hs + 2);
-    ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
+    if (!cellMode && (tool === "pencil" || tool === "eraser") && brushSize > 1) {
+      // brush cursor: trace the footprint's outer boundary from the SAME
+      // offsets the stamp uses, so cursor and stamp can never disagree
+      const offs = brushOffsets(), set = new Set(offs.map((o) => o[0] + "," + o[1])), s = v.s;
+      const tracePass = (accent) => {
+        ovCtx.strokeStyle = accent ? "#e8e8e8" : "rgba(0,0,0,0.7)"; ovCtx.lineWidth = accent ? 1 : 3;
+        ovCtx.beginPath();
+        for (const o of offs) {
+          const x0 = v.x + (hover.x + o[0]) * s, y0 = v.y + (hover.y + o[1]) * s;
+          if (!set.has(o[0] + "," + (o[1] - 1))) { ovCtx.moveTo(x0, y0); ovCtx.lineTo(x0 + s, y0); }
+          if (!set.has(o[0] + "," + (o[1] + 1))) { ovCtx.moveTo(x0, y0 + s); ovCtx.lineTo(x0 + s, y0 + s); }
+          if (!set.has((o[0] - 1) + "," + o[1])) { ovCtx.moveTo(x0, y0); ovCtx.lineTo(x0, y0 + s); }
+          if (!set.has((o[0] + 1) + "," + o[1])) { ovCtx.moveTo(x0 + s, y0); ovCtx.lineTo(x0 + s, y0 + s); }
+        }
+        ovCtx.stroke();
+      };
+      tracePass(false); tracePass(true);
+    } else {
+      const u = cellMode ? TILE : 1;
+      const hx = v.x + Math.floor(hover.x / u) * u * v.s, hy = v.y + Math.floor(hover.y / u) * u * v.s, hs = u * v.s;
+      ovCtx.strokeStyle = "rgba(0,0,0,0.7)"; ovCtx.lineWidth = 3; ovCtx.strokeRect(hx - 1, hy - 1, hs + 2, hs + 2);
+      ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
+    }
   }
 }
 let ovRaf = false;
@@ -1337,11 +1378,35 @@ function putPx(x, y) {
   if (tool === "eraser") edCtx.clearRect(x, y, 1, 1);
   else { edCtx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a / 255})`; edCtx.clearRect(x, y, 1, 1); edCtx.fillRect(x, y, 1, 1); }
 }
+/* ---- brush: one footprint shared by pencil and eraser. Level strokes stamp
+   in LEVEL space and map each pixel through levelToTemplate so a footprint
+   straddling tiles edits every source cell with its own flip/rotation.
+   Circle uses the classic pixel-disc test (r = N/2 - 1/4): plus at 3,
+   rounded square at 4, true discs from 5 up. */
+let brushSize = 1, brushShape = "square";
+let brushCache = null, brushCacheKey = "";
+function brushOffsets() {
+  const key = brushSize + "|" + brushShape;
+  if (brushCacheKey !== key) {
+    brushCacheKey = key;
+    const N = brushSize, c = (N - 1) / 2, base = Math.floor((N - 1) / 2);
+    const r = N / 2 - 0.25, r2 = r * r, out = [];
+    for (let iy = 0; iy < N; iy++) for (let ix = 0; ix < N; ix++) {
+      if (brushShape === "circle" && (ix - c) * (ix - c) + (iy - c) * (iy - c) > r2) continue;
+      out.push([ix - base, iy - base]);
+    }
+    brushCache = out;
+  }
+  return brushCache;
+}
+function stampEd(x, y) { for (const o of brushOffsets()) putPx(x + o[0], y + o[1]); }
+function stampPv(x, y) { for (const o of brushOffsets()) { const m = levelToTemplate(x + o[0], y + o[1]); if (m) putPx(m.tx, m.ty); } }
+function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ size: brushSize, shape: brushShape })); } catch (e) {} }
 function lineTo(x0, y0, x1, y1) {
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
   while (true) {
-    putPx(x0, y0);
+    stampEd(x0, y0);
     if (x0 === x1 && y0 === y1) break;
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x0 += sx; }
@@ -1458,8 +1523,7 @@ function pvLine(x0, y0, x1, y1) {
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
   while (true) {
-    const m = levelToTemplate(x0, y0);
-    if (m) putPx(m.tx, m.ty);
+    stampPv(x0, y0);
     if (x0 === x1 && y0 === y1) break;
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x0 += sx; }
@@ -1588,7 +1652,7 @@ function beginStroke(e) {
     if (tool === "slopeF" || tool === "slopeC") { status("Slope tools draw in the LEVEL tab."); return; }
     if (tool === "pick") { pickAt(x, y); return; }
     if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
-    snapshot(); putPx(x, y); templateChanged();
+    snapshot(); stampEd(x, y); templateChanged();
     stroke = { kind: "ed", last: [x, y], qOrigin: [x, y], snap: true };
     armHold(e);
     return;
@@ -1611,7 +1675,7 @@ function beginStroke(e) {
   if (!m) return;   // air
   if (tool === "pick") { pickAt(m.tx, m.ty); return; }
   if (tool === "fill") { snapshot(); cellFill(m.tx, m.ty); templateChanged(); persistPng(); refreshFileSwatches(); return; }
-  snapshot(); putPx(m.tx, m.ty); templateChanged();
+  snapshot(); stampPv(px, py); templateChanged();
   stroke = { kind: "pvpx", last: [px, py], qOrigin: [px, py], snap: true };
   armHold(e);
 }
@@ -2194,7 +2258,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.11.2";
+const APP_VERSION = "6.12.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -2251,7 +2315,7 @@ function closeOptMenu() { $("optMenu").style.display = "none"; $("btnOptions").c
 $("btnOptions").addEventListener("click", () => {
   const m = $("optMenu");
   if (m.style.display === "flex") { closeOptMenu(); return; }
-  closeColorMenu();
+  closeColorMenu(); closeBrushMenu();
   const r = $("btnOptions").getBoundingClientRect();
   m.style.top = (r.bottom + 8) + "px";
   m.style.visibility = "hidden"; m.style.display = "flex";   // measure before placing
@@ -2268,6 +2332,40 @@ document.addEventListener("pointerdown", (e) => {
   closeOptMenu(); e.stopPropagation(); e.preventDefault();
 }, true);
 
+/* Brush flyout: slider + shape pair; settings persist and apply to both
+   pencil and eraser immediately. */
+function closeBrushMenu() { $("brushMenu").style.display = "none"; $("btnBrush").classList.remove("on"); }
+$("btnBrush").addEventListener("click", () => {
+  const m = $("brushMenu");
+  if (m.style.display === "flex") { closeBrushMenu(); return; }
+  closeColorMenu(); closeOptMenu();
+  $("brushSizeSlider").value = brushSize; $("brushSizeVal").textContent = brushSize;
+  document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q.dataset.bshape === brushShape));
+  const r = $("btnBrush").getBoundingClientRect();
+  m.style.top = (r.bottom + 8) + "px";
+  m.style.visibility = "hidden"; m.style.display = "flex";   // measure before placing
+  const mw = m.getBoundingClientRect().width;
+  m.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + "px";
+  m.style.visibility = "";
+  $("btnBrush").classList.add("on");
+});
+$("brushSizeSlider").addEventListener("input", (e) => {
+  brushSize = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
+  $("brushSizeVal").textContent = brushSize;
+  persistBrush();
+});
+document.querySelectorAll(".bshape").forEach((b) => b.addEventListener("click", () => {
+  brushShape = b.dataset.bshape;
+  document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q === b));
+  persistBrush();
+}));
+document.addEventListener("pointerdown", (e) => {
+  const m = $("brushMenu");
+  if (m.style.display !== "flex") return;
+  if (m.contains(e.target) || $("btnBrush").contains(e.target)) return;
+  closeBrushMenu(); e.stopPropagation(); e.preventDefault();
+}, true);
+
 /* Color flyout: the chip shows the in-use color through the active palette;
    tapping opens stops + file colors + the palette picker. Outside taps close
    AND are swallowed, so dismissing over the canvas never draws. */
@@ -2276,7 +2374,7 @@ function closeColorMenu() { $("colorMenu").style.display = "none"; $("colorCurre
 $("colorCurrent").addEventListener("click", () => {
   const m = $("colorMenu");
   if (m.style.display === "flex") { closeColorMenu(); return; }
-  closeOptMenu();
+  closeOptMenu(); closeBrushMenu();
   refreshSwatches();   // file colors may have changed since last open
   const r = $("colorCurrent").getBoundingClientRect();
   m.style.top = (r.bottom + 8) + "px";
@@ -2321,6 +2419,11 @@ $("btnConvert").addEventListener("click", () => {
     fingerDraws = f === null ? !penSeen : f === "1";
     const bg = localStorage.getItem(LS.bg);
     if (bg && BG_STYLES[bg]) bgMode = bg;
+    const br = JSON.parse(localStorage.getItem(LS.brush) || "null");
+    if (br) {
+      brushSize = Math.max(1, Math.min(8, br.size | 0)) || 1;
+      if (br.shape === "circle" || br.shape === "square") brushShape = br.shape;
+    }
   } catch (e) {}
   syncBgCurrent();
   syncColorChip();
