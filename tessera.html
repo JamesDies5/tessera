@@ -19,7 +19,9 @@
   header h1 { font-size: 15px; margin: 0 4px 0 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; }
   .spacer { flex: 1; }
   .tab { background: none; border: 1px solid var(--line); border-bottom-width: 3px; color: var(--dim);
-    border-radius: 8px; padding: 7px 16px; font: inherit; letter-spacing: 2px; cursor: pointer; }
+    border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; }
+  .tab svg { width: 20px; height: 20px; }
   .tab.on { color: var(--accent); border-color: var(--accent); background: var(--panel); }
 
   .ibtn { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px;
@@ -55,6 +57,10 @@
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #colorMenu .cmRow { display: flex; gap: 6px; align-items: center; }
   #colorMenu .cmRow > .lbl { flex: 0 0 52px; }
+  /* WebKit sizes wrap-enabled flex rows at min-content inside fixed-position
+     shrink-to-fit, tucking the last swatch under. Five stops never need to
+     wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
+  #stopSwatches { flex-wrap: nowrap; }
   #btnConvert { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto; }
   #btnConvert:active { background: var(--line); }
@@ -79,17 +85,15 @@
 <body>
 <header>
   <h1>TESSERA</h1>
-  <button class="tab on" data-tab="ed">TEMPLATE</button>
-  <button class="tab" data-tab="pv">LEVEL</button>
+  <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
+  <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
+  <button class="tab" data-tab="zoo" data-icon="puzzle" title="Zoo — generated coverage: every blob mask + all twelve slope stamps"></button>
   <select class="pal" id="ctSelect" title="Terrain sheet format — 3&times;3 is the current production ATLAS/Godot contract; 4&times;4 adds parity edge pairs and depth bands (TESSERA-only until the ATLAS port)">
-    <option value="v1">3&times;3 terrain</option>
-    <option value="v2">4&times;4 terrain</option>
-    <option value="v3">5&times;5 terrain</option>
+    <option value="v1">3&times;3</option>
+    <option value="v2">4&times;4</option>
+    <option value="v3">5&times;5</option>
   </select>
   <div class="ctx" id="ctxLevel" style="display:none">
-    <span class="vsep"></span>
-    <button class="ibtn lmode on" data-lmode="field" data-icon="mountain" title="Playfield — editable mock level"></button>
-    <button class="ibtn lmode" data-lmode="zoo" data-icon="grip" title="All 47 — generated coverage: every blob mask + all twelve slope stamps"></button>
     <span class="vsep"></span>
     <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
     <button class="ibtn pvmode" data-pvmode="cells" data-icon="layout" title="Cells — paint or erase whole terrain cells"></button>
@@ -925,6 +929,7 @@ const ICONS = {
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   rotate: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
   mountain: '<path d="m8 3 4 8 5-5 5 15H2L8 3z"/>',
+  puzzle: '<path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"/>',
   grip: '<g fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></g>',
   brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
   layout: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -1438,7 +1443,7 @@ function pvLine(x0, y0, x1, y1) {
   }
 }
 function pvApply(c, r) {
-  if (layoutMode === "zoo") { status("All 47 is a generated layout — switch to Playfield to edit cells."); return; }
+  if (layoutMode === "zoo") { status("The Zoo is generated — cells are edited on the Level tab."); return; }
   if (c < 0 || r < 0 || c >= GCOLS || r >= GROWS) return;
   const k = K(c, r);
   if (cells[k] && cells[k].kind === "slope") {
@@ -1544,13 +1549,13 @@ function beginStroke(e) {
     return;
   }
   if (tool === "slopeF" || tool === "slopeC") {
-    if (layoutMode === "zoo") { status("Slopes draw in the Playfield — the zoo layout is generated."); return; }
+    if (layoutMode === "zoo") { status("Slopes draw on the Level tab — the Zoo is generated."); return; }
     const [px, py] = pvPos(e);
     stroke = { kind: "slope", face: tool === "slopeC" ? "c" : "f", c0: Math.floor(px / TILE), r0: Math.floor(py / TILE) };
     status("Drawing " + (tool === "slopeC" ? "ceiling" : "floor") + " slope\u2026 drag to the other end and release.");
     return;
   }
-  if (pvMode === "cells") { levelSnapshot(); const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE)); stroke = { kind: "pvcell" }; return; }
+  if (pvMode === "cells" && layoutMode !== "zoo") { levelSnapshot(); const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE)); stroke = { kind: "pvcell" }; return; }
   const [px, py] = pvPos(e);
   const m = levelToTemplate(px, py);
   if (!m) return;   // air
@@ -1767,13 +1772,19 @@ document.addEventListener("gesturestart", (e) => e.preventDefault());
 document.addEventListener("gesturechange", (e) => e.preventDefault());
 
 /* ---- tabs ---- */
-function setTab(tab) {
-  activeTab = tab;
+function setTab(tab) {   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share the
+  // pv canvas/view; layoutMode picks the generator, and the tabs own it now.
+  const wantMode = tab === "zoo" ? "zoo" : "field";
+  const modeChanged = tab !== "ed" && layoutMode !== wantMode;
+  if (tab !== "ed") layoutMode = wantMode;
+  activeTab = tab === "ed" ? "ed" : "pv";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
-  $("ctxLevel").style.display = tab === "pv" ? "" : "none";
+  $("ctxLevel").style.display = tab === "pv" ? "" : "none";   // Level only — Zoo has no cell/slope tools
+  if (tab === "zoo" && (tool === "slopeF" || tool === "slopeC")) setTool("pencil");
+  if (modeChanged) rebuild();   // rebuild marks pvDirty itself
   syncGridButtons();
   hover = null;
-  if (tab === "pv" && pvDirty) renderPreviewNow(); else blit();
+  if (activeTab === "pv" && pvDirty) renderPreviewNow(); else blit();
   drawGrid();
 }
 document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
@@ -1790,11 +1801,7 @@ document.querySelectorAll(".pvmode").forEach((b) => b.addEventListener("click", 
   document.querySelectorAll(".pvmode").forEach((q) => q.classList.toggle("on", q === b));
   $("cellTools").style.display = pvMode === "cells" ? "" : "none";
 }));
-document.querySelectorAll(".lmode").forEach((b) => b.addEventListener("click", () => {
-  layoutMode = b.dataset.lmode;
-  document.querySelectorAll(".lmode").forEach((q) => q.classList.toggle("on", q === b));
-  rebuild(); renderPreview();
-}));
+/* v6.8: Playfield/Zoo toggle retired — setTab owns layoutMode. */
 $("btnUndo").addEventListener("click", undo);
 $("btnRedo").addEventListener("click", redo);
 $("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gridOn[activeTab].cell; syncGridButtons(); drawGrid(); });
@@ -1927,10 +1934,6 @@ $("btnReset").addEventListener("click", () => {
   fills = def;
   userSlopes = JSON.parse(JSON.stringify(DEFAULT_SLOPES));
   persistUserSlopes();
-  if (layoutMode !== "field") {
-    layoutMode = "field";
-    document.querySelectorAll(".lmode").forEach((q) => q.classList.toggle("on", q.dataset.lmode === "field"));
-  }
   rebuild(); renderPreview(); persistFills(); blit(); drawGrid(); status("Playfield reset to the default.");
 });
 $("btnRulesReset").addEventListener("click", () => {
@@ -2112,7 +2115,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.7.2";
+const APP_VERSION = "6.8.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
