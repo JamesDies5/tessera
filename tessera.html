@@ -61,6 +61,9 @@
      shrink-to-fit, tucking the last swatch under. Five stops never need to
      wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
   #stopSwatches { flex-wrap: nowrap; }
+  #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
+    border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
+    display: none; pointer-events: none; transform: translate(-50%, -115%); }
   #btnConvert { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto; }
   #btnConvert:active { background: var(--line); }
@@ -138,6 +141,10 @@
   <button class="bgo" data-bg="ink" title="Palette darkest — #191919"></button>
   <button class="bgo" data-bg="black" title="Solid black"></button>
 </div>
+
+<!-- Eyedropper loupe: appears while a hold-pick is engaged, tracks the
+     finger, shows the sampled color through the active palette -->
+<div id="loupe"></div>
 
 <div id="stage">
   <div id="rail">
@@ -1519,6 +1526,32 @@ function holdPick(lc) {
   if (activeTab === "ed") { const [x, y] = edPos(lc); pickAt(x, y); }
   else { const [px, py] = pvPos(lc); const m = levelToTemplate(px, py); if (m) pickAt(m.tx, m.ty); }
 }
+/* Live eyedropper (Procreate-style): the hold engages a session — the loupe
+   shows the color under the finger (through the active palette), dragging
+   keeps sampling, and lifting commits via pickAt so swatch highlighting,
+   transparent-to-eraser, and the status line behave exactly as a tap pick. */
+let eyedrop = null;   // { last: {clientX, clientY} } while engaged
+function eyedropShow(lc) {
+  const lp = $("loupe");
+  let px = null;
+  if (activeTab === "ed") { const [x, y] = worldPos(lc, "ed"); if (x >= 0 && y >= 0 && x < TW && y < TH) px = edCtx.getImageData(x, y, 1, 1).data; }
+  else { const [ax, ay] = worldPos(lc, "pv"); const m = levelToTemplate(ax, ay); if (m) px = edCtx.getImageData(m.tx, m.ty, 1, 1).data; }
+  if (px && px[3] !== 0) {
+    color = { r: px[0], g: px[1], b: px[2], a: px[3] };   // provisional — committed on lift
+    syncColorChip();
+    lp.style.background = displayColor(color);
+  } else lp.style.background = "transparent";   // air/empty under the finger
+  lp.style.left = lc.clientX + "px"; lp.style.top = lc.clientY + "px";
+  lp.style.display = "block";
+}
+function eyedropStart(lc) { eyedrop = { last: lc }; eyedropShow(lc); }
+function eyedropMove(e) { const lc = { clientX: e.clientX, clientY: e.clientY }; eyedrop.last = lc; eyedropShow(lc); }
+function eyedropEnd() {
+  $("loupe").style.display = "none";
+  const lc = eyedrop.last; eyedrop = null;
+  holdPick(lc);   // canonical commit
+}
+function eyedropCancel() { if (!eyedrop) return; $("loupe").style.display = "none"; eyedrop = null; }
 function armHold(e) {   // finger-only, by request — pen and mouse never hold-pick
   if (e.pointerType !== "touch") return;
   stroke.downVp = vpPoint(e);
@@ -1528,7 +1561,7 @@ function armHold(e) {   // finger-only, by request — pen and mouse never hold-
     const lc = stroke.lastClient;
     abortStroke();
     stroke = null;
-    holdPick(lc);
+    eyedropStart(lc);
   }, HOLD_MS);
 }
 function clearFingerHold() { if (fingerHold && fingerHold.holdT) { clearTimeout(fingerHold.holdT); fingerHold.holdT = null; } }
@@ -1703,14 +1736,14 @@ viewport.addEventListener("pointerdown", (e) => {
         down: vpPoint(e),
         lastClient: { clientX: e.clientX, clientY: e.clientY },
         holdT: setTimeout(() => {
-          if (fingerHold && pointers.size === 1) { const lc = fingerHold.lastClient; fingerHold = null; holdPick(lc); }
+          if (fingerHold && pointers.size === 1) { const lc = fingerHold.lastClient; fingerHold = null; eyedropStart(lc); }
         }, HOLD_MS),
       };
       return;
     }
     beginStroke(e);
   } else if (pointers.size === 2) {
-    clearHold(); clearFingerHold();
+    clearHold(); clearFingerHold(); eyedropCancel();
     if (stroke && stroke.snap) abortStroke();   // second finger cancels the stroke — pinch, not paint
     stroke = null; fingerHold = null;
     startPinch();
@@ -1728,6 +1761,7 @@ viewport.addEventListener("pointermove", (e) => {
   }
   pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
   if (pinch && pointers.size >= 2) { movePinch(); return; }
+  if (eyedrop && pointers.size === 1) { eyedropMove(e); return; }
   if (fingerHold && pointers.size === 1) {
     const p = vpPoint(e);
     fingerHold.lastClient = { clientX: e.clientX, clientY: e.clientY };
@@ -1741,6 +1775,7 @@ viewport.addEventListener("pointermove", (e) => {
 const vpUp = (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
+  if (eyedrop && pointers.size === 0) { eyedropEnd(); return; }
   if (fingerHold && pointers.size === 0) { clearFingerHold(); fingerHold = null; return; }
   if (pinch && pointers.size < 2) {   // lifting out of a pinch never resumes drawing
     pinch = null;
@@ -2115,7 +2150,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.8.0";
+const APP_VERSION = "6.9.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -2176,9 +2211,12 @@ $("colorCurrent").addEventListener("click", () => {
   if (m.style.display === "flex") { closeColorMenu(); return; }
   refreshSwatches();   // file colors may have changed since last open
   const r = $("colorCurrent").getBoundingClientRect();
-  m.style.right = (window.innerWidth - r.right) + "px";
   m.style.top = (r.bottom + 8) + "px";
-  m.style.display = "flex";
+  m.style.visibility = "hidden"; m.style.display = "flex";   // measure before placing
+  const mw = m.getBoundingClientRect().width;
+  m.style.right = "auto";
+  m.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + "px";
+  m.style.visibility = "";
   $("colorCurrent").classList.add("on");
 });
 document.addEventListener("pointerdown", (e) => {
