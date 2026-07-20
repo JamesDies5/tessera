@@ -51,7 +51,7 @@
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #colorCurrent { width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; padding: 0; flex: 0 0 auto; }
   #colorCurrent.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-  #colorMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 8px; width: max-content; max-width: min(92vw, 520px);
+  #colorMenu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 70; display: none; flex-direction: column; gap: 8px; width: max-content; max-width: min(92vw, 520px);
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #colorMenu .cmRow { display: flex; gap: 6px; align-items: center; }
@@ -60,7 +60,7 @@
      shrink-to-fit, tucking the last swatch under. Five stops never need to
      wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
   #stopSwatches { flex-wrap: nowrap; }
-  #brushMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 8px; width: max-content;
+  #brushMenu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 70; display: none; flex-direction: column; gap: 8px; width: max-content;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #brushMenu .cmRow { display: flex; gap: 8px; align-items: center; }
@@ -74,7 +74,8 @@
   .bshape .bci { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
   #cellbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  #optMenu { position: fixed; z-index: 70; display: none; gap: 6px;
+  .fly { position: relative; display: inline-flex; }
+  #optMenu { position: absolute; left: 0; top: calc(100% + 8px); z-index: 70; display: none; gap: 6px;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   .optItem { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 66px;
@@ -118,15 +119,35 @@
     <option value="v2">4&times;4</option>
     <option value="v3">5&times;5</option>
   </select>
-  <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template export, import, and reset"></button>
+  <span class="fly"><button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template export, import, and reset"></button>
+  <!-- Options flyout: template file operations, labeled; ids unchanged -->
+  <div id="optMenu">
+    <button class="optItem" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span><span class="olbl">Reset</span></button>
+    <button class="optItem" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span><span class="olbl">Import</span></button>
+    <button class="optItem" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span><span class="olbl">Export</span></button>
+  </div></span>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
     <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
     <button class="ibtn pvmode" data-pvmode="cells" data-icon="layout" title="Cells — paint or erase whole terrain cells"></button>
   </div>
   <span class="spacer"></span>
-  <button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size and shape, shared by pencil and eraser"></button>
-  <button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
+  <span class="fly"><button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size and shape, shared by pencil and eraser"></button>
+  <!-- Brush flyout: pixel size + stamp shape, shared by pencil and eraser -->
+  <div id="brushMenu">
+    <div class="cmRow"><span class="lbl">SIZE</span><input type="range" id="brushSizeSlider" min="1" max="16" step="1" value="1"><span id="brushSizeVal">1</span></div>
+    <div class="cmRow"><span class="lbl">SHAPE</span>
+      <button class="bshape on" data-bshape="square" title="Square brush"><span class="bsq"></span></button>
+      <button class="bshape" data-bshape="circle" title="Circle brush"><span class="bci"></span></button>
+    </div>
+  </div></span>
+  <span class="fly"><button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
+  <!-- Color flyout: display-mapped palette; template stays grayscale truth -->
+  <div id="colorMenu">
+    <div class="cmRow"><span class="lbl">STOPS</span><span class="ctx" id="stopSwatches"></span></div>
+    <div class="cmRow" id="rowInFile"><span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span><button id="btnConvert" title="Snap every template pixel to its nearest stop gray (20, 52, 139, 200, 255) — one undoable step; this row disappears once the file conforms">CONVERT</button></div>
+    <div class="cmRow"><span class="lbl">PALETTE</span><select class="pal" id="palSelect" title="Zone palette — the same gradient map the game uses, shown app-wide; the template stays grayscale underneath"></select></div>
+  </div></span>
   <input type="file" id="fileTpl" accept="image/png" hidden>
 </header>
 
@@ -142,32 +163,6 @@
   <button class="ibtn" id="btnLayoutLoad" data-icon="upload" title="Load a layout JSON file"></button>
   <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
   <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
-</div>
-
-<!-- Options flyout under the wrench: template file operations, labeled.
-     Same ids as always, so the existing handlers are untouched. -->
-<div id="optMenu">
-  <button class="optItem" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span><span class="olbl">Reset</span></button>
-  <button class="optItem" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span><span class="olbl">Import</span></button>
-  <button class="optItem" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span><span class="olbl">Export</span></button>
-</div>
-
-<!-- Brush flyout: pixel size + stamp shape, shared by pencil and eraser -->
-<div id="brushMenu">
-  <div class="cmRow"><span class="lbl">SIZE</span><input type="range" id="brushSizeSlider" min="1" max="8" step="1" value="1"><span id="brushSizeVal">1</span></div>
-  <div class="cmRow"><span class="lbl">SHAPE</span>
-    <button class="bshape on" data-bshape="square" title="Square brush"><span class="bsq"></span></button>
-    <button class="bshape" data-bshape="circle" title="Circle brush"><span class="bci"></span></button>
-  </div>
-</div>
-
-<!-- Color flyout: stops row, in-file row, then the zone palette picker.
-     The palette is a DISPLAY mapping applied app-wide; template pixels stay
-     grayscale value-truth, so swapping back is always lossless. -->
-<div id="colorMenu">
-  <div class="cmRow"><span class="lbl">STOPS</span><span class="ctx" id="stopSwatches"></span></div>
-  <div class="cmRow" id="rowInFile"><span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span><button id="btnConvert" title="Snap every template pixel to its nearest stop gray (20, 52, 139, 200, 255) — one undoable step; this row disappears once the file conforms">CONVERT</button></div>
-  <div class="cmRow"><span class="lbl">PALETTE</span><select class="pal" id="palSelect" title="Zone palette — the same gradient map the game uses, shown app-wide; the template stays grayscale underneath"></select></div>
 </div>
 
 <!-- BG flyout — opened by the swatch at the bottom of the rail; order per James:
@@ -2258,7 +2253,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.12.1";
+const APP_VERSION = "6.13.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -2307,7 +2302,7 @@ document.addEventListener("pointerdown", (e) => {
   const m = $("bgMenu");
   if (m.style.display !== "flex") return;
   if (m.contains(e.target) || e.target === $("bgCurrent")) return;
-  closeBgMenu(); e.stopPropagation(); e.preventDefault();
+  closeBgMenu();   // outside tap closes AND proceeds
 }, true);
 /* Options flyout: wrench toggles; items act via their original handlers and
    close the menu; outside taps dismiss and are swallowed. */
@@ -2316,12 +2311,7 @@ $("btnOptions").addEventListener("click", () => {
   const m = $("optMenu");
   if (m.style.display === "flex") { closeOptMenu(); return; }
   closeColorMenu(); closeBrushMenu();
-  const r = $("btnOptions").getBoundingClientRect();
-  m.style.top = (r.bottom + 8) + "px";
-  m.style.visibility = "hidden"; m.style.display = "flex";   // measure before placing
-  const mw = m.getBoundingClientRect().width;
-  m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8)) + "px";
-  m.style.visibility = "";
+  m.style.display = "flex";   // anchored dropdown — CSS owns placement
   $("btnOptions").classList.add("on");
 });
 document.querySelectorAll(".optItem").forEach((b) => b.addEventListener("click", () => closeOptMenu()));
@@ -2329,7 +2319,7 @@ document.addEventListener("pointerdown", (e) => {
   const m = $("optMenu");
   if (m.style.display !== "flex") return;
   if (m.contains(e.target) || $("btnOptions").contains(e.target)) return;
-  closeOptMenu(); e.stopPropagation(); e.preventDefault();
+  closeOptMenu();   // outside tap closes AND proceeds
 }, true);
 
 /* Brush flyout: slider + shape pair; settings persist and apply to both
@@ -2341,16 +2331,11 @@ $("btnBrush").addEventListener("click", () => {
   closeColorMenu(); closeOptMenu();
   $("brushSizeSlider").value = brushSize; $("brushSizeVal").textContent = brushSize;
   document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q.dataset.bshape === brushShape));
-  const r = $("btnBrush").getBoundingClientRect();
-  m.style.top = (r.bottom + 8) + "px";
-  m.style.visibility = "hidden"; m.style.display = "flex";   // measure before placing
-  const mw = m.getBoundingClientRect().width;
-  m.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + "px";
-  m.style.visibility = "";
+  m.style.display = "flex";   // anchored dropdown — CSS owns placement
   $("btnBrush").classList.add("on");
 });
 $("brushSizeSlider").addEventListener("input", (e) => {
-  brushSize = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
+  brushSize = Math.max(1, Math.min(16, parseInt(e.target.value, 10) || 1));
   $("brushSizeVal").textContent = brushSize;
   persistBrush();
 });
@@ -2363,7 +2348,7 @@ document.addEventListener("pointerdown", (e) => {
   const m = $("brushMenu");
   if (m.style.display !== "flex") return;
   if (m.contains(e.target) || $("btnBrush").contains(e.target)) return;
-  closeBrushMenu(); e.stopPropagation(); e.preventDefault();
+  closeBrushMenu();   // outside tap closes AND proceeds — a canvas tap starts its stroke
 }, true);
 
 /* Color flyout: the chip shows the in-use color through the active palette;
@@ -2376,20 +2361,14 @@ $("colorCurrent").addEventListener("click", () => {
   if (m.style.display === "flex") { closeColorMenu(); return; }
   closeOptMenu(); closeBrushMenu();
   refreshSwatches();   // file colors may have changed since last open
-  const r = $("colorCurrent").getBoundingClientRect();
-  m.style.top = (r.bottom + 8) + "px";
-  m.style.visibility = "hidden"; m.style.display = "flex";   // measure before placing
-  const mw = m.getBoundingClientRect().width;
-  m.style.right = "auto";
-  m.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + "px";
-  m.style.visibility = "";
+  m.style.display = "flex";   // anchored dropdown — CSS owns placement
   $("colorCurrent").classList.add("on");
 });
 document.addEventListener("pointerdown", (e) => {
   const m = $("colorMenu");
   if (m.style.display !== "flex") return;
   if (m.contains(e.target) || e.target === $("colorCurrent")) return;
-  closeColorMenu(); e.stopPropagation(); e.preventDefault();
+  closeColorMenu();   // outside tap closes AND proceeds
 }, true);
 /* CONVERT: snap every opaque template pixel to the nearest stop gray by
    luminance. One snapshot = one undo step; the refresh afterwards hides the
@@ -2421,7 +2400,7 @@ $("btnConvert").addEventListener("click", () => {
     if (bg && BG_STYLES[bg]) bgMode = bg;
     const br = JSON.parse(localStorage.getItem(LS.brush) || "null");
     if (br) {
-      brushSize = Math.max(1, Math.min(8, br.size | 0)) || 1;
+      brushSize = Math.max(1, Math.min(16, br.size | 0)) || 1;
       if (br.shape === "circle" || br.shape === "square") brushShape = br.shape;
     }
   } catch (e) {}
