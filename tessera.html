@@ -45,6 +45,7 @@
   .bgo[data-bg="black"] { background: #000; }
   .bgo[data-bg="light"] { background: conic-gradient(#fff 25%, #cbcbcb 0 50%, #fff 0 75%, #cbcbcb 0); background-size: 12px 12px; }
   .bgo[data-bg="ink"] { background: #191919; }
+  .bgo[data-bg="coal"] { background: #0c0c0c; }
   #bgCurrent { margin-top: auto; }   /* pinned to the rail's bottom, clear of the tools */
   #bgMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 6px;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px;
@@ -171,6 +172,7 @@
   <button class="bgo" data-bg="light" title="Classic light checkerboard"></button>
   <button class="bgo" data-bg="dark" title="Dark checkerboard"></button>
   <button class="bgo" data-bg="ink" title="Palette darkest — #191919"></button>
+  <button class="bgo" data-bg="coal" title="5% black — #0C0C0C"></button>
   <button class="bgo" data-bg="black" title="Solid black"></button>
 </div>
 
@@ -1076,7 +1078,8 @@ const BG_STYLES = {
   dark: makeChecker("#232323", "#2c2c2c"),
   black: "#000000",
   light: makeChecker("#ffffff", "#cbcbcb"),
-  ink: "#191919",   // palette darkest
+  ink: "#191919",   // palette darkest (maps through the active palette as the game void)
+  coal: "#0c0c0c",  // 5% black — maps through the active palette like ink
 };
 let bgMode = "dark";
 /* The ink background IS the game's void: a #191919 surface under the zone
@@ -1085,9 +1088,10 @@ let bgMode = "dark";
    gets — so tiles sit against the true zone void in realtime. */
 function bgFill() {
   const pal = palettes[palIdx];
-  if (bgMode === "ink" && pal.base) {
+  if ((bgMode === "ink" || bgMode === "coal") && pal.base) {
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
-    return "rgb(" + lut[75] + "," + lut[76] + "," + lut[77] + ")";   // 25*3 = 75
+    const i = (bgMode === "ink" ? 25 : 12) * 3;   // #191919 -> l=25, #0C0C0C -> l=12
+    return "rgb(" + lut[i] + "," + lut[i + 1] + "," + lut[i + 2] + ")";
   }
   return BG_STYLES[bgMode];
 }
@@ -2253,7 +2257,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.13.3";
+const APP_VERSION = "6.13.5";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
