@@ -113,8 +113,8 @@
 
 <div id="stage">
   <div id="rail">
-    <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B)"></button>
-    <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E)"></button>
+    <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
+    <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
     <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
     <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
@@ -1404,7 +1404,35 @@ function pvPos(e) { return worldPos(e, "pv"); }
    eyedrops the pixel under the finger instead. Movement past the jitter
    threshold keeps it a normal stroke. ---- */
 const HOLD_MS = 500, HOLD_JITTER = 6;
+/* QuickShape: mid-stroke, hold the pointer still for QLINE_MS (drifting less
+   than QLINE_JITTER screen px) and the stroke snaps to a straight line from
+   its start point; keep holding to adjust the endpoint, release to place.
+   Touch precedence: while the origin hold-pick timer is armed (finger never
+   left its down point), QuickShape stays out of the way. */
+const QLINE_MS = 600, QLINE_JITTER = 4;
 function clearHold() { if (stroke && stroke.holdT) { clearTimeout(stroke.holdT); stroke.holdT = null; } }
+/* ---- QuickShape line snap ---- */
+function qlineRedraw(pos) {   // rewind to the pre-stroke snapshot, draw origin->pos
+  if (!undoStack.length) return;
+  edCtx.putImageData(undoStack[undoStack.length - 1], 0, 0);
+  (stroke.kind === "ed" ? lineTo : pvLine)(stroke.qOrigin[0], stroke.qOrigin[1], pos[0], pos[1]);
+  stroke.last = [pos[0], pos[1]];
+  templateChanged();
+}
+function qlineArm(e) {   // dwell watch — restarts whenever the pointer drifts
+  if (stroke.holdT) return;   // origin hold-pick (touch) owns a stroke that never moved
+  const p = vpPoint(e);
+  if (stroke.qAnchor && Math.hypot(p.x - stroke.qAnchor.x, p.y - stroke.qAnchor.y) <= QLINE_JITTER) return;
+  stroke.qAnchor = p;
+  if (stroke.qT) clearTimeout(stroke.qT);
+  const s = stroke;
+  stroke.qT = setTimeout(() => {
+    if (stroke !== s || s.qSnapped || pointers.size !== 1) return;   // stroke ended/aborted/pinched
+    s.qT = null; s.qSnapped = true;
+    qlineRedraw(s.last);
+    status("Line \u2014 drag to adjust the endpoint, release to place.");
+  }, QLINE_MS);
+}
 function holdPick(lc) {
   if (activeTab === "ed") { const [x, y] = edPos(lc); pickAt(x, y); }
   else { const [px, py] = pvPos(lc); const m = levelToTemplate(px, py); if (m) pickAt(m.tx, m.ty); }
@@ -1429,7 +1457,7 @@ function beginStroke(e) {
     if (tool === "pick") { pickAt(x, y); return; }
     if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
     snapshot(); putPx(x, y); templateChanged();
-    stroke = { kind: "ed", last: [x, y], snap: true };
+    stroke = { kind: "ed", last: [x, y], qOrigin: [x, y], snap: true };
     armHold(e);
     return;
   }
@@ -1452,7 +1480,7 @@ function beginStroke(e) {
   if (tool === "pick") { pickAt(m.tx, m.ty); return; }
   if (tool === "fill") { snapshot(); cellFill(m.tx, m.ty); templateChanged(); persistPng(); refreshFileSwatches(); return; }
   snapshot(); putPx(m.tx, m.ty); templateChanged();
-  stroke = { kind: "pvpx", last: [px, py], snap: true };
+  stroke = { kind: "pvpx", last: [px, py], qOrigin: [px, py], snap: true };
   armHold(e);
 }
 function moveStroke(e) {
@@ -1461,12 +1489,17 @@ function moveStroke(e) {
     const p = vpPoint(e);
     if (Math.hypot(p.x - stroke.downVp.x, p.y - stroke.downVp.y) > HOLD_JITTER) clearHold();
   }
-  if (stroke.kind === "ed") {
-    const [x, y] = edPos(e);
-    if (x !== stroke.last[0] || y !== stroke.last[1]) { lineTo(stroke.last[0], stroke.last[1], x, y); stroke.last = [x, y]; templateChanged(); }
-  } else if (stroke.kind === "pvpx") {
-    const [px, py] = pvPos(e);
-    if (px !== stroke.last[0] || py !== stroke.last[1]) { pvLine(stroke.last[0], stroke.last[1], px, py); stroke.last = [px, py]; templateChanged(); }
+  if (stroke.kind === "ed" || stroke.kind === "pvpx") {
+    const pos = stroke.kind === "ed" ? edPos(e) : pvPos(e);
+    if (stroke.qSnapped) {   // line mode: endpoint tracks the pointer until lift
+      if (pos[0] !== stroke.last[0] || pos[1] !== stroke.last[1]) qlineRedraw(pos);
+      return;
+    }
+    if (pos[0] !== stroke.last[0] || pos[1] !== stroke.last[1]) {
+      (stroke.kind === "ed" ? lineTo : pvLine)(stroke.last[0], stroke.last[1], pos[0], pos[1]);
+      stroke.last = [pos[0], pos[1]]; templateChanged();
+    }
+    qlineArm(e);
   } else if (stroke.kind === "slope") {
     const [px, py] = pvPos(e);
     const nc = Math.floor(px / TILE), nr = Math.floor(py / TILE);
@@ -1537,6 +1570,8 @@ function endStroke() {
     drawGrid();   // clears the drag ghost on every exit path
     return;
   }
+  if (stroke && stroke.qT) clearTimeout(stroke.qT);
+  if (stroke && stroke.qSnapped) status("Line placed.");
   if (stroke && stroke.snap) { persistPng(); refreshFileSwatches(); }
   stroke = null;
 }
@@ -2009,7 +2044,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.2.0";
+const APP_VERSION = "6.3.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
