@@ -2460,11 +2460,28 @@ $("revApply").addEventListener("click", () => {
   rebuild(); renderPreview(); blit(); drawGrid();
   $("revPanel").style.display = "none"; revKey = null; revMask = null; revRole = null;
 });
+/* Layout+rules export: share sheet on capable devices (pick AirDrop / Save
+   to Files / etc.), classic download elsewhere — same pattern as the PNG
+   export. Blob built synchronously to stay inside WebKit's activation
+   window. The remaps/roleRemaps sections are the COMPLETE ruleset for the
+   active contract, not just what the mockup uses. */
 $("btnLayoutSave").addEventListener("click", () => {
-  const a = document.createElement("a");
-  a.href = "data:application/json," + encodeURIComponent(JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes,
+  const json = JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes,
     remaps:     { [CT.id]: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) } },
-    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } } }));
+    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } } });
+  try {
+    if (navigator.share && navigator.canShare) {
+      const file = new File([json], "tessera_layout.json", { type: "application/json" });
+      if (navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file] })
+          .then(() => status("Shared tessera_layout.json."))
+          .catch((err) => { if (err && err.name !== "AbortError") status("Share failed: " + err.message); });
+        return;
+      }
+    }
+  } catch (e) {}   // fall through to the download
+  const a = document.createElement("a");
+  a.href = "data:application/json," + encodeURIComponent(json);
   a.download = "tessera_layout.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status("Layout saved as tessera_layout.json.");
@@ -2707,7 +2724,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.16.0";
+const APP_VERSION = "6.16.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
