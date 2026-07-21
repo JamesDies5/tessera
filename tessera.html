@@ -91,9 +91,9 @@
   #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
     border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
     display: none; pointer-events: none; transform: translate(-50%, -115%); }
-  #btnConvert, #btnDeselect { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+  #btnConvert, #btnDeselect, #btnCopy, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto; }
-  #btnConvert:active, #btnDeselect:active { background: var(--line); }
+  #btnConvert:active, #btnDeselect:active, #btnCopy:active, #btnPaste:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
@@ -188,6 +188,7 @@
     <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
     <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
     <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
+    <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Move — lifts the current selection so it can be dragged; flips and 90° rotation in the bottom bar. Switching to any other tool drops it in place."></button>
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
     <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
     <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
@@ -232,7 +233,7 @@
 <!-- Selection options bar (bottom): shapes on top, modes + deselect below.
      Visible only while the marquee tool is active on the Template tab. -->
 <div id="selbar">
-  <div class="selrow">
+  <div class="selrow" id="selrowSelect">
     <button class="ibtn selshape on" data-selshape="lasso" data-icon="lasso" title="Freehand / polygon — drag to lasso (auto-closes on release); tap to place polygon points, then tap the origin marker to close"></button>
     <button class="ibtn selshape" data-selshape="rect" data-icon="selrect" title="Rectangle — drag corner to corner"></button>
     <button class="ibtn selshape" data-selshape="ellipse" data-icon="selellipse" title="Ellipse — drag the bounding box"></button>
@@ -241,6 +242,14 @@
     <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
     <span class="vsep"></span>
     <button id="btnDeselect" title="Clear the selection (and any in-progress polygon)">DESELECT</button>
+    <span class="vsep"></span>
+    <button id="btnCopy" title="Copy the selected pixels to the clipboard (Cmd/Ctrl+C)">COPY</button>
+    <button id="btnPaste" title="Paste in place as a floating selection, ready to move (Cmd/Ctrl+V)">PASTE</button>
+  </div>
+  <div class="selrow" id="selrowMove" style="display:none">
+    <button class="optItem" id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span><span class="olbl">Flip H</span></button>
+    <button class="optItem" id="btnFlipV" title="Flip the floating selection vertically"><span data-icon="flipV"></span><span class="olbl">Flip V</span></button>
+    <button class="optItem" id="btnRot90" title="Rotate the floating selection 90° clockwise — lossless; four taps return to start"><span data-icon="rot90"></span><span class="olbl">Rotate 90°</span></button>
   </div>
 </div>
 
@@ -1012,6 +1021,10 @@ const ICONS = {
   selellipse: '<ellipse cx="12" cy="12" rx="8" ry="6" stroke-dasharray="3 2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
+  move: '<polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/>',
+  flipH: '<path d="M8 7 3 12 8 17z"/><path d="M16 7 21 12 16 17z"/><path d="M12 2v2M12 8v2M12 14v2M12 20v2"/>',
+  flipV: '<path d="M7 8 12 3 17 8z"/><path d="M7 16 12 21 17 16z"/><path d="M2 12h2M8 12h2M14 12h2M20 12h2"/>',
+  rot90: '<path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/>',
 };
 document.querySelectorAll("[data-icon]").forEach((b) => {
   b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
@@ -1165,6 +1178,7 @@ function blit() {
   const w = WORLD[activeTab];
   sctx.fillStyle = bgFill(); sctx.fillRect(0, 0, w.w, w.h);
   sctx.drawImage(activeTab === "ed" ? edDisplay() : pv, 0, 0);
+  if (activeTab === "ed" && float) sctx.drawImage(floatDisplay(), float.x, float.y);
 }
 function applyView(tab) {
   if (tab === activeTab) { blit(); drawGrid(); }
@@ -1268,7 +1282,12 @@ function drawGrid() {
     if (CT.TIP45_RESERVED) { put(CT.TIP45_RESERVED.floorY, "Yf"); put(CT.TIP45_RESERVED.ceilR, "Rc"); }
     if (CT.CEIL_SLOPE_STAMPS) for (const cols of Object.values(CT.CEIL_SLOPE_STAMPS)) cols.forEach((col) => col.forEach((c, i) => put(c, i ? "Cu" : "Cs")));
   }
-  if (hover && hover.x >= 0 && hover.y >= 0 && hover.x < W && hover.y < H) {
+  if (tool === "selmove") {
+    const over = hover && float && hover.x >= float.x && hover.y >= float.y && hover.x < float.x + float.w && hover.y < float.y + float.h;
+    if (over) viewport.style.cursor = "move";
+    else if (viewport.style.cursor === "move") viewport.style.cursor = "";
+  } else if (viewport.style.cursor === "move") viewport.style.cursor = "";
+  if (hover && tool !== "selmove" && hover.x >= 0 && hover.y >= 0 && hover.x < W && hover.y < H) {
     // hovering pen/mouse tip: outline the pixel it would touch (or the whole
     // cell in Cells mode), dark halo behind an accent line for contrast
     const cellMode = activeTab === "pv" && pvMode === "cells";
@@ -1296,8 +1315,16 @@ function drawGrid() {
       ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
     }
   }
-  if (activeTab === "ed" && (selEdges || selPoly || (stroke && stroke.kind === "sel"))) {
+  if (activeTab === "ed" && (selEdges || float || selPoly || (stroke && stroke.kind === "sel"))) {
     const vs = v.s;
+    if (float && floatEdges) {   // ants travel with the float
+      ovCtx.lineWidth = 1;
+      ovCtx.beginPath();
+      for (const e2 of floatEdges) { ovCtx.moveTo(v.x + (float.x + e2[0]) * vs, v.y + (float.y + e2[1]) * vs); ovCtx.lineTo(v.x + (float.x + e2[2]) * vs, v.y + (float.y + e2[3]) * vs); }
+      ovCtx.strokeStyle = "rgba(0,0,0,0.9)"; ovCtx.setLineDash([]); ovCtx.stroke();
+      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([4, 4]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
+      ovCtx.setLineDash([]); ovCtx.lineDashOffset = 0;
+    }
     if (selEdges) {   // committed mask: marching ants (black base, white dashes)
       ovCtx.lineWidth = 1;
       ovCtx.beginPath();
@@ -1399,6 +1426,20 @@ function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undo
 function levelSnapshot() { levelUndo.push(JSON.stringify({ fills, userSlopes })); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function applyLevelState(s) { fills = s.fills; userSlopes = s.userSlopes; persistFills(); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid(); }
 function undo() {
+  if (float) {
+    if (floatHist.length) {   // step back one drag/flip/rotate, staying in Move mode
+      floatRedoHist.push(floatSnapState());
+      floatRestoreState(floatHist.pop());
+      return;
+    }
+    // history exhausted: retire the float — a pasted one just vanishes (it
+    // has no cut snapshot to pop); a cut one falls through to pop the sheet
+    const wasPasted = float.pasted;
+    selMask = float.origMask; float = null; floatEdges = null; floatHist = []; floatRedoHist = [];
+    selRebuildEdges();
+    setTool("marquee");
+    if (wasPasted) { blit(); drawGrid(); status("Paste removed."); return; }
+  }
   const d = actionLog.length ? actionLog.pop() : "ed";
   if (d === "level") {
     if (!levelUndo.length) return;
@@ -1414,6 +1455,13 @@ function undo() {
   redoLog.push("ed");
 }
 function redo() {
+  if (float) {
+    if (floatRedoHist.length) {
+      floatHist.push(floatSnapState());
+      floatRestoreState(floatRedoHist.pop());
+    } else status("Nothing to redo in this move.");
+    return;   // while floating, redo never replays pixel history underneath
+  }
   const d = redoLog.length ? redoLog.pop() : "ed";
   if (d === "level") {
     if (!levelRedo.length) return;
@@ -1531,11 +1579,182 @@ function shapePoly(pts) {   // even-odd scanline against pixel centers
   return m;
 }
 function syncSelbar() {
-  const want = activeTab === "ed" && tool === "marquee" ? "flex" : "none";
+  const mode = activeTab === "ed" && (tool === "marquee" || tool === "selmove") ? tool : null;
+  $("selrowSelect").style.display = mode === "marquee" ? "flex" : "none";
+  $("selrowMove").style.display = mode === "selmove" ? "flex" : "none";
+  const want = mode ? "flex" : "none";
   const bar = $("selbar");
   if (bar.style.display === want) return;
   bar.style.display = want;
   sizeOverlay();   // bar show/hide resizes the viewport without a window resize event
+}
+/* ==== Move tool (Phase 2) ====
+   Entering Move CUTS the selection into a floating layer (one undo step);
+   leaving Move flattens it where it rests (a second undo step) and the
+   selection re-anchors at the drop position. Flips and the 90-degree
+   rotation are pure ImageData loops — pixel-exact, no canvas transforms. */
+let float = null, floatEdges = null, floatGen = 0;
+let floatHist = [], floatRedoHist = [];   // per-op history inside Move mode
+function floatSnapState() { return { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y }; }
+function floatRestoreState(st) {
+  float.cv = st.cv; float.mask = st.mask; float.w = st.w; float.h = st.h; float.x = st.x; float.y = st.y;
+  floatGen++; floatRebuildEdges(); blit(); drawGrid();
+}
+const floatTintCv = document.createElement("canvas");
+let floatTintKey = "";
+function floatRebuildEdges() {
+  const E = [], w = float.w, h = float.h, m = float.mask;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!m[y * w + x]) continue;
+    if (y === 0 || !m[(y - 1) * w + x]) E.push([x, y, x + 1, y]);
+    if (y === h - 1 || !m[(y + 1) * w + x]) E.push([x, y + 1, x + 1, y + 1]);
+    if (x === 0 || !m[y * w + x - 1]) E.push([x, y, x, y + 1]);
+    if (x === w - 1 || !m[y * w + x + 1]) E.push([x + 1, y, x + 1, y + 1]);
+  }
+  floatEdges = E;
+}
+function floatDisplay() {   // float through the active palette, like edDisplay
+  const pal = palettes[palIdx];
+  if (!pal.base) return float.cv;
+  const key = palIdx + "|" + floatGen;
+  if (floatTintKey !== key) {
+    floatTintKey = key;
+    floatTintCv.width = float.w; floatTintCv.height = float.h;
+    const g = floatTintCv.getContext("2d");
+    g.drawImage(float.cv, 0, 0);
+    const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
+    const img = g.getImageData(0, 0, float.w, float.h), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === 0) continue;
+      const l = Math.min(255, Math.round(d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114));
+      d[i] = lut[l*3]; d[i+1] = lut[l*3+1]; d[i+2] = lut[l*3+2];
+    }
+    g.putImageData(img, 0, 0);
+  }
+  return floatTintCv;
+}
+function floatBegin() {   // cut the selection into the float
+  let x0 = TW, y0 = TH, x1 = -1, y1 = -1;
+  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++)
+    if (selMask[y * TW + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  snapshot();   // undo step 1: the cut
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const g = cv.getContext("2d");
+  const reg = edCtx.getImageData(x0, y0, w, h);
+  const out = g.createImageData(w, h);
+  const fm = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!selMask[(y0 + y) * TW + (x0 + x)]) continue;
+    const i = (y * w + x) * 4;
+    fm[y * w + x] = 1;
+    out.data[i] = reg.data[i]; out.data[i+1] = reg.data[i+1]; out.data[i+2] = reg.data[i+2]; out.data[i+3] = reg.data[i+3];
+    reg.data[i] = reg.data[i+1] = reg.data[i+2] = reg.data[i+3] = 0;   // lift out of the template
+  }
+  g.putImageData(out, 0, 0);
+  edCtx.putImageData(reg, x0, y0);
+  float = { cv, mask: fm, w, h, x: x0, y: y0, origMask: selMask };
+  floatHist = []; floatRedoHist = [];
+  selMask = null; selEdges = null; selPoly = null;
+  floatGen++;
+  floatRebuildEdges();
+  templateChanged(); persistPng(); refreshFileSwatches();
+  status("Selection lifted \u2014 drag to move; flips and rotate below. Switching tools drops it in place.");
+}
+function floatFlatten() {   // drop the float where it rests
+  if (!float) return;
+  if (float.pasted) snapshot();   // a paste has no cut snapshot; its drop is the undo step
+  // (cut floats take none here: the cut's snapshot makes the whole move ONE step)
+  edCtx.drawImage(float.cv, float.x, float.y);
+  const m = new Uint8Array(TW * TH);   // selection re-anchors at the drop spot
+  for (let y = 0; y < float.h; y++) for (let x = 0; x < float.w; x++) {
+    if (!float.mask[y * float.w + x]) continue;
+    const tx = float.x + x, ty = float.y + y;
+    if (tx < 0 || ty < 0 || tx >= TW || ty >= TH) continue;
+    m[ty * TW + tx] = 1;
+  }
+  selMask = m; selRebuildEdges();
+  float = null; floatEdges = null; floatHist = []; floatRedoHist = [];
+  templateChanged(); persistPng(); refreshFileSwatches();
+  status("Moved selection placed.");
+}
+function floatXform(kind) {   // fh | fv | rot (90 CW); pixel-exact loops
+  if (!float) return;
+  floatHist.push(floatSnapState()); floatRedoHist.length = 0;   // each transform is its own undo step
+  const w = float.w, h = float.h;
+  const s2 = float.cv.getContext("2d").getImageData(0, 0, w, h);
+  const nw = kind === "rot" ? h : w, nh = kind === "rot" ? w : h;
+  const cv = document.createElement("canvas"); cv.width = nw; cv.height = nh;
+  const g = cv.getContext("2d");
+  const out = g.createImageData(nw, nh);
+  const nm = new Uint8Array(nw * nh);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let tx, ty;
+    if (kind === "fh") { tx = w - 1 - x; ty = y; }
+    else if (kind === "fv") { tx = x; ty = h - 1 - y; }
+    else { tx = h - 1 - y; ty = x; }
+    const si = (y * w + x) * 4, di = (ty * nw + tx) * 4;
+    out.data[di] = s2.data[si]; out.data[di+1] = s2.data[si+1]; out.data[di+2] = s2.data[si+2]; out.data[di+3] = s2.data[si+3];
+    if (float.mask[y * w + x]) nm[ty * nw + tx] = 1;
+  }
+  g.putImageData(out, 0, 0);
+  const cx = float.x + w / 2, cy = float.y + h / 2;   // keep the visual center
+  float.cv = cv; float.mask = nm; float.w = nw; float.h = nh;
+  float.x = Math.round(cx - nw / 2); float.y = Math.round(cy - nh / 2);
+  floatGen++;
+  floatRebuildEdges();
+  blit(); drawGrid();
+}
+/* ==== copy / paste (Phase 3) ====
+   Internal clipboard sharing the float's immutable-canvas discipline:
+   transforms always build new canvases, so clipboard, float, and history
+   can share references safely. Paste lands IN PLACE as a float already in
+   Move mode. Pasted floats carry pasted:true — they have no cut snapshot,
+   so their flatten takes one (a placed paste = one pixel-undo step) and
+   undoing an unplaced paste vanishes it without touching pixel history. */
+let clip = null;
+function doCopy() {
+  if (activeTab !== "ed") { status("Copy works on the Template tab for now."); return; }
+  if (float) {   // copying a float duplicates it on the next paste
+    clip = { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y };
+    status("Copied the floating selection.");
+    return;
+  }
+  if (!selMask) { status("Nothing selected to copy."); return; }
+  let x0 = TW, y0 = TH, x1 = -1, y1 = -1;
+  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++)
+    if (selMask[y * TW + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) { status("Nothing selected to copy."); return; }
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const g = cv.getContext("2d");
+  const reg = edCtx.getImageData(x0, y0, w, h);
+  const out = g.createImageData(w, h);
+  const fm = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!selMask[(y0 + y) * TW + (x0 + x)]) continue;
+    const i = (y * w + x) * 4;
+    fm[y * w + x] = 1;
+    out.data[i] = reg.data[i]; out.data[i+1] = reg.data[i+1]; out.data[i+2] = reg.data[i+2]; out.data[i+3] = reg.data[i+3];
+  }
+  g.putImageData(out, 0, 0);
+  clip = { cv, mask: fm, w, h, x: x0, y: y0 };
+  status("Copied " + w + "\u00d7" + h + " px.");
+}
+function doPaste() {
+  if (!clip) { status("Clipboard is empty \u2014 copy a selection first."); return; }
+  if (activeTab !== "ed") { status("Paste works on the Template tab for now."); return; }
+  if (float) floatFlatten();   // chained pastes place the previous one first
+  const prevSel = selMask;
+  float = { cv: clip.cv, mask: clip.mask, w: clip.w, h: clip.h, x: clip.x, y: clip.y, origMask: prevSel, pasted: true };
+  selMask = null; selEdges = null; selPoly = null;
+  floatHist = []; floatRedoHist = [];
+  floatGen++;
+  floatRebuildEdges();
+  setTool("selmove");
+  blit(); drawGrid();
+  status("Pasted \u2014 drag, flip, or rotate; switching tools places it.");
 }
 function lineTo(x0, y0, x1, y1) {
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
@@ -1792,13 +2011,17 @@ function beginStroke(e) {
       stroke = { kind: "sel", x0: x, y0: y, x1: x, y1: y, pts: [[x, y]], downVp: vpPoint(e), drag: false };
       return;
     }
+    if (tool === "selmove") {
+      if (float) stroke = { kind: "float", sx: float.x, sy: float.y, ax: x, ay: y };
+      return;
+    }
     if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
     snapshot(); stampEd(x, y); templateChanged();
     stroke = { kind: "ed", last: [x, y], qOrigin: [x, y], snap: true };
     armHold(e);
     return;
   }
-  if (tool === "marquee") { status("Selection works on the Template tab for now."); return; }
+  if (tool === "marquee" || tool === "selmove") { status("Selection works on the Template tab for now."); return; }
   if (tool === "revise") {
     const [px, py] = pvPos(e);
     openRevPanel(K(Math.floor(px / TILE), Math.floor(py / TILE)));
@@ -1826,6 +2049,11 @@ function moveStroke(e) {
     stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
     const p = vpPoint(e);
     if (Math.hypot(p.x - stroke.downVp.x, p.y - stroke.downVp.y) > HOLD_JITTER) clearHold();
+  }
+  if (stroke.kind === "float") {
+    const [x, y] = edPos(e);
+    if (float) { float.x = stroke.sx + (x - stroke.ax); float.y = stroke.sy + (y - stroke.ay); blit(); drawGrid(); }
+    return;
   }
   if (stroke.kind === "sel") {
     const [x, y] = edPos(e);
@@ -1891,6 +2119,14 @@ function placeSlopeRun(run) {
 }
 function endStroke() {
   clearHold();
+  if (stroke && stroke.kind === "float") {
+    if (float && (float.x !== stroke.sx || float.y !== stroke.sy)) {
+      floatHist.push({ cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: stroke.sx, y: stroke.sy });
+      floatRedoHist.length = 0;   // each completed drag is its own undo step
+    }
+    stroke = null;
+    return;
+  }
   if (stroke && stroke.kind === "sel") {
     const s = stroke; stroke = null;
     if (selShape === "rect") { selApply(shapeRect(s.x0, s.y0, s.x1, s.y1)); return; }
@@ -2078,6 +2314,7 @@ function setTab(tab) {   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share 
   activeTab = tab === "ed" ? "ed" : "pv";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("ctxLevel").style.display = tab === "pv" ? "" : "none";   // Level only — Zoo has no cell/slope tools
+  if (tab !== "ed" && float) floatFlatten();
   syncCellbar(tab === "pv");
   syncSelbar();
   if (tab === "zoo" && (tool === "slopeF" || tool === "slopeC")) setTool("pencil");
@@ -2091,6 +2328,11 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 
 /* ---- tool + mode UI ---- */
 function setTool(t) {
+  if (t === "selmove" && tool !== "selmove" && !float) {
+    if (!selMask) { status("Make a selection first \u2014 the Move tool lifts the selected pixels."); return; }
+    floatBegin();
+  }
+  if (t !== "selmove" && float) floatFlatten();
   tool = t;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
   if (t !== "marquee" && selPoly) { selPoly = null; drawGrid(); }   // abandon an open polygon
@@ -2111,7 +2353,12 @@ document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click",
   document.querySelectorAll(".selmode").forEach((q) => q.classList.toggle("on", q === b));
 }));
 $("btnDeselect").addEventListener("click", () => { selClear(); status("Selection cleared."); });
-setInterval(() => { if (selEdges && activeTab === "ed") { antPhase = (antPhase + 2) % 8; drawGrid(); } }, 140);
+$("btnCopy").addEventListener("click", doCopy);
+$("btnPaste").addEventListener("click", doPaste);
+$("btnFlipH").addEventListener("click", () => floatXform("fh"));
+$("btnFlipV").addEventListener("click", () => floatXform("fv"));
+$("btnRot90").addEventListener("click", () => floatXform("rot"));
+setInterval(() => { if ((selEdges || float) && activeTab === "ed") { antPhase = (antPhase + 2) % 8; drawGrid(); } }, 140);
 function syncCellbar(levelTab) {   // levelTab: is the Level tab the active one?
   const want = levelTab && pvMode === "cells" ? "flex" : "none";
   const bar = $("cellbar");
@@ -2274,6 +2521,8 @@ $("btnResetArt").addEventListener("click", () => {
 });
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { e.preventDefault(); doCopy(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { e.preventDefault(); doPaste(); return; }
   if (e.metaKey || e.ctrlKey) return;
   const k = e.key.toLowerCase();
   if (k === "b") setTool("pencil"); else if (k === "e") setTool("eraser");
@@ -2326,7 +2575,7 @@ function setContract(id, opts) {
     refreshFileSwatches(); blit(); drawGrid(); renderPreview();
   }
 }
-$("ctSelect").addEventListener("change", (e) => { setContract(e.target.value); selClear(); });
+$("ctSelect").addEventListener("change", (e) => { if (float) floatFlatten(); setContract(e.target.value); selClear(); });
 
 /* Empty cap/ceiling cells get placeholder art copied from their source
    stamps, so sheets predating those features show editable duplicates
@@ -2385,6 +2634,7 @@ function seedSpecialCells() {
 
 /* ---- file IO / persistence ---- */
 function loadPngIntoEditor(src, note, noSwitch) {
+  if (float) floatFlatten();
   const img = new Image();
   img.onload = () => {
     if (noSwitch === undefined) noSwitch = false;
@@ -2457,7 +2707,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.14.1";
+const APP_VERSION = "6.16.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
