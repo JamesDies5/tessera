@@ -79,9 +79,12 @@
   #cellbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .fly { position: relative; display: inline-flex; }
-  #optMenu { position: absolute; left: 0; top: calc(100% + 8px); z-index: 70; display: none; gap: 6px;
-    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px;
-    box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #optbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
+    background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .optline { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px; height: 32px;
+    padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 1px; }
+  .optline svg { width: 16px; height: 16px; }
+  .optline:active { background: var(--line); }
   .optItem { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 66px;
     padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
     cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 1px; color: var(--text); }
@@ -123,13 +126,7 @@
     <option value="v2">4&times;4</option>
     <option value="v3">5&times;5</option>
   </select>
-  <span class="fly"><button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template export, import, and reset"></button>
-  <!-- Options flyout: template file operations, labeled; ids unchanged -->
-  <div id="optMenu">
-    <button class="optItem" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span><span class="olbl">Reset</span></button>
-    <button class="optItem" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span><span class="olbl">Import</span></button>
-    <button class="optItem" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span><span class="olbl">Export</span></button>
-  </div></span>
+  <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
     <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
@@ -154,6 +151,15 @@
   </div></span>
   <input type="file" id="fileTpl" accept="image/png" hidden>
 </header>
+
+<!-- Options tray: template file + canvas operations, one line each.
+     Toggled by the wrench; actions close it. -->
+<div id="optbar">
+  <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
+  <button class="optline" id="btnCanvas" title="Resize the sheet — drag the right/bottom handles in 16px cells; cannot shrink below the contract's base cells"><span data-icon="frame"></span>Canvas</button>
+  <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
+  <button class="optline" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span>Export</button>
+</div>
 
 <!-- Cells sub-row: tools and layout operations for cell-terrain editing.
      Lives under the header, only while the Level tab is in Cells mode. -->
@@ -1025,6 +1031,7 @@ const ICONS = {
   flipH: '<path d="M8 7 3 12 8 17z"/><path d="M16 7 21 12 16 17z"/><path d="M12 2v2M12 8v2M12 14v2M12 20v2"/>',
   flipV: '<path d="M7 8 12 3 17 8z"/><path d="M7 16 12 21 17 16z"/><path d="M2 12h2M8 12h2M14 12h2M20 12h2"/>',
   rot90: '<path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/>',
+  frame: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/>',
 };
 document.querySelectorAll("[data-icon]").forEach((b) => {
   b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
@@ -1035,7 +1042,11 @@ const DEFAULT_PNGS = {
   v1: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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",
   v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
 };
-const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush" };
+const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush", size: "tessera.size" };
+/* Per-contract sheet size in cells (extends the contract's base TCOLS/TROWS;
+   never below base, so structural cells can't be cropped). */
+let sheetSize = {};
+try { sheetSize = JSON.parse(localStorage.getItem(LS.size) || "{}") || {}; } catch (e) { sheetSize = {}; }
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
@@ -1225,7 +1236,7 @@ function drawGrid() {
   if (activeTab === "ed" && CT && $("btnCoords").classList.contains("on") && v.s >= 1.2) {
     ovCtx.font = "600 " + Math.max(8, Math.min(11, 5 * v.s)) + "px ui-monospace, monospace";
     ovCtx.textBaseline = "top";
-    for (let ay = 0; ay < CT.TROWS; ay++) for (let ax = 0; ax < CT.TCOLS; ax++) {
+    for (let ay = 0; ay < TH / TILE; ay++) for (let ax = 0; ax < TW / TILE; ax++) {   // live dims — extended cells get codes too
       const x = v.x + ax * TILE * v.s + 2, y = v.y + ay * TILE * v.s + 2;
       if (x < -30 || y < -20 || x > r.width || y > r.height) continue;
       const nm = cellName(ax, ay);
@@ -1287,7 +1298,25 @@ function drawGrid() {
     if (over) viewport.style.cursor = "move";
     else if (viewport.style.cursor === "move") viewport.style.cursor = "";
   } else if (viewport.style.cursor === "move") viewport.style.cursor = "";
-  if (hover && tool !== "selmove" && hover.x >= 0 && hover.y >= 0 && hover.x < W && hover.y < H) {
+  if (canvasMode && activeTab === "ed") {
+    const vs = v.s;
+    const propC = stroke && stroke.kind === "resize" && stroke.axis === "x" ? stroke.prop : TW / TILE;
+    const propR = stroke && stroke.kind === "resize" && stroke.axis === "y" ? stroke.prop : TH / TILE;
+    ovCtx.strokeStyle = "#8ecbff"; ovCtx.setLineDash([6, 4]); ovCtx.lineWidth = 2;
+    ovCtx.strokeRect(v.x, v.y, propC * TILE * vs, propR * TILE * vs);
+    ovCtx.setLineDash([]);
+    const grip = (x2, y2) => {
+      ovCtx.fillStyle = "#8ecbff"; ovCtx.strokeStyle = "rgba(0,0,0,0.8)"; ovCtx.lineWidth = 2;
+      ovCtx.beginPath(); ovCtx.rect(x2 - 8, y2 - 8, 16, 16); ovCtx.fill(); ovCtx.stroke();
+    };
+    grip(v.x + propC * TILE * vs, v.y + propR * TILE * vs / 2);
+    grip(v.x + propC * TILE * vs / 2, v.y + propR * TILE * vs);
+    ovCtx.font = "600 12px ui-monospace, monospace"; ovCtx.textBaseline = "top";
+    const lbl = propC + "×" + propR + " cells";
+    ovCtx.fillStyle = "rgba(0,0,0,0.75)"; ovCtx.fillRect(v.x + 4, v.y + 4, ovCtx.measureText(lbl).width + 8, 18);
+    ovCtx.fillStyle = "#8ecbff"; ovCtx.fillText(lbl, v.x + 8, v.y + 7);
+  }
+  if (hover && tool !== "selmove" && !canvasMode && hover.x >= 0 && hover.y >= 0 && hover.x < W && hover.y < H) {
     // hovering pen/mouse tip: outline the pixel it would touch (or the whole
     // cell in Cells mode), dark halo behind an accent line for contrast
     const cellMode = activeTab === "pv" && pvMode === "cells";
@@ -1599,6 +1628,44 @@ function floatSnapState() { return { cv: float.cv, mask: float.mask, w: float.w,
 function floatRestoreState(st) {
   float.cv = st.cv; float.mask = st.mask; float.w = st.w; float.h = st.h; float.x = st.x; float.y = st.y;
   floatGen++; floatRebuildEdges(); blit(); drawGrid();
+}
+/* ==== canvas resize ====
+   Sheet dims are contract base + persisted extension. Resizing swaps the
+   board canvas (which resets ctx state and wipes content — preserved by
+   the caller) and CLEARS pixel undo history: snapshots are dimension-bound
+   and mixing sizes in one stack corrupts silently. */
+let canvasMode = false;
+function exitCanvasMode() { if (!canvasMode) return; canvasMode = false; drawGrid(); }
+function applySheetDims(cols, rows) {
+  sheetSize[CT.id] = { cols, rows };
+  try { localStorage.setItem(LS.size, JSON.stringify(sheetSize)); } catch (e) {}
+  TW = TILE * cols; TH = TILE * rows;
+  WORLD.ed.w = TW; WORLD.ed.h = TH;
+  ed.width = TW; ed.height = TH;   // wipes content + resets ctx state
+  edCtx.imageSmoothingEnabled = false;
+  undoStack.length = 0; redoStack.length = 0;
+  actionLog = actionLog.filter((d) => d !== "ed");
+  redoLog = redoLog.filter((d) => d !== "ed");
+  edGen++;
+}
+function stripHasArt(cols, rows) {   // any opaque pixel beyond the proposed bounds?
+  const d = edCtx.getImageData(0, 0, TW, TH).data;
+  const bx = cols * TILE, by = rows * TILE;
+  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++)
+    if ((x >= bx || y >= by) && d[(y * TW + x) * 4 + 3] !== 0) return true;
+  return false;
+}
+function resizeSheet(cols, rows) {
+  cols = Math.max(CT.TCOLS, Math.min(26, cols));
+  rows = Math.max(CT.TROWS, Math.min(99, rows));
+  if (cols === TW / TILE && rows === TH / TILE) return;
+  if (float) floatFlatten();
+  selClear();
+  const keep = edCtx.getImageData(0, 0, Math.min(TW, cols * TILE), Math.min(TH, rows * TILE));
+  applySheetDims(cols, rows);
+  edCtx.putImageData(keep, 0, 0);
+  templateChanged(); persistPng(); refreshFileSwatches();
+  status("Sheet is now " + cols + "×" + rows + " cells. Pixel undo history was cleared.");
 }
 const floatTintCv = document.createElement("canvas");
 let floatTintKey = "";
@@ -2005,6 +2072,14 @@ function clearFingerHold() { if (fingerHold && fingerHold.holdT) { clearTimeout(
 function beginStroke(e) {
   if (activeTab === "ed") {
     const [x, y] = edPos(e);
+    if (canvasMode) {
+      const p = vpPoint(e), v = view.ed;
+      const gripR = Math.hypot(p.x - (v.x + TW * v.s), p.y - (v.y + TH * v.s / 2)) <= 18;
+      const gripB = Math.hypot(p.x - (v.x + TW * v.s / 2), p.y - (v.y + TH * v.s)) <= 18;
+      if (gripR || gripB) { stroke = { kind: "resize", axis: gripR ? "x" : "y", prop: gripR ? TW / TILE : TH / TILE }; return; }
+      exitCanvasMode(); status("Canvas mode closed.");
+      return;
+    }
     if (tool === "slopeF" || tool === "slopeC") { status("Slope tools draw in the LEVEL tab."); return; }
     if (tool === "pick") { pickAt(x, y); return; }
     if (tool === "marquee") {
@@ -2049,6 +2124,13 @@ function moveStroke(e) {
     stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
     const p = vpPoint(e);
     if (Math.hypot(p.x - stroke.downVp.x, p.y - stroke.downVp.y) > HOLD_JITTER) clearHold();
+  }
+  if (stroke.kind === "resize") {
+    const [x, y] = edPos(e);
+    if (stroke.axis === "x") stroke.prop = Math.max(CT.TCOLS, Math.min(26, Math.round((x + 1) / TILE)));
+    else stroke.prop = Math.max(CT.TROWS, Math.min(99, Math.round((y + 1) / TILE)));
+    drawGrid();
+    return;
   }
   if (stroke.kind === "float") {
     const [x, y] = edPos(e);
@@ -2119,6 +2201,16 @@ function placeSlopeRun(run) {
 }
 function endStroke() {
   clearHold();
+  if (stroke && stroke.kind === "resize") {
+    const s = stroke; stroke = null;
+    const cols = s.axis === "x" ? s.prop : TW / TILE;
+    const rows = s.axis === "y" ? s.prop : TH / TILE;
+    if (cols === TW / TILE && rows === TH / TILE) { drawGrid(); return; }
+    if ((cols < TW / TILE || rows < TH / TILE) && stripHasArt(cols, rows) &&
+        !confirm("Shrinking to " + cols + "×" + rows + " cells will CROP artwork in the removed area. Continue?")) { drawGrid(); return; }
+    resizeSheet(cols, rows);
+    return;
+  }
   if (stroke && stroke.kind === "float") {
     if (float && (float.x !== stroke.sx || float.y !== stroke.sy)) {
       floatHist.push({ cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: stroke.sx, y: stroke.sy });
@@ -2315,6 +2407,8 @@ function setTab(tab) {   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share 
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("ctxLevel").style.display = tab === "pv" ? "" : "none";   // Level only — Zoo has no cell/slope tools
   if (tab !== "ed" && float) floatFlatten();
+  if (canvasMode) exitCanvasMode();
+  closeOptMenu();
   syncCellbar(tab === "pv");
   syncSelbar();
   if (tab === "zoo" && (tool === "slopeF" || tool === "slopeC")) setTool("pencil");
@@ -2333,6 +2427,7 @@ function setTool(t) {
     floatBegin();
   }
   if (t !== "selmove" && float) floatFlatten();
+  exitCanvasMode();
   tool = t;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
   if (t !== "marquee" && selPoly) { selPoly = null; drawGrid(); }   // abandon an open polygon
@@ -2443,7 +2538,8 @@ $("revApply").addEventListener("click", () => {
   const m = $("revCoord").value.trim().toUpperCase().match(/^([A-Z])([0-9]{1,2})$/);
   if (!m) { status("Coordinate looks like C10 — column letter + row number."); return; }
   const ax = m[1].charCodeAt(0) - 65, ay = parseInt(m[2], 10) - 1;
-  if (ax < 0 || ax >= CT.TCOLS || ay < 0 || ay >= CT.TROWS) { status("Out of range for this template (" + String.fromCharCode(64 + CT.TCOLS) + CT.TROWS + " max)."); return; }
+  const _mc = TW / TILE, _mr = TH / TILE;
+  if (ax < 0 || ax >= _mc || ay < 0 || ay >= _mr) { status("Out of range for this template (" + String.fromCharCode(64 + _mc) + _mr + " max)."); return; }
   const entry = { ax, ay };
   if ($("revH").classList.contains("on")) entry.flipH = true;
   if ($("revV").classList.contains("on")) entry.flipV = true;
@@ -2568,7 +2664,9 @@ function setContract(id, opts) {
   if (CT && CT.id === id) return;
   if (CT) { boards[CT.id].undo = undoStack; boards[CT.id].redo = redoStack; }
   CT = CONTRACTS[id];
-  TW = TILE * CT.TCOLS; TH = TILE * CT.TROWS;
+  const _ext = sheetSize[id] || {};
+  TW = TILE * Math.max(CT.TCOLS, Math.min(26, _ext.cols || CT.TCOLS));
+  TH = TILE * Math.max(CT.TROWS, Math.min(99, _ext.rows || CT.TROWS));
   WORLD.ed.w = TW; WORLD.ed.h = TH;
   let b = boards[id];
   if (!b) {
@@ -2666,6 +2764,16 @@ function loadPngIntoEditor(src, note, noSwitch) {
         note = `Sheet is ${img.width}\u00d7${img.height} — matches multiple formats (${matches.map((m) => m.label).join(", ")}). Pick the right one from the dropdown.`;
       }
     }
+    // Extended sheet of the CURRENT contract: clean cell multiples at or above
+    // base dims are adopted as the working size (legacy 160\u00d7272 v3 excluded —
+    // that's the old layout handled by the migration below).
+    if ((img.width !== TW || img.height !== TH) && !(CT.id === "v3" && img.width === 160 && img.height === 272)) {
+      const cw = img.width / TILE, rh = img.height / TILE;
+      if (Number.isInteger(cw) && Number.isInteger(rh) && cw >= CT.TCOLS && rh >= CT.TROWS && cw <= 26 && rh <= 99) {
+        applySheetDims(cw, rh);
+        note = (note ? note + " " : "") + cw + "×" + rh + "-cell extended sheet adopted.";
+      }
+    }
     edCtx.clearRect(0, 0, TW, TH);
     if (CT.id === "v3" && img.height === 272) {
       // previous (per-direction) v3 layout: relocate the ascending art
@@ -2724,7 +2832,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.16.1";
+const APP_VERSION = "6.17.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -2777,21 +2885,25 @@ document.addEventListener("pointerdown", (e) => {
 }, true);
 /* Options flyout: wrench toggles; items act via their original handlers and
    close the menu; outside taps dismiss and are swallowed. */
-function closeOptMenu() { $("optMenu").style.display = "none"; $("btnOptions").classList.remove("on"); }
+function closeOptMenu() {
+  const b = $("optbar");
+  if (b.style.display === "flex") { b.style.display = "none"; sizeOverlay(); }
+  $("btnOptions").classList.remove("on");
+}
 $("btnOptions").addEventListener("click", () => {
-  const m = $("optMenu");
-  if (m.style.display === "flex") { closeOptMenu(); return; }
+  const b = $("optbar");
+  if (b.style.display === "flex") { closeOptMenu(); return; }
   closeColorMenu(); closeBrushMenu();
-  m.style.display = "flex";   // anchored dropdown — CSS owns placement
+  b.style.display = "flex"; sizeOverlay();
   $("btnOptions").classList.add("on");
 });
-document.querySelectorAll(".optItem").forEach((b) => b.addEventListener("click", () => closeOptMenu()));
-document.addEventListener("pointerdown", (e) => {
-  const m = $("optMenu");
-  if (m.style.display !== "flex") return;
-  if (m.contains(e.target) || $("btnOptions").contains(e.target)) return;
-  closeOptMenu();   // outside tap closes AND proceeds
-}, true);
+document.querySelectorAll("#optbar .optline").forEach((b) => b.addEventListener("click", () => closeOptMenu()));
+$("btnCanvas").addEventListener("click", () => {
+  if (activeTab !== "ed") setTab("ed");   // the sheet lives on the Template tab
+  canvasMode = true;
+  drawGrid();
+  status("Canvas mode — drag the right or bottom handle to resize in 16px cells (min " + CT.TCOLS + "×" + CT.TROWS + "). Tap anywhere else to finish.");
+});
 
 /* Brush flyout: slider + shape pair; settings persist and apply to both
    pencil and eraser immediately. */
