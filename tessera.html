@@ -236,8 +236,7 @@
     <button class="ibtn selshape on" data-selshape="lasso" data-icon="lasso" title="Freehand / polygon — drag to lasso (auto-closes on release); tap to place polygon points, then tap the origin marker to close"></button>
     <button class="ibtn selshape" data-selshape="rect" data-icon="selrect" title="Rectangle — drag corner to corner"></button>
     <button class="ibtn selshape" data-selshape="ellipse" data-icon="selellipse" title="Ellipse — drag the bounding box"></button>
-  </div>
-  <div class="selrow">
+    <span class="vsep"></span>
     <button class="ibtn selmode on" data-selmode="add" data-icon="plus" title="Additive — new shapes extend the selection"></button>
     <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
     <span class="vsep"></span>
@@ -1434,6 +1433,7 @@ function abortStroke() { if (!undoStack.length) return; edCtx.putImageData(undoS
 /* ---- drawing ops (template coordinates) ---- */
 function putPx(x, y) {
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+  if (selMask && !selMask[y * TW + x]) return;   // active selection isolates painting
   if (tool === "eraser") edCtx.clearRect(x, y, 1, 1);
   else { edCtx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a / 255})`; edCtx.clearRect(x, y, 1, 1); edCtx.fillRect(x, y, 1, 1); }
 }
@@ -1550,6 +1550,7 @@ function lineTo(x0, y0, x1, y1) {
 }
 function cellFill(x, y) {
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+  if (selMask && !selMask[y * TW + x]) { status("Fill starts inside the selection."); return; }
   const cx = Math.floor(x / TILE) * TILE, cy = Math.floor(y / TILE) * TILE;
   const img = edCtx.getImageData(cx, cy, TILE, TILE), d = img.data;
   const lx = x - cx, ly = y - cy, si = (ly * TILE + lx) * 4;
@@ -1560,6 +1561,7 @@ function cellFill(x, y) {
   while (stack.length) {
     const [px, py] = stack.pop();
     if (px < 0 || py < 0 || px >= TILE || py >= TILE) continue;
+    if (selMask && !selMask[(cy + py) * TW + (cx + px)]) continue;   // selection edge is a wall
     const i = (py * TILE + px) * 4;
     if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
     d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3];
@@ -2455,7 +2457,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.14.0";
+const APP_VERSION = "6.14.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
