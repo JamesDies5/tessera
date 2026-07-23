@@ -170,6 +170,7 @@
   <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
   <button class="ibtn ptool" data-ptool="erase" data-icon="eraser" title="Erase terrain cells — erasing any cell of a slope removes that whole run"></button>
   <span class="vsep"></span>
+  <button class="ibtn" id="btnDice" data-icon="dice" title="Roll a random test room — Metroid-style layout stressing every slope family; replaces the Level layout (undo restores it)"></button>
   <button class="ibtn" id="btnLayoutSave" data-icon="download" title="Save this layout as a JSON file — share it or load it on another device"></button>
   <button class="ibtn" id="btnLayoutLoad" data-icon="upload" title="Load a layout JSON file"></button>
   <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
@@ -276,7 +277,11 @@
    A diagonal counts only when both of its adjacent cardinals are filled.
    ============================================================ */
 const TILE = 16;
-const GCOLS = 44, GROWS = 26;                    // mock level grid
+let GCOLS = 44, GROWS = 26;   // ACTIVE grid dims (rebuild syncs: zoo pins 44×26, field follows fieldCols/Rows)
+const SCREEN_TC = 30, SCREEN_TR = 17;   // one game screen = 480×270 px (landscape) → 30×17 tiles
+let fieldCols = 44, fieldRows = 26;
+try { const g = JSON.parse(localStorage.getItem("tessera.grid") || "null"); if (g && g.c && g.r) { fieldCols = g.c; fieldRows = g.r; } } catch (e) {}
+function persistGrid() { try { localStorage.setItem("tessera.grid", JSON.stringify({ c: fieldCols, r: fieldRows })); } catch (e) {} }
 
 const CONTRACTS = {
   v1: {
@@ -1111,6 +1116,7 @@ const ICONS = {
   rot90: '<path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/>',
   frame: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/>',
   reload: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
+  dice: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.3"/><circle cx="16" cy="8" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="8" cy="16" r="1.3"/><circle cx="16" cy="16" r="1.3"/>',
 };
 document.querySelectorAll("[data-icon]").forEach((b) => {
   b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[b.dataset.icon]}</svg>`;
@@ -1200,6 +1206,34 @@ const overlay = $("gridOverlay"), ovCtx = overlay.getContext("2d");
 const off = document.createElement("canvas"); off.width = GCOLS * TILE; off.height = GROWS * TILE;
 const offCtx = off.getContext("2d", { willReadFrequently: true });
 [pvCtx, offCtx, sctx].forEach((c) => { c.imageSmoothingEnabled = false; });
+/* Preview decorations (v6.28): the door sprite (32×64 = 2×4 tiles, straddles
+   room boundaries so each room shows one 16px half) and Lila at her spawn. */
+const DOOR_IMG = new Image(); DOOR_IMG.src = "data:image/png;base64,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";
+const LILA_IMG = new Image(); LILA_IMG.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAArCAYAAABvhzi8AAAACXBIWXMAAAsTAAALEwEAmpwYAAAGWWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA2LTAzVDA3OjA0OjUwLTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0yMlQxOTo1NjowNS0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0yMlQxOTo1NjowNS0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTIyVDE5OjU1OjM0LTA0OjAwJiN4OTtGaWxlIGxpbGFfaWRsZS5wbmcgb3BlbmVkJiN4QTsyMDI2LTA3LTIyVDE5OjU2OjA1LTA0OjAwJiN4OTtGaWxlIGxpbGEucG5nIHNhdmVkJiN4QTsiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6MGRkNzJmNWItMmIwNC00NTUyLWI4NDQtZGM2YjlkN2YwYTZlIiB4bXBNTTpEb2N1bWVudElEPSJhZG9iZTpkb2NpZDpwaG90b3Nob3A6NTcxZjgyYWQtNzFhNC1hNjQ0LTllZGEtZDc3ZWZjYjMzNDVlIiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6MDg5N2JiYzQtZDhmZC00OWQ0LWI5MzAtMmFlNmJlMTk3YTYwIj4gPHhtcE1NOkhpc3Rvcnk+IDxyZGY6U2VxPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0iY3JlYXRlZCIgc3RFdnQ6aW5zdGFuY2VJRD0ieG1wLmlpZDowODk3YmJjNC1kOGZkLTQ5ZDQtYjkzMC0yYWU2YmUxOTdhNjAiIHN0RXZ0OndoZW49IjIwMjYtMDYtMDNUMDc6MDQ6NTAtMDQ6MDAiIHN0RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCAyNy44IChNYWNpbnRvc2gpIi8+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJzYXZlZCIgc3RFdnQ6aW5zdGFuY2VJRD0ieG1wLmlpZDowZGQ3MmY1Yi0yYjA0LTQ1NTItYjg0NC1kYzZiOWQ3ZjBhNmUiIHN0RXZ0OndoZW49IjIwMjYtMDctMjJUMTk6NTY6MDUtMDQ6MDAiIHN0RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCAyNy44IChNYWNpbnRvc2gpIiBzdEV2dDpjaGFuZ2VkPSIvIi8+IDwvcmRmOlNlcT4gPC94bXBNTTpIaXN0b3J5PiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PtXojyYAAALTSURBVFiFrVdbjtQwEIxHOVKy2g+EuEXOgBB/c4vJH0KcYW6BEBLLZu8UVNFUVNN0t52BkqwkfnS52/1wyrqu3RGM47gvWJal6Df7dB6/LcoRYgj78vVb9/PH9+56ve790zTdzcMY+vCMiDsQt7ZhGNbL5bJ6z1+/l5XAO/rQIlndUWKSAfwmEfswXiMvLabmedGkNDPM/vnTx7/eOffd+w9bn2fuUwsphKCdz+dNGDcAofoOcgJzM5RMY+tMVmMPqnnmYCUiBumyLHje9YuwfcxuyH43m5qaUrAupLCX17eN3PZzY5lV0jOmuUhqd41xJdfz1bg+FMeDxGc2ZkMJ74xnneNxhBp7pmJYqaMpnp+Grc3zvHl/hlM0oIJfXt9WNIaVboxHArPfNrfHr7e5lBjnIk60QguEFEBNrFA9c24my9UlCycbk9SEoAd7qGWu3l0lJY+aWdIaauFUMo2jRTYv2z5riWaNa3VXSZnBas5U1Xie59VmoQwgpkd75x8518kzL7OQ5lorAHPQSArrUGPNYofC6flp2IUoob5DO5CxKfSIIl/pu39AdAy2St0qXUmJsUjTnS7KPD2q1ZQ1mlvnnal1V3qDUEIQeGfolUJ8q9mnadpluXGsTmZD6rbBzamihOLdt+14WCRI6oEXhKgG83jUgpMUmGrm0jiOcjXhxb7nG8utr3rZs312M0pqx5XIonqvpuaqrZfRsjmHbpkktcI9bWqW8chD52Kh0JukwmY0fjPcvCTStRAD8GqETcs9mf2Yo781EUoWxzVNI0TrF1nramzrqlcwjsCr03306wIPZQJJf7ATMpVhcfIWsMYCtYuAh5ZN9raD1UR3+oiJD/07zfN85xSPaKvI/iaKerXnjY86VE3WSSeav7ymu1MGK2OUzfTqyQA9kfU2ylwtoAyvZPZMjZxIpzp6T7bAWsrAbUYjBZwF/6+ZgP95xoo/pwd3PNrvkLwAAAAASUVORK5CYII=";
+DOOR_IMG.onload = LILA_IMG.onload = () => { pvDirty = true; renderPreview(); };
+let roomDoors = [], roomSpawn = null;
+const decorTint = { key: "", door: null, lila: null };
+function tintedDecor(img, slot) {   // sprites follow the active palette, like the tiles
+  const pal = palettes[palIdx];
+  if (!pal.base || !img.complete || !img.width) return img;
+  const key = "" + palIdx;
+  if (decorTint.key !== key) { decorTint.key = key; decorTint.door = null; decorTint.lila = null; }
+  if (!decorTint[slot]) {
+    const cv = document.createElement("canvas"); cv.width = img.width; cv.height = img.height;
+    const g = cv.getContext("2d");
+    g.drawImage(img, 0, 0);
+    const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
+    const d2 = g.getImageData(0, 0, cv.width, cv.height), dd = d2.data;
+    for (let i = 0; i < dd.length; i += 4) {
+      if (dd[i + 3] === 0) continue;
+      const l = Math.min(255, Math.round(dd[i] * 0.299 + dd[i + 1] * 0.587 + dd[i + 2] * 0.114));
+      dd[i] = lut[l * 3]; dd[i + 1] = lut[l * 3 + 1]; dd[i + 2] = lut[l * 3 + 2];
+    }
+    g.putImageData(d2, 0, 0);
+    decorTint[slot] = cv;
+  }
+  return decorTint[slot];
+}
 const viewport = $("viewport");
 function makeChecker(a, b) {   // world-space checker behind transparent art
   const c = document.createElement("canvas"); c.width = 8; c.height = 8;
@@ -1537,8 +1571,458 @@ function refreshFileSwatches() {
 /* ---- undo ---- */
 let actionLog = [], redoLog = [], levelUndo = [], levelRedo = [];
 function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undoStack.length > 40) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
-function levelSnapshot() { levelUndo.push(JSON.stringify({ fills, userSlopes })); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
-function applyLevelState(s) { fills = s.fills; userSlopes = s.userSlopes; persistFills(); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid(); }
+function levelSnapshot() { levelUndo.push(JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows })); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
+function applyLevelState(s) {
+  roomDoors = []; roomSpawn = null;   // decorations belong to a fresh roll only
+  fills = s.fills; userSlopes = s.userSlopes;
+  if (s.gc && s.gr) { fieldCols = s.gc; fieldRows = s.gr; persistGrid(); }
+  persistFills(); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
+}
+/* ==== dice-roll room generator v4 (v6.27) ====
+   Screen = 480x270 landscape = 30x17 tiles; every room is a whole-screen
+   rectangle. Three classes, weighted by the AM2R map and James's guidance:
+   CHAMBERS (2-4 x 2-3 screens; Terrace / Arena / Atrium / Gallery / Warrens
+   -- the platform-rich rooms), SHAFTS (1 wide x 2-5 tall), and HALLS
+   (2-3 x 1; the plain corridors deliberately de-weighted). A furniture pass
+   adds wall ledges and floating platforms everywhere. */
+const HALL_NAMES = ["The High Hall", "The Med Hall", "The Squeeze", "The Bulge", "The Hump", "The Step", "The Multi-Step", "The Funnel", "The Step-Squeeze", "The Slope-Squeeze"];
+const SHAFT_NAMES = ["Standard Zigzag", "Tight Zigzag", "Diagonal Zigzag", "Thick Zigzag", "Ant-Farm Zigzag", "The Tower", "The Two-Step", "The Foothold", "The Sandbag", "The Basic", "The Bubble", "The Tubes", "The Bend", "The Drip"];
+const CHAMBER_NAMES = ["The Terrace", "The Arena", "The Atrium", "The Gallery", "The Warrens"];
+const LILA_MOVE = { GAP: 7, JUMP: 4 };   // clears 7-tile gaps; 4.5t jump mounts 4-tile ledges
+function genRoom(force) {
+  const R = (n) => Math.floor(Math.random() * n);
+  const chance = (p) => Math.random() < p;
+  const pick = (a) => a[R(a.length)];
+  let name = force;
+  if (!name) {
+    const roll = Math.random();
+    name = roll < 0.45 ? pick(CHAMBER_NAMES) : roll < 0.8 ? pick(SHAFT_NAMES)
+      : pick(["The Bulge", "The Hump", "The Step", "The Multi-Step", "The Funnel", "The Step-Squeeze", "The Slope-Squeeze",
+              "The High Hall", "The Med Hall", "The Squeeze"].slice(0, chance(0.75) ? 7 : 10));   // plain corridors rare
+  }
+  const isHall = HALL_NAMES.indexOf(name) >= 0;
+  const isChamber = CHAMBER_NAMES.indexOf(name) >= 0;
+  let CW, CH;
+  if (isChamber) { CW = SCREEN_TC * (2 + R(3)); CH = SCREEN_TR * (2 + R(2)); }
+  else if (isHall) { const rz = Math.random(); CW = SCREEN_TC * (rz < 0.35 ? 1 : rz < 0.8 ? 2 : 3); CH = SCREEN_TR; }   // 1-screen rooms back in the mix
+  else {
+    CW = SCREEN_TC;
+    const scr = { "Standard Zigzag": 2, "Tight Zigzag": 2, "Diagonal Zigzag": 2, "Thick Zigzag": 2, "Ant-Farm Zigzag": 3,
+      "The Tower": 3, "The Two-Step": 3, "The Foothold": 3, "The Sandbag": 2, "The Basic": 2,
+      "The Bubble": 2, "The Tubes": 3, "The Bend": 4, "The Drip": 4 };
+    CH = Math.min(SCREEN_TR * 5, SCREEN_TR * ((scr[name] || 3) + (chance(0.4) ? 1 : 0)));
+  }
+  const F = {}, S = [], resv = new Set();
+  const put = (c, r) => { if (c >= 0 && r >= 0 && c < CW && r < CH) F[K(c, r)] = { t: 1 }; };
+  const rect = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) put(c, r); };
+  const carve = (c0, r0, c1, r1) => { for (let r = Math.max(0, r0); r <= Math.min(CH - 1, r1); r++) for (let c = Math.max(0, c0); c <= Math.min(CW - 1, c1); c++) delete F[K(c, r)]; };
+  const reserve = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) resv.add(K(c, r)); };
+  const addSlope = (o) => {
+    const w = o.steps * o.grad;
+    if (o.c < 1 || o.c + w > CW - 1 || o.r < 1 || o.r >= CH - 1) return;
+    S.push(o);
+    reserve(o.c - 1, o.r - 2, o.c + w, o.r + o.steps + 1);
+  };
+  // anchored slope groups (usable on any solid floor/ceiling row)
+  const hillAt = (x, fr, grad, steps, gap) => {
+    addSlope({ grad, dir: "asc", c: x, r: fr - 1, steps });
+    if (gap > 0) rect(x + steps * grad, fr - steps, x + steps * grad + gap - 1, fr - 1);
+    addSlope({ grad, dir: "desc", c: x + steps * grad + gap, r: fr - steps, steps });
+  };
+  const hangAt = (x, cr, grad, steps, gap) => {
+    addSlope({ grad, dir: "desc", c: x, r: cr + 1, steps, face: "c" });
+    if (gap > 0) rect(x + steps * grad, cr + 1, x + steps * grad + gap - 1, cr + steps);
+    addSlope({ grad, dir: "asc", c: x + steps * grad + gap, r: cr + steps, steps, face: "c" });
+  };
+  const air = (c, r) => c >= 0 && r >= 0 && c < CW && r < CH && !F[K(c, r)];
+  const freeCell = (c, r) => air(c, r) && !resv.has(K(c, r));
+  const airRunUp = (c, r) => { let n = 0; while (air(c, r - 1 - n)) n++; return n; };
+  const airRunDn = (c, r) => { let n = 0; while (air(c, r + 1 + n)) n++; return n; };
+  const passable = (c, r) => airRunUp(c, r) >= 5 || airRunDn(c, r) >= 5;   // furniture must leave a 5t passage
+
+  /* ---------- HALLS (CH = 17) ---------- */
+  function mkHall() {
+    const gapOf = { "The High Hall": 12, "The Med Hall": 8, "The Squeeze": 5 };   // min clearance 5
+    const gap = gapOf[name] || 7 + R(3);
+    const fRow = Math.min(CH - 3, Math.floor(CH / 2 + gap / 2) + R(2));
+    const cRow = Math.max(1, fRow - gap - 1);
+    const f = new Array(CW).fill(fRow), c = new Array(CW).fill(cRow);
+    const rampF = (x, dpt, g, up) => {
+      const f0 = f[Math.max(0, Math.min(CW - 1, x))];
+      addSlope({ grad: g, dir: up ? "asc" : "desc", c: x, r: f0 - 1, steps: dpt });
+      for (let jj = 0; jj < dpt * g && x + jj < CW; jj++) f[x + jj] = up ? f0 - Math.floor(jj / g) : f0 + Math.floor(jj / g);
+      return x + dpt * g;
+    };
+    const rampC = (x, dpt, g, drop) => {
+      const c0 = c[Math.max(0, Math.min(CW - 1, x))];
+      addSlope({ grad: g, dir: drop ? "desc" : "asc", c: x, r: c0 + 1, steps: dpt, face: "c" });
+      for (let jj = 0; jj < dpt * g && x + jj < CW; jj++) c[x + jj] = drop ? c0 + Math.floor(jj / g) : c0 - Math.floor(jj / g);
+      return x + dpt * g;
+    };
+    const setF = (a, b, v) => { for (let x = Math.max(0, a); x <= Math.min(CW - 1, b); x++) f[x] = v; };
+    const setC = (a, b, v) => { for (let x = Math.max(0, a); x <= Math.min(CW - 1, b); x++) c[x] = v; };
+    const G = () => pick([1, 1, 1, 2, 3]);
+    if (name === "The Bulge") {
+      const dd = 1 + R(2), g = G(), w = 12 + R(16), x0 = 6 + R(Math.max(1, CW - 16 - w));
+      const x1 = rampF(x0, dd, g, false); setF(x1, x1 + w - 1, fRow + dd); rampF(x1 + w, dd, g, true);
+      if (chance(0.8)) { const dc = 1 + R(2), gc = G(), xc = 6 + R(Math.max(1, CW - 16 - w));
+        const y1 = rampC(xc, dc, gc, false); setC(y1, y1 + w - 1, cRow - dc); rampC(y1 + w, dc, gc, true); }
+    } else if (name === "The Hump") {
+      const dd = Math.min(1 + R(3), Math.max(1, gap - 5)), g = G(), w = 8 + R(14), x0 = 7 + R(Math.max(1, CW - 20 - w));   // keep 5t over the hump
+      const x1 = rampF(x0, dd, g, true); setF(x1, x1 + w - 1, fRow - dd); rampF(x1 + w, dd, g, false);
+    } else if (name === "The Step") {
+      const dd = 1 + R(2), xs = 10 + R(CW - 24), up = chance(0.5);
+      if (chance(0.65)) { const x1 = rampF(xs, dd, G(), up); setF(x1, CW - 1, up ? fRow - dd : fRow + dd); }
+      else setF(xs, CW - 1, up ? fRow - dd : fRow + dd);
+      if (chance(0.5)) setC(xs + R(6) - 3, CW - 1, up ? cRow - dd : cRow + dd);
+    } else if (name === "The Multi-Step") {
+      let x = 6, lvl = fRow;
+      const n = 3 + R(4);
+      for (let i = 0; i < n && x < CW - 10; i++) {
+        x += 5 + R(8);
+        const dd = 1 + R(2), up = chance(0.5);
+        const nl = Math.max(cRow + 6, Math.min(CH - 3, up ? lvl - dd : lvl + dd));   // 5t under the ceiling
+        if (nl === lvl) continue;
+        if (chance(0.6)) { setF(x, CW - 1, lvl); x = rampF(x, Math.abs(nl - lvl), G(), nl < lvl); }
+        setF(x, CW - 1, nl); lvl = nl;
+      }
+    } else if (name === "The Funnel" || name === "The Step-Squeeze" || name === "The Slope-Squeeze") {
+      const dd = Math.max(1, Math.min(2 + R(2), Math.floor((gap - 5) / 2)));   // pinch keeps a 5t throat
+      const g = name === "The Slope-Squeeze" ? pick([2, 3]) : 1;
+      const w = 6 + R(10);
+      const cx = Math.floor(CW / 2) + R(13) - 6;
+      const a = cx - Math.floor(w / 2) - dd * g, b = cx + Math.floor(w / 2);
+      if (name === "The Step-Squeeze") {
+        for (let i = 1; i <= dd; i++) { setF(a + i * 2, b + dd * 2 - i * 2, fRow - i); setC(a + i * 2, b + dd * 2 - i * 2, cRow + i); }
+      } else {
+        const x1 = rampF(a, dd, g, true); setF(x1, b - 1, fRow - dd); rampF(b, dd, g, false);
+        const y1 = rampC(a, dd, g, true); setC(y1, b - 1, cRow + dd); rampC(b, dd, g, false);
+      }
+    }
+    rect(0, 0, CW - 1, CH - 1);
+    for (let x = 0; x < CW; x++) carve(x, c[x] + 1, x, f[x] - 1);
+    const wl = 2 + R(2), wr2 = 2 + R(2);
+    rect(0, 0, wl - 1, CH - 1); rect(CW - wr2, 0, CW - 1, CH - 1);   // end walls — doors punch through
+    for (let i = 0; i < 6; i++) if (chance(0.4)) {
+      const x = 3 + R(CW - 6);
+      if (f[x] - c[x] - 1 > 5) { if (chance(0.5)) put(x, f[x] - 1); else put(x, c[x] + 1); }   // keep 5t over nubs
+    }
+    return { fArr: f, cArr: c, floorRow: fRow, ceilRow: cRow };
+  }
+
+  /* ---------- SHAFTS (CW = 30) ---------- */
+  function mkShaft() {
+    const topPad = 2, botPad = 2;
+    let W = 13 + R(8);
+    let cx = Math.floor(CW / 2) + R(5) - 2;
+    const x0 = new Array(CH), x1 = new Array(CH);
+    const setRow = (r, cc, ww) => { x0[r] = Math.max(2, cc - Math.floor(ww / 2)); x1[r] = Math.min(CW - 3, x0[r] + ww - 1); };
+    for (let r = 0; r < CH; r++) setRow(r, cx, W);
+    if (name === "The Bubble" || name === "The Drip" || name === "The Bend") {
+      let r = topPad, first = true;
+      while (r < CH - botPad) {
+        const ch = 5 + R(5), neck = 2 + R(3);
+        const Wc = 16 + R(8), Wn = 4 + R(4);
+        if (name === "The Bend" && !first) cx = Math.max(9, Math.min(CW - 10, cx + (chance(0.5) ? 1 : -1) * (3 + R(6))));
+        for (let i = 0; i < ch && r < CH - botPad; i++, r++) setRow(r, cx, Wc);
+        for (let i = 0; i < neck && r < CH - botPad; i++, r++) setRow(r, cx + (name === "The Drip" ? R(7) - 3 : 0), Wn);
+        first = false;
+      }
+    }
+    rect(0, 0, CW - 1, CH - 1);
+    if (name === "The Tubes") {
+      const off = 4 + R(3), tw = 3 + R(2);
+      for (let r = topPad; r < CH - botPad; r++) { carve(cx - off - tw + 1, r, cx - off, r); carve(cx + off, r, cx + off + tw - 1, r); }
+      carve(cx - off, topPad, cx + off, topPad + 4);
+      carve(cx - off, CH - botPad - 5, cx + off, CH - botPad - 1);
+      const mid = topPad + Math.floor((CH - topPad - botPad) / 2);
+      if (chance(0.6)) carve(cx - off, mid, cx + off, mid + 4);   // 5t connectors
+    } else {
+      for (let r = topPad; r < CH - botPad; r++) carve(x0[r], r, x1[r], r);
+    }
+    const zig = { "Standard Zigzag": [4, 1, 6], "Tight Zigzag": [3, 1, 4], "Diagonal Zigzag": [4, 1, 7], "Thick Zigzag": [4, 2, 7], "Ant-Farm Zigzag": [4, 2, 5] };   // pitches ≤ LILA_MOVE.JUMP, gaps ≤ GAP
+    if (zig[name]) {
+      const [p, th, gp] = zig[name];
+      let alt = chance(0.5);
+      for (let y = topPad + 3; y < CH - botPad - 2; y += p) {   // fixed pitch: every platform mountable
+        const L = x0[y], Rr = x1[y];
+        if (Rr - L < gp + 3) continue;
+        if (alt) rect(L, y, Rr - gp, y + th - 1); else rect(L + gp, y, Rr, y + th - 1);
+        if (name === "Diagonal Zigzag") addSlope({ grad: 1, dir: alt ? "desc" : "asc", c: alt ? Rr - gp : L + gp, r: y - 1, steps: 1 });
+        alt = !alt;
+      }
+    } else if (name === "The Tower") {
+      const w = 4 + R(4);
+      for (let y = topPad + 3; y < CH - botPad - 2; y += 3 + R(2)) {
+        const cc = Math.floor((x0[y] + x1[y]) / 2) + R(7) - 3;
+        rect(cc - Math.floor(w / 2), y, cc + Math.floor(w / 2), y + (chance(0.3) ? 1 : 0));
+      }
+    } else if (name === "The Two-Step") {
+      let left = chance(0.5);
+      for (let y = topPad + 3; y < CH - botPad - 2; y += 3) {
+        const L = x0[y], Rr = x1[y], half = Math.floor((Rr - L) / 2);
+        if (left) rect(L + 1, y, L + half, y); else rect(Rr - half, y, Rr - 1, y);
+        left = !left;
+      }
+    } else if (name === "The Foothold") {
+      for (let y = topPad + 3; y < CH - botPad - 2; y += 3 + R(2)) {   // ≤ JUMP
+        const L = x0[y], Rr = x1[y];
+        const w = 2 + R(3), x = L + 1 + R(Math.max(1, Rr - L - w - 1));
+        rect(x, y, x + w - 1, y);
+      }
+    } else if (name === "The Sandbag") {
+      let left = chance(0.5);
+      for (let y = topPad + 3; y < CH - botPad - 2; y += 3 + R(2)) {
+        const w = 3 + R(4);
+        if (left) rect(x0[y], y, x0[y] + w - 1, y + R(2)); else rect(x1[y] - w + 1, y, x1[y], y + R(2));
+        left = !left;
+      }
+    } else if (name === "The Basic") {
+      for (let y = topPad + 6; y < CH - botPad - 4; y += 7 + R(5)) if (chance(0.6)) rect(x0[y] + 3, y, x1[y] - 3, y);
+    }
+    if (chance(0.5) && name !== "The Tubes") {
+      const r = 4 + R(CH - 10);
+      if (chance(0.5)) carve(0, r, x0[r], r + 4); else carve(x1[r], r, CW - 1, r + 4);   // 5t side tunnels
+    }
+    return { floorRow: CH - botPad, ceilRow: topPad - 1, x0, x1 };
+  }
+
+  /* ---------- CHAMBERS (the AM2R big rooms) ---------- */
+  function mkChamber() {
+    const bT = 2, bB = 2 + R(2), bL = 2 + R(2), bR = 2 + R(2);
+    rect(0, 0, CW - 1, CH - 1);
+    carve(bL, bT, CW - 1 - bR, CH - 1 - bB);
+    const fRow = CH - bB, cRow = bT - 1;
+    const iL = bL + 1, iR = CW - 2 - bR;
+    if (name === "The Terrace") {
+      let n = 2 + R(2);
+      while (n > 1 && (CH - bT - bB - 4) / (n + 1) < 6) n--;   // 5t between decks
+      const step = Math.floor((CH - bT - bB - 4) / (n + 1));
+      const deckYs = [];
+      for (let i = 1; i <= n; i++) {
+        const y = bT + 2 + i * step + R(2);
+        deckYs.push(y);
+        const th = chance(0.3) ? 2 : 1;
+        let x = iL + R(4);
+        while (x < iR - 4) {
+          const seg = 8 + R(12);
+          rect(x, y, Math.min(iR, x + seg - 1), y + th - 1);
+          if (chance(0.5)) hillAt(x + 2 + R(Math.max(1, seg - 8)), y, pick([1, 1, 2]), 1, 1 + R(2));
+          x += seg + 4 + R(LILA_MOVE.GAP - 3);   // gaps stay clearable
+        }
+      }
+      // hop ladders: no consecutive levels farther apart than her jump
+      deckYs.push(fRow); deckYs.sort((a, b) => a - b);
+      for (let i = 0; i < deckYs.length - 1; i++) {
+        for (let ym = deckYs[i + 1] - LILA_MOVE.JUMP; ym > deckYs[i] + 1; ym -= LILA_MOVE.JUMP) {
+          for (let t = 0; t < 10; t++) {
+            const w = 2 + R(2), x = iL + 1 + R(Math.max(1, iR - iL - w - 2));
+            let ok = true;
+            for (let jj = 0; jj < w; jj++) if (!air(x + jj, ym) || !air(x + jj, ym - 1)) { ok = false; break; }
+            if (!ok) continue;
+            rect(x, ym, x + w - 1, ym);
+            break;
+          }
+        }
+      }
+      for (let i = 0; i < 2; i++) hillAt(iL + 2 + R(iR - iL - 12), fRow, pick([1, 2, 3]), 1 + R(2), 1 + R(2));
+    } else if (name === "The Arena") {
+      for (let i = 0; i < 2 + R(2); i++) hillAt(iL + 2 + R(Math.max(1, iR - iL - 14)), fRow, pick([1, 1, 2, 3]), 1 + R(3), 1 + R(3));
+      for (let i = 0; i < 1 + R(2); i++) hangAt(iL + 2 + R(Math.max(1, iR - iL - 14)), cRow, pick([1, 2]), 1 + R(2), 1 + R(2));
+      for (let i = 0; i < 1 + R(2); i++) { const w = 1 + R(2), h = 2 + R(3), x = iL + 3 + R(iR - iL - 8);
+        rect(x, fRow - h, x + w - 1, fRow - 1);
+        if (w === 1) addSlope({ grad: 1, dir: pick(["asc", "desc"]), c: x, r: fRow - h - 1, steps: 1 }); }
+    } else if (name === "The Atrium") {
+      const n = 1 + R(3);
+      for (let i = 0; i < n; i++) {
+        const w = 2 + R(3), x = iL + 4 + Math.floor((i + 0.5) * (iR - iL - 8) / n);
+        rect(x, bT, x + w - 1, CH - 1 - bB);
+        const dr = bT + 3 + R(Math.max(1, CH - bT - bB - 8));
+        carve(x, dr, x + w - 1, dr + 4 + R(2));   // 5t column doorways
+      }
+      for (let y = bT + 4; y < CH - bB - 3; y += 3 + R(2)) if (chance(0.7)) {   // ≤ JUMP
+        const w = 3 + R(4), x = iL + 1 + R(Math.max(1, iR - iL - w - 2));
+        rect(x, y, x + w - 1, y);
+      }
+    } else if (name === "The Gallery") {
+      for (let y = bT + 4; y < CH - bB - 3; y += 3 + R(2)) {
+        for (let i = 0; i < 2 + R(3); i++) {
+          const w = 3 + R(5), x = iL + 1 + R(Math.max(1, iR - iL - w - 2));
+          if (chance(0.75)) rect(x, y, x + w - 1, y);
+        }
+      }
+      if (chance(0.7)) hillAt(iL + 3 + R(Math.max(1, iR - iL - 16)), fRow, pick([1, 2]), 1 + R(2), 2);
+    } else if (name === "The Warrens") {
+      rect(bL, bT, CW - 1 - bR, CH - 1 - bB);
+      for (let y = bT + 1; y < CH - bB - 5; y += 7 + R(2)) carve(iL - 1 + R(3), y, iR + 1 - R(3), y + 4);   // 5t warren tunnels
+      for (let i = 0; i < 3 + R(3); i++) { const x = iL + 2 + R(iR - iL - 4); carve(x, bT + 1, x + 2, CH - 2 - bB); }
+    }
+    // side doors
+    for (const side of [0, 1]) if (chance(0.8)) {
+      const r = bT + 3 + R(Math.max(1, CH - bT - bB - 8));
+      if (side === 0) carve(0, r, bL, r + 2); else carve(CW - 1 - bR, r, CW - 1, r + 2);
+    }
+    const f = new Array(CW).fill(fRow), c = new Array(CW).fill(cRow);
+    return { fArr: f, cArr: c, floorRow: fRow, ceilRow: cRow };
+  }
+
+  /* ---------- roll + furniture + coverage ---------- */
+  const ctx = isChamber ? mkChamber() : isHall ? mkHall() : mkShaft();
+  /* doors: 4t tall openings through the side walls, half-door sprite each;
+     every room gets an entrance and an exit, up to 4 total; each opening
+     gets a solid landing so it is always standable */
+  const doors = [];
+  let spawn = null;
+  {
+    const want = 2 + (chance(0.35) ? 1 : 0) + (chance(0.15) ? 1 : 0);
+    const sides = ["L", "R"];
+    for (let i = 2; i < want; i++) sides.push(chance(0.5) ? "L" : "R");
+    const usedR = { L: [], R: [] };
+    for (let di = 0; di < sides.length; di++) {
+      const side = sides[di];
+      for (let t = 0; t < 24; t++) {
+        let rb;
+        if (t < 6 && ctx.floorRow && di < 2) rb = ctx.floorRow - 1;   // prefer main-floor doors first
+        else rb = 5 + R(Math.max(1, CH - 9));
+        if (rb < 4 || rb >= CH - 1) continue;
+        if (usedR[side].some((r) => Math.abs(r - rb) < 6)) continue;
+        const dxi = side === "L" ? 1 : -1;
+        let x = side === "L" ? 0 : CW - 1, depth = 0;
+        while (depth < Math.floor(CW / 2) && !air(x, rb)) { x += dxi; depth++; }
+        if (depth === 0 || depth >= Math.floor(CW / 2)) continue;   // edge already open / no interior
+        const c0 = side === "L" ? 0 : x - dxi, c1 = side === "L" ? x - dxi : CW - 1;   // wall cols only, both sides — shelf never protrudes into the corridor
+        carve(Math.min(c0, c1), rb - 3, Math.max(c0, c1), rb);
+        for (let cc = Math.min(c0, c1); cc <= Math.max(c0, c1) && cc < CW; cc++)
+          if (cc >= 0 && !F[K(cc, rb + 1)]) put(cc, rb + 1);        // landing shelf: strictly under the doorway, no corridor protrusion
+        reserve(Math.min(c0, c1) - 1, rb - 4, Math.max(c0, c1) + 2, rb + 1);
+        doors.push({ side, r: rb, ix: x });
+        usedR[side].push(rb);
+
+        break;
+      }
+    }
+  }
+    if (doors.length) {
+      // Runs AFTER all door carving so no later tunnel can cut the ground away.
+      // Lila only stands on FLAT ground: 2-wide solid base, 2×3 clear body,
+      // never in slope-reserved space. 2D search: walk inward from the
+      // door, at each column try rows nearest the door first — finds
+      // staircase step-tops and plateaus without needing a forced pad.
+      const d0 = doors[0];
+      const dxi = d0.side === "L" ? 1 : -1, rb = d0.r, x = d0.ix;
+      let best = null;
+      const standable = (pc, pr) => {
+        if (pr < 3 || pr >= CH - 1) return false;
+        if (!F[K(pc, pr + 1)] || !F[K(pc + 1, pr + 1)]) return false;   // flat 2-wide base
+        for (let r2 = pr; r2 >= pr - 2; r2--)
+          for (let cc = pc; cc <= pc + 1; cc++)
+            if (!air(cc, r2) || resv.has(K(cc, r2))) return false;
+        return true;
+      };
+      for (let probe = x + dxi; probe > 1 && probe < CW - 3 && !best; probe += dxi) {
+        for (let k2 = 0; k2 < CH && !best; k2++) {
+          const rr = rb + (k2 % 2 ? -((k2 + 1) >> 1) : (k2 >> 1));   // nearest the door row first
+          if (standable(probe, rr)) best = { c: probe, r: rr };
+        }
+      }
+      if (!best) {   // pathological room: force a flat pad by the door
+        const sc = Math.max(1, Math.min(CW - 3, x + dxi));
+        carve(sc, rb - 2, sc + 1, rb);
+        put(sc, rb + 1); put(sc + 1, rb + 1);
+        best = { c: sc, r: rb };
+      }
+      reserve(best.c - 1, best.r - 3, best.c + 2, best.r + 1);   // nothing may fill Lila's spot later
+      spawn = best;
+        }
+  const covered = new Set(S.map((s) => s.grad + (s.face || "f")));
+  const spanFree = (c0, r0, c1, r1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (resv.has(K(c, r))) return false; return true; };
+  const mesa = (x, fr, g) => {
+    if (!spanFree(x - 1, fr - 3, x + 2 * g + 2, fr + 1)) return false;
+    if (airRunUp(x + g, fr - 1) < 5) return false;   // 5t must remain above the cap
+    addSlope({ grad: g, dir: "asc", c: x, r: fr - 1, steps: 1 });
+    put(x + g, fr - 1);
+    addSlope({ grad: g, dir: "desc", c: x + g + 1, r: fr - 1, steps: 1 });
+    return true;
+  };
+  const pocket = (x, cr, g) => {
+    if (!spanFree(x - 1, cr, x + 2 * g + 2, cr + 4)) return false;
+    if (airRunDn(x + g, cr + 1) < 5) return false;   // 5t must remain below the pocket
+    addSlope({ grad: g, dir: "desc", c: x, r: cr + 1, steps: 1, face: "c" });
+    put(x + g, cr + 1);
+    addSlope({ grad: g, dir: "asc", c: x + g + 1, r: cr + 1, steps: 1, face: "c" });
+    return true;
+  };
+  const flatSpan = (arr, need) => {
+    for (let x = 3; x < CW - need - 3; x++) {
+      let ok = true;
+      for (let jj = 1; jj < need; jj++) if (arr[x + jj] !== arr[x]) { ok = false; break; }
+      if (ok) return x + 1;
+    }
+    return -1;
+  };
+  if (name !== "The Tubes") for (const g of [1, 2, 3]) {
+    const need = 2 * g + 3;
+    if (!covered.has(g + "f")) {
+      if (ctx.fArr) { const x = flatSpan(ctx.fArr, need + 2);
+        if (x > 0) for (let t2 = 0; t2 < 8; t2++) {
+          const xx = x + R(14);
+          if (ctx.fArr[xx] !== ctx.fArr[x] || ctx.fArr[Math.min(CW - 1, xx + 2 * g + 2)] !== ctx.fArr[x]) continue;
+          if (ctx.cArr && ctx.fArr[x] - ctx.cArr[xx] - 2 < 5) continue;   // 5t over the mesa
+          if (mesa(xx, ctx.fArr[x], g)) break;
+        } }
+      else { const L = ctx.x0[CH - 4], Rr = ctx.x1[CH - 4];
+        if (Rr - L > need + 1) for (let t2 = 0; t2 < 8; t2++) if (mesa(L + 1 + R(Rr - L - need), ctx.floorRow, g)) break; }
+    }
+    if (!covered.has(g + "c")) {
+      if (ctx.cArr) { const x = flatSpan(ctx.cArr, need + 2);
+        if (x > 0) for (let t2 = 0; t2 < 8; t2++) {
+          const xx = x + R(14);
+          if (ctx.cArr[xx] !== ctx.cArr[x] || ctx.cArr[Math.min(CW - 1, xx + 2 * g + 2)] !== ctx.cArr[x]) continue;
+          if (ctx.fArr && ctx.fArr[xx] - ctx.cArr[x] - 2 < 5) continue;   // 5t under the pocket
+          if (pocket(xx, ctx.cArr[x], g)) break;
+        } }
+      else { const L = ctx.x0[3], Rr = ctx.x1[3];
+        if (Rr - L > need + 1) for (let t2 = 0; t2 < 8; t2++) if (pocket(L + 1 + R(Rr - L - need), ctx.ceilRow, g)) break; }
+    }
+  }
+  const density = ({ "The Squeeze": 0.1, "The Basic": 0.3, "The Tower": 0.35, "The Foothold": 0.35, "The Two-Step": 0.3,
+    "The Sandbag": 0.35, "The High Hall": 0.6, "The Med Hall": 0.45, "The Bubble": 0.55, "The Drip": 0.55,
+    "The Bend": 0.55, "The Tubes": 0.25, "The Warrens": 0.2, "The Gallery": 0.3 })[name] || 0.45;
+  for (let r = 4; r < CH - 4; r += 2 + R(3)) {
+    if (!chance(density)) continue;
+    const nPer = CW > 40 ? 1 + R(3) : 1;   // wide rooms get several per band
+    for (let q = 0; q < nPer; q++) {
+      const kind = R(3);
+      if (kind < 2) {
+        const left = kind === 0;
+        for (let t = 0; t < 14; t++) {
+          const c = left ? 1 + R(CW - 3) : CW - 2 - R(CW - 3);
+          const inward = left ? 1 : -1;
+          if (!air(c, r) || air(c - inward, r)) continue;
+          if (!air(c + inward, r) || !air(c + 2 * inward, r)) continue;
+          if (!air(c, r - 1) || !air(c, r - 2) || !air(c, r - 3)) continue;   // stand-height headroom
+          if (!freeCell(c, r) || !passable(c, r)) continue;
+          put(c, r);
+          if (chance(0.5) && freeCell(c + inward, r) && passable(c + inward, r)) put(c + inward, r);
+          break;
+        }
+      } else {
+        for (let t = 0; t < 14; t++) {
+          const w = 2 + R(3), c = 2 + R(Math.max(1, CW - w - 4));
+          let ok = true;
+          for (let jj = -1; jj <= w; jj++) {
+            if (!air(c + jj, r) || !air(c + jj, r - 1) || !air(c + jj, r - 2) || !air(c + jj, r - 3) || !air(c + jj, r + 1) || !air(c + jj, r + 2)) { ok = false; break; }
+            if (jj >= 0 && jj < w && (!freeCell(c + jj, r) || !passable(c + jj, r))) { ok = false; break; }
+          }
+          if (!ok) continue;
+          rect(c, r, c + w - 1, r);
+          break;
+        }
+      }
+    }
+  }
+  return { fills: F, slopes: S, name, cols: CW, rows: CH, doors, spawn };
+}
 function undo() {
   if (float) {
     if (floatHist.length) {   // step back one drag/flip/rotate, staying in Move mode
@@ -1953,6 +2437,15 @@ function pickAt(x, y) {
 
 /* ---- preview render (lazy when hidden) ---- */
 function rebuild() {
+  const wc = layoutMode === "zoo" ? 44 : fieldCols, wr = layoutMode === "zoo" ? 26 : fieldRows;
+  GCOLS = wc; GROWS = wr;
+  if (pv.width !== wc * TILE || pv.height !== wr * TILE) {
+    pv.width = wc * TILE; pv.height = wr * TILE;   // resize resets ctx state
+    off.width = pv.width; off.height = pv.height;  // the compositing buffer must track, or art clips at the old bounds
+    pvCtx.imageSmoothingEnabled = false;
+    offCtx.imageSmoothingEnabled = false;
+    WORLD.pv.w = pv.width; WORLD.pv.h = pv.height;
+  }
   cells = layoutMode === "zoo" ? buildZooCells(CT) : buildCells(fills, CT, userSlopes);
   resolved = resolveAll(cells, CT);
   // role rules: keyed by the cell's geometric role — direction-explicit,
@@ -2012,6 +2505,17 @@ function renderPreviewNow() {
   }
   pvCtx.clearRect(0, 0, pv.width, pv.height);
   pvCtx.drawImage(off, 0, 0);
+  if (layoutMode === "field") {
+    if (DOOR_IMG.complete && DOOR_IMG.width) { const DI = tintedDecor(DOOR_IMG, "door");
+      for (const dd of roomDoors) {
+        const half = DOOR_IMG.width / 2;   // the in-room half: right half for a LEFT door
+        if (dd.side === "L") pvCtx.drawImage(DI, half, 0, half, DOOR_IMG.height, 0, (dd.r - 3) * TILE, half, DOOR_IMG.height);
+        else pvCtx.drawImage(DI, 0, 0, half, DOOR_IMG.height, pv.width - half, (dd.r - 3) * TILE, half, DOOR_IMG.height);
+      }
+    }
+    if (roomSpawn && LILA_IMG.complete && LILA_IMG.width)
+      pvCtx.drawImage(tintedDecor(LILA_IMG, "lila"), roomSpawn.c * TILE + Math.floor((TILE * 2 - LILA_IMG.width) / 2), (roomSpawn.r + 1) * TILE - LILA_IMG.height);
+  }
   if (activeTab === "pv") blit();
 }
 
@@ -2039,6 +2543,7 @@ function pvLine(x0, y0, x1, y1) {
   }
 }
 function pvApply(c, r) {
+  if (c < 0 || r < 0 || c >= GCOLS || r >= GROWS) return;
   if (layoutMode === "zoo") { status("The Zoo is generated — cells are edited on the Level tab."); return; }
   if (c < 0 || r < 0 || c >= GCOLS || r >= GROWS) return;
   const k = K(c, r);
@@ -2651,8 +3156,18 @@ $("revApply").addEventListener("click", () => {
    export. Blob built synchronously to stay inside WebKit's activation
    window. The remaps/roleRemaps sections are the COMPLETE ruleset for the
    active contract, not just what the mockup uses. */
+$("btnDice").addEventListener("click", () => {
+  if (layoutMode === "zoo") { status("Rolls generate on the Level tab \u2014 the Zoo is fixed."); return; }
+  levelSnapshot();
+  const g = genRoom();
+  applyLevelState({ fills: g.fills, userSlopes: g.slopes, gc: g.cols, gr: g.rows });
+  roomDoors = g.doors || []; roomSpawn = g.spawn || null;
+  renderPreview();
+  if (activeTab === "pv") fitView("pv");
+  status("Rolled: " + g.name + " \u2014 undo restores the previous layout.");
+});
 $("btnLayoutSave").addEventListener("click", () => {
-  const json = JSON.stringify({ tessera_layout: 1, fills, slopes: userSlopes,
+  const json = JSON.stringify({ tessera_layout: 1, gcols: fieldCols, grows: fieldRows, fills, slopes: userSlopes,
     remaps:     { [CT.id]: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) } },
     roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } } });
   try {
@@ -2683,6 +3198,7 @@ layoutFileInput.addEventListener("change", () => {
       const data = JSON.parse(rd.result);
       if (!data || typeof data.fills !== "object") { status("Not a TESSERA layout file."); return; }
       fills = data.fills;
+      fieldCols = data.gcols || 44; fieldRows = data.grows || 26; persistGrid();
       if (Array.isArray(data.slopes)) { userSlopes = data.slopes; persistUserSlopes(); }
       if (data.remaps) { maskRemaps = data.remaps; persistRemaps(); }
       if (data.roleRemaps) { roleRemaps = data.roleRemaps; persistRoleRemaps(); }
@@ -2704,6 +3220,7 @@ $("btnReset").addEventListener("click", () => {
   if (same && sameSlopes && layoutMode === "field") { status("Layout is already the default."); return; }
   if (!confirm("Reset the Playfield to the default mock arrangement? Painted cells and drawn slopes will revert; taught rules are never touched. (Undoable.)")) return;
   levelSnapshot();   // fills + drawn slopes restorable via undo
+  fieldCols = 44; fieldRows = 26; persistGrid();
   fills = def;
   userSlopes = JSON.parse(JSON.stringify(DEFAULT_SLOPES));
   persistUserSlopes();
@@ -2922,7 +3439,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.23.0";
+const APP_VERSION = "6.29.8";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
