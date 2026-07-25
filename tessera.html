@@ -898,13 +898,18 @@ function resolveAll(cells, ct) {
     const deepSet = new Set(deepKeys);
     const consumed = new Set();
     const placed = [];   // committed group rects, in scan order (spacing vetoes)
+    const singleStamp = (sc, sr, e) => {   // 1x1 stamp honoring the entry's rotation opt-ins
+      const o = [0]; if (e.rotCW) o.push(1); if (e.rotCCW) o.push(3);
+      const rr = o.length > 1 ? o[Math.floor(terrHash01(sc + 31337, sr + 27183) * o.length)] : 0;
+      return rr ? { ax: e.ax, ay: e.ay, rot: rr } : { ax: e.ax, ay: e.ay };
+    };
     const order = deepKeys.map((kk) => kk.split(",").map(Number)).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
     for (const [dc, dr] of order) {
       const k = K(dc, dr);
       if (consumed.has(k)) continue;
       const p = terrPickDeepEntry(dc, dr, pool);
       const gw0 = p.w || 1, gh0 = p.h || 1;
-      if (gw0 === 1 && gh0 === 1) { out[k] = { ax: p.ax, ay: p.ay }; consumed.add(k); continue; }
+      if (gw0 === 1 && gh0 === 1) { out[k] = singleStamp(dc, dr, p); consumed.add(k); continue; }
       /* Orientations (v6.34): rot 0 always; 1 = 90 CW, 3 = 90 CCW when the
          entry enables them. An independent position hash picks the preferred
          orientation (equal split); the rest are tried in cyclic order, so a
@@ -941,7 +946,7 @@ function resolveAll(cells, ct) {
         }
         stamped = true;
       }
-      if (!stamped) { out[k] = { ax: primary.ax, ay: primary.ay }; consumed.add(k); }
+      if (!stamped) { out[k] = singleStamp(dc, dr, primary); consumed.add(k); }
     }
   }
   return out;
@@ -3431,7 +3436,7 @@ function openVaryPanel(i) {
   $("varyWeight").value = p.weight;
   $("varySpacedRow").style.display = gw > 1 || gh > 1 ? "flex" : "none";
   $("varySpaced").checked = !!p.spaced;
-  $("varyRotRow").style.display = gw > 1 || gh > 1 ? "flex" : "none";
+  $("varyRotRow").style.display = "flex";   // singles rotate too (v6.35)
   $("varyRotCW").checked = !!p.rotCW;
   $("varyRotCCW").checked = !!p.rotCCW;
   syncVaryPct();
@@ -3461,9 +3466,9 @@ $("varyApply").addEventListener("click", () => {
   pool[varyIdx].weight = w;
   if ((pool[varyIdx].w || 1) > 1 || (pool[varyIdx].h || 1) > 1) {
     if ($("varySpaced").checked) pool[varyIdx].spaced = true; else delete pool[varyIdx].spaced;
-    if ($("varyRotCW").checked) pool[varyIdx].rotCW = true; else delete pool[varyIdx].rotCW;
-    if ($("varyRotCCW").checked) pool[varyIdx].rotCCW = true; else delete pool[varyIdx].rotCCW;
   }
+  if ($("varyRotCW").checked) pool[varyIdx].rotCW = true; else delete pool[varyIdx].rotCW;
+  if ($("varyRotCCW").checked) pool[varyIdx].rotCCW = true; else delete pool[varyIdx].rotCCW;
   persistDeepVars();
   rebuild(); renderPreview(); blit(); drawGrid();
   const p = pool[varyIdx];
@@ -3768,7 +3773,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.34.0";
+const APP_VERSION = "6.35.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
