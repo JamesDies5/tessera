@@ -198,8 +198,8 @@
   <button class="optline" id="btnRulesImport" title="Load a rules JSON — replaces this format's taught rules and variation pool (old combined layout files work too: only their rules are read)"><span data-icon="sqplus"></span>Import Rules</button>
   <button class="optline" id="btnRulesExport" title="Save this format's FULL effective ruleset — contract geometry, taught rules, variation pool, sheet hash. Name it after its tileset PNG for ATLAS."><span data-icon="share"></span>Export Rules</button>
   <span class="vsep"></span>
-  <button class="optline" id="btnRoomImport" title="Load a room JSON — replaces the drawn level geometry (undoable). Old combined layout files load geometry only."><span data-icon="sqplus"></span>Import Level</button>
-  <button class="optline" id="btnRoomExport" title="Save the drawn level — geometry plus a baked resolved-tile layer and a rules stamp"><span data-icon="share"></span>Export Level</button>
+  <button class="optline" id="btnRoomImport" title="Load a room JSON — replaces the drawn level geometry (undoable). Old combined layout files load geometry only."><span data-icon="sqplus"></span>Import Room</button>
+  <button class="optline" id="btnRoomExport" title="Save the drawn level — geometry plus a baked resolved-tile layer and a rules stamp"><span data-icon="share"></span>Export Room</button>
 </div>
 
 <!-- BG flyout — opened by the swatch at the bottom of the rail; order per James:
@@ -235,8 +235,8 @@
     <div class="hsep"></div>
     <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
     <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
+    <button class="ibtn" id="btnCoords" data-icon="coords" title="Show template coordinates (A1..J12) — on every template cell, and on every level/zoo tile (the tile it resolved to)"></button>
     <button class="ibtn" id="btnRoles" data-icon="tag" title="Label special template cells: E = open-end slope cap (used when a run ends into air), C = dedicated ceiling stamps (surface/underlay)"></button>
-    <button class="ibtn" id="btnCoords" data-icon="grid" title="Show template coordinates (A1..J12) — on every template cell, and on every level/zoo tile (the tile it resolved to)"></button>
     <div class="hsep"></div>
     <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
     <button class="bgo" id="bgCurrent" data-bg="dark" title="Canvas background — tap to choose"></button>
@@ -1198,6 +1198,7 @@ const ICONS = {
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
   grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+  coords: '<text x="12" y="16.5" text-anchor="middle" font-size="13" font-weight="700" font-family="ui-monospace, Menlo, monospace" fill="currentColor" stroke="none">A1</text>',
   dots: '<g fill="currentColor" stroke="none"><circle cx="5" cy="5" r="1.3"/><circle cx="12" cy="5" r="1.3"/><circle cx="19" cy="5" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/><circle cx="5" cy="19" r="1.3"/><circle cx="12" cy="19" r="1.3"/><circle cx="19" cy="19" r="1.3"/></g>',
   fit: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
@@ -3856,7 +3857,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.36.0";
+const APP_VERSION = "6.36.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
