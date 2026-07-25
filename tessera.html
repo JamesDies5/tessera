@@ -263,7 +263,7 @@
       <input id="varyWeight" type="number" min="0" step="1" inputmode="numeric" style="width:4.2em;background:#111;border:1px solid #454545;border-radius:8px;color:#eee;padding:6px 8px;font:inherit;text-align:center">
       <span id="varyPct" style="font-size:12px;color:#9be564"></span>
     </div>
-    <label id="varySpacedRow" style="display:none;align-items:center;gap:7px;margin-top:8px;font-size:11px;color:#bbb;max-width:300px;cursor:pointer"><input type="checkbox" id="varySpaced" style="margin:0"> Spread out — keep a clear gap (this group's own size) from all other group placements</label>
+    <label id="varySpacedRow" style="display:none;align-items:center;gap:7px;margin-top:8px;font-size:11px;color:#bbb;max-width:300px;cursor:pointer"><input type="checkbox" id="varySpaced" style="margin:0"> Spread out — keep a clear gap (its own size) from groups and other spread-out placements</label>
     <div id="varyRotRow" style="display:none;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:#bbb">
       <span>Also allow:</span>
       <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="varyRotCW" style="margin:0"> 90° CW</label>
@@ -922,7 +922,19 @@ function resolveAll(cells, ct) {
       if (consumed.has(k)) continue;
       const p = terrPickDeepEntry(dc, dr, pool);
       const gw0 = p.w || 1, gh0 = p.h || 1;
-      if (gw0 === 1 && gh0 === 1) { out[k] = singleStamp(dc, dr, p); consumed.add(k); continue; }
+      if (gw0 === 1 && gh0 === 1) {
+        if (p.spaced && p !== primary) {
+          // 1x1 moat: no spread-participating placement in the 8-neighborhood
+          let clear = true;
+          for (const q of placed) {
+            if (q.c <= dc + 1 && q.c + q.w - 1 >= dc - 1 && q.r <= dr + 1 && q.r + q.h - 1 >= dr - 1) { clear = false; break; }
+          }
+          if (!clear) { out[k] = singleStamp(dc, dr, primary); consumed.add(k); continue; }
+          placed.push({ c: dc, r: dr, w: 1, h: 1 });
+        }
+        out[k] = singleStamp(dc, dr, p);
+        consumed.add(k); continue;
+      }
       /* Orientations (v6.34): rot 0 always; 1 = 90 CW, 3 = 90 CCW when the
          entry enables them. An independent position hash picks the preferred
          orientation (equal split); the rest are tried in cyclic order, so a
@@ -3449,7 +3461,7 @@ function openVaryPanel(i) {
   $("varyTitle").textContent = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " (" + gw + "\u00d7" + gh + " group)" : "") +
     (i === 0 ? " \u2014 PRIMARY deep tile" : " \u2014 variant");
   $("varyWeight").value = p.weight;
-  $("varySpacedRow").style.display = gw > 1 || gh > 1 ? "flex" : "none";
+  $("varySpacedRow").style.display = i === 0 ? "none" : "flex";   // every non-primary entry can spread (v6.38)
   $("varySpaced").checked = !!p.spaced;
   $("varyRotRow").style.display = "flex";   // singles rotate too (v6.35)
   $("varyRotCW").checked = !!p.rotCW;
@@ -3479,7 +3491,7 @@ $("varyApply").addEventListener("click", () => {
   const w = Math.max(0, Math.floor(Number($("varyWeight").value) || 0));
   const pool = materializeDeepVars();
   pool[varyIdx].weight = w;
-  if ((pool[varyIdx].w || 1) > 1 || (pool[varyIdx].h || 1) > 1) {
+  if (varyIdx !== 0) {
     if ($("varySpaced").checked) pool[varyIdx].spaced = true; else delete pool[varyIdx].spaced;
   }
   if ($("varyRotCW").checked) pool[varyIdx].rotCW = true; else delete pool[varyIdx].rotCW;
@@ -3565,6 +3577,7 @@ $("btnRoomExport").addEventListener("click", () => {
 });
 function importRules(data) {
   const touched = [];
+  let note = "";
   if (data && data.tessera_rules === 1) {
     const id = data.contractId;
     if (!CONTRACTS[id]) { status("Rules file targets unknown format '" + id + "'."); return; }
@@ -3572,6 +3585,28 @@ function importRules(data) {
     roleRemaps[id] = data.roleRules || {};
     deepVarOverrides[id] = (data.deepVariants || []).map((p) => ({ ...p }));
     touched.push(id);
+    /* Sheet guard (v6.37): rules files record the sheet dims + pixel hash
+       they were authored against. Grow the sheet if the rules need more
+       cells (non-destructive), and warn when the art doesn't match, so a
+       rules-before-PNG import order names its own blank-variant state. */
+    if (data.sheet) {
+      const needC = data.sheet.cols | 0, needR = data.sheet.rows | 0;
+      if (id === CT.id) {
+        if (needC > TW / TILE || needR > TH / TILE) {
+          resizeSheet(Math.max(TW / TILE, needC), Math.max(TH / TILE, needR));
+          note += " Sheet grown to " + TW / TILE + "\u00d7" + TH / TILE + " to fit these rules.";
+        }
+        if (data.sheetHash && data.sheetHash !== sheetHash()) note += " \u26a0 Sheet art doesn't match this ruleset \u2014 import its tileset PNG.";
+      } else {
+        const base = CONTRACTS[id], ext = sheetSize[id] || {};
+        const curC = ext.cols || base.TCOLS, curR = ext.rows || base.TROWS;
+        if (needC > curC || needR > curR) {
+          sheetSize[id] = { cols: Math.max(curC, needC), rows: Math.max(curR, needR) };
+          try { localStorage.setItem(LS.size, JSON.stringify(sheetSize)); } catch (e) {}
+          note += " " + id + "'s sheet will open at " + sheetSize[id].cols + "\u00d7" + sheetSize[id].rows + " to fit these rules.";
+        }
+      }
+    }
   } else if (data && (data.remaps || data.roleRemaps || data.deepVariants)) {
     // old combined layout file: extract the rules sections only
     for (const id of Object.keys(data.remaps || {})) { maskRemaps[id] = data.remaps[id]; if (!touched.includes(id)) touched.push(id); }
@@ -3580,7 +3615,7 @@ function importRules(data) {
   } else { status("Not a TESSERA rules file."); return; }
   persistRemaps(); persistRoleRemaps(); persistDeepVars();
   rebuild(); renderPreview(); blit(); drawGrid();
-  status("Rules imported for " + touched.join(", ") + (touched.includes(CT.id) ? "." : " — switch format to see them."));
+  status("Rules imported for " + touched.join(", ") + (touched.includes(CT.id) ? "." : " — switch format to see them.") + note);
 }
 function importRoom(data) {
   if (!data || typeof data.fills !== "object") { status("Not a TESSERA room/layout file."); return; }
@@ -3857,7 +3892,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.36.2";
+const APP_VERSION = "6.38.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
