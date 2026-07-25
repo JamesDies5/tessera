@@ -78,6 +78,9 @@
   .selrow { display: flex; gap: 6px; align-items: center; }
   #cellbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #varybar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
+    background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #varybar .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; }
   .fly { position: relative; display: inline-flex; }
   #optbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -177,6 +180,15 @@
   <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
 </div>
 
+<!-- Variation tray: shown while the vary tool is active on the Template tab.
+     Draw adds free sheet cells to the deep pool; Erase removes variants
+     (confirm first, primary protected); both off = tap-to-inspect. -->
+<div id="varybar">
+  <span class="vlbl">VARIATION POOL</span>
+  <button class="ibtn" id="btnVaryDraw" data-icon="sqplus" title="Draw — tap a free template cell to add it to the variation pool (weight 4; tap it afterwards to adjust). Cells the ruleset already draws from are blocked."></button>
+  <button class="ibtn" id="btnVaryErase" data-icon="eraser" title="Erase — tap a yellow-outlined variant to remove it from the pool (asks first). The green primary can't be erased; set its weight to 0 to switch it off."></button>
+</div>
+
 <!-- BG flyout — opened by the swatch at the bottom of the rail; order per James:
      light checkers, dark checkers, palette-darkest #191919, black -->
 <div id="bgMenu">
@@ -200,6 +212,7 @@
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
     <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
     <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
+    <button class="ibtn tool" data-tool="vary" data-icon="dice" title="Variations — view the deep-core variation pool on the Template tab: green outline = primary tile, yellow = variants. Tap an outlined cell to view and edit its weight."></button>
 
     <div class="hsep"></div>
     <button class="ibtn" id="btnUndo" data-icon="undo" title="Undo (Cmd/Ctrl+Z)"></button>
@@ -228,6 +241,31 @@
       <button class="ibtn" id="revClear" title="Remove the manual assignment" style="font-size:12px;padding:0 10px;width:auto">Clear</button>
       <button class="ibtn" id="revApply" title="Apply" style="font-size:12px;padding:0 10px;width:auto">Apply</button>
       <button class="ibtn" id="revClose" title="Close" style="font-size:12px;padding:0 10px;width:auto">Close</button>
+    </div>
+  </div>
+  <div id="varyPanel" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:60;display:none;background:rgba(18,18,18,.96);border:1px solid #454545;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5)">
+    <div id="varyTitle" style="font-size:12px;color:#9a9a9a;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label style="font-size:11px;color:#8a8a8a" for="varyWeight">Weight</label>
+      <input id="varyWeight" type="number" min="0" step="1" inputmode="numeric" style="width:4.2em;background:#111;border:1px solid #454545;border-radius:8px;color:#eee;padding:6px 8px;font:inherit;text-align:center">
+      <span id="varyPct" style="font-size:12px;color:#9be564"></span>
+    </div>
+    <label id="varySpacedRow" style="display:none;align-items:center;gap:7px;margin-top:8px;font-size:11px;color:#bbb;max-width:300px;cursor:pointer"><input type="checkbox" id="varySpaced" style="margin:0"> Spread out — keep a clear gap (this group's own size) from all other group placements</label>
+    <div id="varyRotRow" style="display:none;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:#bbb">
+      <span>Also allow:</span>
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="varyRotCW" style="margin:0"> 90° CW</label>
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="varyRotCCW" style="margin:0"> 90° CCW</label>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">
+      <button class="ibtn" id="varyApply" title="Apply" style="font-size:12px;padding:0 10px;width:auto">Apply</button>
+      <button class="ibtn" id="varyClose" title="Close" style="font-size:12px;padding:0 10px;width:auto">Close</button>
+    </div>
+  </div>
+  <div id="varyConfirm" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:61;display:none;background:rgba(18,18,18,.96);border:1px solid #454545;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5)">
+    <div id="varyConfirmMsg" style="font-size:12px;color:#ddd;max-width:300px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px;justify-content:flex-end">
+      <button class="ibtn" id="varyConfirmYes" title="Remove from the pool" style="font-size:12px;padding:0 10px;width:auto;color:#ff9a8a">Remove</button>
+      <button class="ibtn" id="varyConfirmNo" title="Keep it" style="font-size:12px;padding:0 10px;width:auto">Cancel</button>
     </div>
   </div>
   <div id="viewport">
@@ -510,12 +548,13 @@ const terrHash01 = (x, y) => {
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 };
-const terrPickDeep = (x, y, variants) => {
+const terrPickDeepEntry = (x, y, variants) => {   // returns the pool ENTRY (may be a w×h group)
   const total = variants.reduce((s, v) => s + v.weight, 0);
   let r = terrHash01(x, y) * total;
-  for (const v of variants) { if ((r -= v.weight) < 0) return { ax: v.ax, ay: v.ay }; }
-  const v = variants[0]; return { ax: v.ax, ay: v.ay };
+  for (const v of variants) { if ((r -= v.weight) < 0) return v; }
+  return variants[0];
 };
+const terrPickDeep = (x, y, variants) => { const v = terrPickDeepEntry(x, y, variants); return { ax: v.ax, ay: v.ay }; };
 
 const K = (c, r) => c + "," + r;
 
@@ -654,6 +693,7 @@ function resolveAll(cells, ct) {
     masks[k] = maskAt(cells, c, r, ct);
   }
   const out = {};
+  const deepKeys = [];   // deep cells defer to the post-loop pass (groups need global placement)
   for (const k of Object.keys(cells)) {
     const v = cells[k];
     if (v.kind === "slope") {
@@ -785,7 +825,7 @@ function resolveAll(cells, ct) {
         }
         const cell = row && col ? T["i" + row + col] : row ? T["i" + row] : col ? T["i" + col] : null;
         if (cell) { out[k] = { ax: cell[0], ay: cell[1] }; continue; }
-        out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
+        deepKeys.push(k);
         continue;
       }
       if (ct.RIM_CELLS) {
@@ -806,7 +846,7 @@ function resolveAll(cells, ct) {
           continue;
         }
       }
-      out[k] = terrPickDeep(c, r, ct.DEEP_VARIANTS);
+      deepKeys.push(k);
       continue;
     }
     // Slope-ramp wall attach: the WALL cell beside a run's open tip surface
@@ -844,6 +884,65 @@ function resolveAll(cells, ct) {
     if (ev) { const cell = ev.cells[(ev.axis === "x" ? c : r) % ev.cells.length]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
     const cell = ct.LOOKUP[m];
     if (cell) out[k] = { ax: cell.ax, ay: cell.ay };
+  }
+  /* Deep pass (v6.32): weighted picks run AFTER the main loop so multi-cell
+     groups can stamp intact. Row-major scan; when a group wins a cell its
+     full w×h footprint must be deep and unconsumed, else that one cell
+     falls back to the primary — groups never split or scramble. Same
+     terrHash01 per anchor as before: deterministic, shimmer-free, and
+     with a singles-only pool the output is byte-identical to the old
+     inline per-cell picks. */
+  if (deepKeys.length) {
+    const pool = effDeepVariants(ct);
+    const primary = pool[0];
+    const deepSet = new Set(deepKeys);
+    const consumed = new Set();
+    const placed = [];   // committed group rects, in scan order (spacing vetoes)
+    const order = deepKeys.map((kk) => kk.split(",").map(Number)).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    for (const [dc, dr] of order) {
+      const k = K(dc, dr);
+      if (consumed.has(k)) continue;
+      const p = terrPickDeepEntry(dc, dr, pool);
+      const gw0 = p.w || 1, gh0 = p.h || 1;
+      if (gw0 === 1 && gh0 === 1) { out[k] = { ax: p.ax, ay: p.ay }; consumed.add(k); continue; }
+      /* Orientations (v6.34): rot 0 always; 1 = 90 CW, 3 = 90 CCW when the
+         entry enables them. An independent position hash picks the preferred
+         orientation (equal split); the rest are tried in cyclic order, so a
+         rotated footprint can slot where the default can't. Only a total
+         misfit falls back to the primary. */
+      const oris = [0]; if (p.rotCW) oris.push(1); if (p.rotCCW) oris.push(3);
+      const start = oris.length > 1 ? Math.floor(terrHash01(dc + 31337, dr + 27183) * oris.length) : 0;
+      let stamped = false;
+      for (let oi = 0; oi < oris.length && !stamped; oi++) {
+        const rot = oris[(start + oi) % oris.length];
+        const gw = rot ? gh0 : gw0, gh = rot ? gw0 : gh0;   // quarter turns swap the footprint
+        let fits = true;
+        for (let dy = 0; dy < gh && fits; dy++) for (let dx = 0; dx < gw; dx++) {
+          const kk = K(dc + dx, dr + dy);
+          if (!deepSet.has(kk) || consumed.has(kk)) { fits = false; break; }
+        }
+        if (fits && p.spaced) {
+          // spread-out moat: this orientation's footprint of clearance, against ALL placements
+          const pc0 = dc - gw, pr0 = dr - gh, pc1 = dc + 2 * gw - 1, pr1 = dr + 2 * gh - 1;
+          for (const q of placed) {
+            if (q.c <= pc1 && q.c + q.w - 1 >= pc0 && q.r <= pr1 && q.r + q.h - 1 >= pr0) { fits = false; break; }
+          }
+        }
+        if (!fits) continue;
+        placed.push({ c: dc, r: dr, w: gw, h: gh });
+        for (let dy = 0; dy < gh; dy++) for (let dx = 0; dx < gw; dx++) {
+          let sx, sy;
+          if (rot === 0) { sx = dx; sy = dy; }
+          else if (rot === 1) { sx = dy; sy = gh0 - 1 - dx; }
+          else { sx = gw0 - 1 - dy; sy = dx; }
+          const kk = K(dc + dx, dr + dy);
+          out[kk] = rot ? { ax: p.ax + sx, ay: p.ay + sy, rot } : { ax: p.ax + sx, ay: p.ay + sy };
+          consumed.add(kk);
+        }
+        stamped = true;
+      }
+      if (!stamped) { out[k] = { ax: primary.ax, ay: primary.ay }; consumed.add(k); }
+    }
   }
   return out;
 }
@@ -1127,7 +1226,7 @@ const DEFAULT_PNGS = {
   v1: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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",
   v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
 };
-const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush", size: "tessera.size" };
+const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush", size: "tessera.size", decor: "tessera.decor" };
 /* Per-contract sheet size in cells (extends the contract's base TCOLS/TROWS;
    never below base, so structural cells can't be cropped). */
 let sheetSize = {};
@@ -1142,6 +1241,14 @@ function ctRoleRemaps() { if (!roleRemaps[CT.id]) roleRemaps[CT.id] = {}; return
 let maskRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.remaps")) || {}; } catch (e) { return {}; } })();
 function persistRemaps() { try { localStorage.setItem("tessera.remaps", JSON.stringify(maskRemaps)); } catch (e) {} }
 function ctRemaps() { if (!maskRemaps[CT.id]) maskRemaps[CT.id] = {}; return maskRemaps[CT.id]; }
+/* Deep-variation override layer (v6.30): per-contract pool replacing the
+   baked DEEP_VARIANTS wholesale once edited. Entries: {ax,ay,weight} for
+   singles; {ax,ay,w,h,weight} reserved for Phase-3 groups. Same layering
+   discipline as taught rules: store wins, baked otherwise. */
+let deepVarOverrides = (() => { try { return JSON.parse(localStorage.getItem("tessera.deepvars")) || {}; } catch (e) { return {}; } })();
+function persistDeepVars() { try { localStorage.setItem("tessera.deepvars", JSON.stringify(deepVarOverrides)); } catch (e) {} }
+function effDeepVariants(ct) { const o = deepVarOverrides[ct.id]; return (o && o.length) ? o : ct.DEEP_VARIANTS; }
+function materializeDeepVars() { if (!deepVarOverrides[CT.id] || !deepVarOverrides[CT.id].length) deepVarOverrides[CT.id] = CT.DEEP_VARIANTS.map((p) => ({ ...p })); return deepVarOverrides[CT.id]; }
 /* v6.0 — ONE ruleset. The baked DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS
    tables ARE the app's rule set. The localStorage store holds only the
    corrections taught since the last bake; reads layer store-over-baked,
@@ -1212,6 +1319,8 @@ const DOOR_IMG = new Image(); DOOR_IMG.src = "data:image/png;base64,iVBORw0KGgoA
 const LILA_IMG = new Image(); LILA_IMG.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAArCAYAAABvhzi8AAAACXBIWXMAAAsTAAALEwEAmpwYAAAGWWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA2LTAzVDA3OjA0OjUwLTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0yMlQxOTo1NjowNS0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0yMlQxOTo1NjowNS0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTIyVDE5OjU1OjM0LTA0OjAwJiN4OTtGaWxlIGxpbGFfaWRsZS5wbmcgb3BlbmVkJiN4QTsyMDI2LTA3LTIyVDE5OjU2OjA1LTA0OjAwJiN4OTtGaWxlIGxpbGEucG5nIHNhdmVkJiN4QTsiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6MGRkNzJmNWItMmIwNC00NTUyLWI4NDQtZGM2YjlkN2YwYTZlIiB4bXBNTTpEb2N1bWVudElEPSJhZG9iZTpkb2NpZDpwaG90b3Nob3A6NTcxZjgyYWQtNzFhNC1hNjQ0LTllZGEtZDc3ZWZjYjMzNDVlIiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6MDg5N2JiYzQtZDhmZC00OWQ0LWI5MzAtMmFlNmJlMTk3YTYwIj4gPHhtcE1NOkhpc3Rvcnk+IDxyZGY6U2VxPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0iY3JlYXRlZCIgc3RFdnQ6aW5zdGFuY2VJRD0ieG1wLmlpZDowODk3YmJjNC1kOGZkLTQ5ZDQtYjkzMC0yYWU2YmUxOTdhNjAiIHN0RXZ0OndoZW49IjIwMjYtMDYtMDNUMDc6MDQ6NTAtMDQ6MDAiIHN0RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCAyNy44IChNYWNpbnRvc2gpIi8+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJzYXZlZCIgc3RFdnQ6aW5zdGFuY2VJRD0ieG1wLmlpZDowZGQ3MmY1Yi0yYjA0LTQ1NTItYjg0NC1kYzZiOWQ3ZjBhNmUiIHN0RXZ0OndoZW49IjIwMjYtMDctMjJUMTk6NTY6MDUtMDQ6MDAiIHN0RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCAyNy44IChNYWNpbnRvc2gpIiBzdEV2dDpjaGFuZ2VkPSIvIi8+IDwvcmRmOlNlcT4gPC94bXBNTTpIaXN0b3J5PiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PtXojyYAAALTSURBVFiFrVdbjtQwEIxHOVKy2g+EuEXOgBB/c4vJH0KcYW6BEBLLZu8UVNFUVNN0t52BkqwkfnS52/1wyrqu3RGM47gvWJal6Df7dB6/LcoRYgj78vVb9/PH9+56ve790zTdzcMY+vCMiDsQt7ZhGNbL5bJ6z1+/l5XAO/rQIlndUWKSAfwmEfswXiMvLabmedGkNDPM/vnTx7/eOffd+w9bn2fuUwsphKCdz+dNGDcAofoOcgJzM5RMY+tMVmMPqnnmYCUiBumyLHje9YuwfcxuyH43m5qaUrAupLCX17eN3PZzY5lV0jOmuUhqd41xJdfz1bg+FMeDxGc2ZkMJ74xnneNxhBp7pmJYqaMpnp+Grc3zvHl/hlM0oIJfXt9WNIaVboxHArPfNrfHr7e5lBjnIk60QguEFEBNrFA9c24my9UlCycbk9SEoAd7qGWu3l0lJY+aWdIaauFUMo2jRTYv2z5riWaNa3VXSZnBas5U1Xie59VmoQwgpkd75x8518kzL7OQ5lorAHPQSArrUGPNYofC6flp2IUoob5DO5CxKfSIIl/pu39AdAy2St0qXUmJsUjTnS7KPD2q1ZQ1mlvnnal1V3qDUEIQeGfolUJ8q9mnadpluXGsTmZD6rbBzamihOLdt+14WCRI6oEXhKgG83jUgpMUmGrm0jiOcjXhxb7nG8utr3rZs312M0pqx5XIonqvpuaqrZfRsjmHbpkktcI9bWqW8chD52Kh0JukwmY0fjPcvCTStRAD8GqETcs9mf2Yo781EUoWxzVNI0TrF1nramzrqlcwjsCr03306wIPZQJJf7ATMpVhcfIWsMYCtYuAh5ZN9raD1UR3+oiJD/07zfN85xSPaKvI/iaKerXnjY86VE3WSSeav7ymu1MGK2OUzfTqyQA9kfU2ylwtoAyvZPZMjZxIpzp6T7bAWsrAbUYjBZwF/6+ZgP95xoo/pwd3PNrvkLwAAAAASUVORK5CYII=";
 DOOR_IMG.onload = LILA_IMG.onload = () => { pvDirty = true; renderPreview(); };
 let roomDoors = [], roomSpawn = null;
+try { const d = JSON.parse(localStorage.getItem(LS.decor)); if (d) { roomDoors = d.doors || []; roomSpawn = d.spawn || null; } } catch (e) {}
+function persistDecor() { try { localStorage.setItem(LS.decor, JSON.stringify({ doors: roomDoors, spawn: roomSpawn })); } catch (e) {} }
 const decorTint = { key: "", door: null, lila: null };
 function tintedDecor(img, slot) {   // sprites follow the active palette, like the tiles
   const pal = palettes[palIdx];
@@ -1412,6 +1521,27 @@ function drawGrid() {
     if (CT.TIP45_RESERVED) { put(CT.TIP45_RESERVED.floorY, "Yf"); put(CT.TIP45_RESERVED.ceilR, "Rc"); }
     if (CT.CEIL_SLOPE_STAMPS) for (const cols of Object.values(CT.CEIL_SLOPE_STAMPS)) cols.forEach((col) => col.forEach((c, i) => put(c, i ? "Cu" : "Cs")));
   }
+  if (activeTab === "ed" && CT && tool === "vary") {
+    /* variation pool: green = primary (index 0), yellow = variants;
+       groups (w/h > 1) outline as ONE unit. */
+    const pool = effDeepVariants(CT);
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
+      const px2 = v.x + p.ax * TILE * v.s, py2 = v.y + p.ay * TILE * v.s;
+      const pw2 = (p.w || 1) * TILE * v.s, ph2 = (p.h || 1) * TILE * v.s;
+      if (px2 + pw2 < 0 || py2 + ph2 < 0 || px2 > r.width || py2 > r.height) continue;
+      ovCtx.strokeStyle = i === 0 ? "#9be564" : "#ffd24a";
+      ovCtx.lineWidth = 2;
+      ovCtx.strokeRect(px2 + 1, py2 + 1, pw2 - 2, ph2 - 2);
+    }
+  }
+  if (activeTab === "ed" && stroke && stroke.kind === "varyRect") {
+    const gc0 = Math.min(stroke.c0, stroke.c1), gr0 = Math.min(stroke.r0, stroke.r1);
+    const gw2 = Math.abs(stroke.c1 - stroke.c0) + 1, gh2 = Math.abs(stroke.r1 - stroke.r0) + 1;
+    ovCtx.strokeStyle = "#8ecbff"; ovCtx.lineWidth = 2; ovCtx.setLineDash([5, 3]);
+    ovCtx.strokeRect(v.x + gc0 * TILE * v.s + 1, v.y + gr0 * TILE * v.s + 1, gw2 * TILE * v.s - 2, gh2 * TILE * v.s - 2);
+    ovCtx.setLineDash([]);
+  }
   if (tool === "selmove") {
     const over = hover && float && hover.x >= float.x && hover.y >= float.y && hover.x < float.x + float.w && hover.y < float.y + float.h;
     if (over) viewport.style.cursor = "move";
@@ -1571,9 +1701,11 @@ function refreshFileSwatches() {
 /* ---- undo ---- */
 let actionLog = [], redoLog = [], levelUndo = [], levelRedo = [];
 function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undoStack.length > 40) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
-function levelSnapshot() { levelUndo.push(JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows })); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
+function levelStateJSON() { return JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows, doors: roomDoors, spawn: roomSpawn }); }
+function levelSnapshot() { levelUndo.push(levelStateJSON()); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function applyLevelState(s) {
-  roomDoors = []; roomSpawn = null;   // decorations belong to a fresh roll only
+  roomDoors = s.doors || []; roomSpawn = s.spawn || null;   // decorations ride with the layout they belong to
+  persistDecor();
   fills = s.fills; userSlopes = s.userSlopes;
   if (s.gc && s.gr) { fieldCols = s.gc; fieldRows = s.gr; persistGrid(); }
   persistFills(); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
@@ -2041,7 +2173,7 @@ function undo() {
   const d = actionLog.length ? actionLog.pop() : "ed";
   if (d === "level") {
     if (!levelUndo.length) return;
-    levelRedo.push(JSON.stringify({ fills, userSlopes }));
+    levelRedo.push(levelStateJSON());
     applyLevelState(JSON.parse(levelUndo.pop()));
     redoLog.push("level");
     return;
@@ -2063,7 +2195,7 @@ function redo() {
   const d = redoLog.length ? redoLog.pop() : "ed";
   if (d === "level") {
     if (!levelRedo.length) return;
-    levelUndo.push(JSON.stringify({ fills, userSlopes }));
+    levelUndo.push(levelStateJSON());
     applyLevelState(JSON.parse(levelRedo.pop()));
     actionLog.push("level");
     return;
@@ -2680,6 +2812,17 @@ function beginStroke(e) {
       if (float) stroke = { kind: "float", sx: float.x, sy: float.y, ax: x, ay: y };
       return;
     }
+    if (tool === "vary") {
+      if (varyMode === "draw") {
+        const cx = Math.floor(x / TILE), cy = Math.floor(y / TILE);
+        if (cx < 0 || cy < 0 || cx >= TW / TILE || cy >= TH / TILE) return;
+        stroke = { kind: "varyRect", c0: cx, r0: cy, c1: cx, r1: cy };
+        drawGrid();
+        return;
+      }
+      varyTapEd(x, y);
+      return;
+    }
     if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
     snapshot(); stampEd(x, y); templateChanged();
     stroke = { kind: "ed", last: [x, y], qOrigin: [x, y], snap: true };
@@ -2687,6 +2830,7 @@ function beginStroke(e) {
     return;
   }
   if (tool === "marquee" || tool === "selmove") { status("Selection works on the Template tab for now."); return; }
+  if (tool === "vary") { status("Variations are viewed and edited on the Template tab."); return; }
   if (tool === "revise") {
     const [px, py] = pvPos(e);
     openRevPanel(K(Math.floor(px / TILE), Math.floor(py / TILE)));
@@ -2714,6 +2858,13 @@ function moveStroke(e) {
     stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
     const p = vpPoint(e);
     if (Math.hypot(p.x - stroke.downVp.x, p.y - stroke.downVp.y) > HOLD_JITTER) clearHold();
+  }
+  if (stroke.kind === "varyRect") {
+    const [x, y] = edPos(e);
+    stroke.c1 = Math.max(0, Math.min(TW / TILE - 1, Math.floor(x / TILE)));
+    stroke.r1 = Math.max(0, Math.min(TH / TILE - 1, Math.floor(y / TILE)));
+    drawGrid();
+    return;
   }
   if (stroke.kind === "resize") {
     const [x, y] = edPos(e);
@@ -2791,6 +2942,7 @@ function placeSlopeRun(run) {
 }
 function endStroke() {
   clearHold();
+  if (stroke && stroke.kind === "varyRect") { const s = stroke; stroke = null; varyCommitRect(s); drawGrid(); return; }
   if (stroke && stroke.kind === "resize") {
     const s = stroke; stroke = null;
     const cols = s.axis === "x" ? s.prop : TW / TILE;
@@ -3000,6 +3152,7 @@ function setTab(tab) {   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share 
   if (canvasMode) exitCanvasMode();
   closeOptMenu();
   syncCellbar(tab === "pv");
+  syncVarybar();
   syncSelbar();
   if (tab === "zoo" && (tool === "slopeF" || tool === "slopeC")) setTool("pencil");
   if (modeChanged) rebuild();   // rebuild marks pvDirty itself
@@ -3022,6 +3175,9 @@ function setTool(t) {
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
   document.querySelectorAll(".ptool").forEach((q) => q.classList.toggle("on", t !== "slopeF" && t !== "slopeC" && q.dataset.ptool === pTool));
   if (t !== "marquee" && selPoly) { selPoly = null; drawGrid(); }   // abandon an open polygon
+  if (t !== "vary") { closeVaryPanel(); closeVaryConfirm(); }
+  syncVarybar();
+  drawGrid();   // vary outlines appear/disappear with the tool
   syncSelbar();
 }
 document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => {
@@ -3151,6 +3307,170 @@ $("revApply").addEventListener("click", () => {
   rebuild(); renderPreview(); blit(); drawGrid();
   $("revPanel").style.display = "none"; revKey = null; revMask = null; revRole = null;
 });
+/* ---- variation panel (v6.30, Phase 1) ----
+   Tap an outlined pool cell with the vary tool -> weight editor with a
+   live pick-share readout. Apply materializes the override pool (baked
+   copied on first edit) so index i always addresses the same entry. */
+let varyIdx = null;
+function varyHitTest(cx, cy) {
+  const pool = effDeepVariants(CT);
+  for (let i = 0; i < pool.length; i++) {
+    const p = pool[i];
+    if (cx >= p.ax && cx < p.ax + (p.w || 1) && cy >= p.ay && cy < p.ay + (p.h || 1)) return i;
+  }
+  return -1;
+}
+function varyPct(weight, idx) {
+  const pool = effDeepVariants(CT);
+  let total = 0;
+  for (let i = 0; i < pool.length; i++) total += i === idx ? weight : pool[i].weight;
+  return total > 0 ? (100 * weight) / total : 0;
+}
+let varyMode = "inspect";   // "inspect" | "draw" | "erase"
+/* Every coordinate the ruleset already draws from is blocked for Draw:
+   a generic sweep of the contract object (any {ax,ay} object or 2-number
+   array is a cell reference; DEEP_VARIANTS excluded — those are the pool
+   itself) plus the targets of taught mask/role rules. Over-reservation
+   fails safe; under-reservation breaks tiles, so the sweep is broad. */
+function reservedCells(ct) {
+  const s = new Set();
+  const add = (x, y) => s.add(x + "," + y);
+  const walk = (o) => {
+    if (!o || typeof o !== "object") return;
+    if (Array.isArray(o)) {
+      if (o.length === 2 && typeof o[0] === "number" && typeof o[1] === "number") { add(o[0], o[1]); return; }
+      for (const e of o) walk(e);
+      return;
+    }
+    if (typeof o.ax === "number" && typeof o.ay === "number") { add(o.ax, o.ay); return; }
+    for (const kk of Object.keys(o)) walk(o[kk]);
+  };
+  for (const kk of Object.keys(ct)) { if (kk !== "DEEP_VARIANTS" && typeof ct[kk] === "object") walk(ct[kk]); }
+  walk(ctRemaps()); walk(ctRoleRemaps());
+  return s;
+}
+function varyTapEd(x, y) {
+  const cx = Math.floor(x / TILE), cy = Math.floor(y / TILE);
+  if (cx < 0 || cy < 0 || cx >= TW / TILE || cy >= TH / TILE) return;
+  const i = varyHitTest(cx, cy);
+  if (varyMode === "draw") {
+    if (i >= 0) { openVaryPanel(i); return; }   // already pooled — edit instead
+    if (reservedCells(CT).has(cx + "," + cy)) {
+      status(cellName(cx, cy) + " already belongs to the ruleset (edge, band, slope, or a taught rule) \u2014 blocked so terrain art can't do double duty.");
+      return;
+    }
+    const pool = materializeDeepVars();
+    pool.push({ ax: cx, ay: cy, weight: 4 });
+    persistDeepVars();
+    rebuild(); renderPreview(); blit(); drawGrid();
+    status(cellName(cx, cy) + " added to the variation pool at weight 4 \u2014 tap it to adjust.");
+    return;
+  }
+  if (varyMode === "erase") {
+    if (i < 0) { status("Tap a yellow-outlined variant to remove it from the pool."); return; }
+    if (i === 0) { status("The primary can't be erased \u2014 set its weight to 0 to switch it off instead."); return; }
+    openVaryConfirm(i);
+    return;
+  }
+  if (i < 0) { status("Tap an outlined cell \u2014 green is the primary, yellow are its variants."); return; }
+  openVaryPanel(i);
+}
+function varyCommitRect(s) {
+  const c0 = Math.min(s.c0, s.c1), c1 = Math.max(s.c0, s.c1);
+  const r0 = Math.min(s.r0, s.r1), r1 = Math.max(s.r0, s.r1);
+  const gw = c1 - c0 + 1, gh = r1 - r0 + 1;
+  if (gw === 1 && gh === 1) { varyTapEd(c0 * TILE, r0 * TILE); return; }   // plain tap -> single-cell logic
+  const res = reservedCells(CT);
+  for (let cy = r0; cy <= r1; cy++) for (let cx = c0; cx <= c1; cx++) {
+    if (varyHitTest(cx, cy) >= 0) { status(cellName(cx, cy) + " is already in the pool \u2014 a group can't overlap existing entries."); return; }
+    if (res.has(cx + "," + cy)) { status(cellName(cx, cy) + " belongs to the ruleset \u2014 a group can't cover reserved cells."); return; }
+  }
+  materializeDeepVars().push({ ax: c0, ay: r0, w: gw, h: gh, weight: 4 });
+  persistDeepVars();
+  rebuild(); renderPreview(); blit(); drawGrid();
+  status(gw + "\u00d7" + gh + " group at " + cellName(c0, r0) + " added to the pool at weight 4 \u2014 tap it to adjust.");
+}
+/* In-app erase confirm (v6.31.1): native confirm() is blocked inside
+   sandboxed iframes (e.g. preview panes), silently returning false. */
+let varyEraseIdx = null;
+function openVaryConfirm(i) {
+  closeVaryPanel();
+  varyEraseIdx = i;
+  const p = effDeepVariants(CT)[i];
+  const gw = p.w || 1, gh = p.h || 1;
+  $("varyConfirmMsg").textContent = "Remove " + cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " (" + gw + "\u00d7" + gh + " group)" : "") + " from the variation pool? Its weight is forgotten; Draw can re-add it later.";
+  $("varyConfirm").style.display = "";
+}
+function closeVaryConfirm() { if (varyEraseIdx === null) return; $("varyConfirm").style.display = "none"; varyEraseIdx = null; }
+$("varyConfirmNo").addEventListener("click", closeVaryConfirm);
+$("varyConfirmYes").addEventListener("click", () => {
+  if (varyEraseIdx === null) return;
+  const i = varyEraseIdx;
+  const p = effDeepVariants(CT)[i];
+  closeVaryConfirm();
+  materializeDeepVars().splice(i, 1);
+  persistDeepVars();
+  rebuild(); renderPreview(); blit(); drawGrid();
+  status(cellName(p.ax, p.ay) + " removed from the variation pool.");
+});
+function syncVarybar() {
+  const want = tool === "vary" && activeTab === "ed" ? "flex" : "none";
+  const bar = $("varybar");
+  if (bar.style.display !== want) { bar.style.display = want; sizeOverlay(); }
+  $("btnVaryDraw").classList.toggle("on", varyMode === "draw");
+  $("btnVaryErase").classList.toggle("on", varyMode === "erase");
+}
+$("btnVaryDraw").addEventListener("click", () => { varyMode = varyMode === "draw" ? "inspect" : "draw"; closeVaryPanel(); closeVaryConfirm(); syncVarybar(); });
+$("btnVaryErase").addEventListener("click", () => { varyMode = varyMode === "erase" ? "inspect" : "erase"; closeVaryPanel(); closeVaryConfirm(); syncVarybar(); });
+function openVaryPanel(i) {
+  varyIdx = i;
+  const p = effDeepVariants(CT)[i];
+  const gw = p.w || 1, gh = p.h || 1;
+  $("varyTitle").textContent = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " (" + gw + "\u00d7" + gh + " group)" : "") +
+    (i === 0 ? " \u2014 PRIMARY deep tile" : " \u2014 variant");
+  $("varyWeight").value = p.weight;
+  $("varySpacedRow").style.display = gw > 1 || gh > 1 ? "flex" : "none";
+  $("varySpaced").checked = !!p.spaced;
+  $("varyRotRow").style.display = gw > 1 || gh > 1 ? "flex" : "none";
+  $("varyRotCW").checked = !!p.rotCW;
+  $("varyRotCCW").checked = !!p.rotCCW;
+  syncVaryPct();
+  $("varyPanel").style.display = "";
+}
+function syncVaryPct() {
+  if (varyIdx === null) return;
+  const w = Math.max(0, Math.floor(Number($("varyWeight").value) || 0));
+  if (w === 0) { $("varyPct").textContent = "0% \u2014 OFF (kept in the pool)"; return; }
+  const pool = effDeepVariants(CT), me = pool[varyIdx];
+  let tW = 0, tA = 0;
+  for (let i = 0; i < pool.length; i++) {
+    const p = pool[i], pw = i === varyIdx ? w : p.weight;
+    tW += pw; tA += pw * (p.w || 1) * (p.h || 1);
+  }
+  const myArea = (me.w || 1) * (me.h || 1);
+  $("varyPct").textContent = (100 * w / tW).toFixed(1) + "% of picks" +
+    (tA !== tW ? " \u00b7 \u2248" + (100 * w * myArea / tA).toFixed(1) + "% of deep area" : "");
+}
+function closeVaryPanel() { if (varyIdx === null) return; $("varyPanel").style.display = "none"; varyIdx = null; }
+$("varyWeight").addEventListener("input", syncVaryPct);
+$("varyClose").addEventListener("click", closeVaryPanel);
+$("varyApply").addEventListener("click", () => {
+  if (varyIdx === null) return;
+  const w = Math.max(0, Math.floor(Number($("varyWeight").value) || 0));
+  const pool = materializeDeepVars();
+  pool[varyIdx].weight = w;
+  if ((pool[varyIdx].w || 1) > 1 || (pool[varyIdx].h || 1) > 1) {
+    if ($("varySpaced").checked) pool[varyIdx].spaced = true; else delete pool[varyIdx].spaced;
+    if ($("varyRotCW").checked) pool[varyIdx].rotCW = true; else delete pool[varyIdx].rotCW;
+    if ($("varyRotCCW").checked) pool[varyIdx].rotCCW = true; else delete pool[varyIdx].rotCCW;
+  }
+  persistDeepVars();
+  rebuild(); renderPreview(); blit(); drawGrid();
+  const p = pool[varyIdx];
+  status(cellName(p.ax, p.ay) + (w === 0 ? " switched OFF (weight 0 \u2014 still in the pool)."
+    : " weight \u2192 " + w + " (" + varyPct(w, varyIdx).toFixed(1) + "% of deep picks)."));
+  $("varyPanel").style.display = "none"; varyIdx = null;
+});
 /* Layout+rules export: share sheet on capable devices (pick AirDrop / Save
    to Files / etc.), classic download elsewhere — same pattern as the PNG
    export. Blob built synchronously to stay inside WebKit's activation
@@ -3162,6 +3482,7 @@ $("btnDice").addEventListener("click", () => {
   const g = genRoom();
   applyLevelState({ fills: g.fills, userSlopes: g.slopes, gc: g.cols, gr: g.rows });
   roomDoors = g.doors || []; roomSpawn = g.spawn || null;
+  persistDecor();
   renderPreview();
   if (activeTab === "pv") fitView("pv");
   status("Rolled: " + g.name + " \u2014 undo restores the previous layout.");
@@ -3169,7 +3490,8 @@ $("btnDice").addEventListener("click", () => {
 $("btnLayoutSave").addEventListener("click", () => {
   const json = JSON.stringify({ tessera_layout: 1, gcols: fieldCols, grows: fieldRows, fills, slopes: userSlopes,
     remaps:     { [CT.id]: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) } },
-    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } } });
+    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } },
+    deepVariants: { [CT.id]: effDeepVariants(CT).map((p) => ({ ...p })) } });
   try {
     if (navigator.share && navigator.canShare) {
       const file = new File([json], "tessera_layout.json", { type: "application/json" });
@@ -3198,10 +3520,13 @@ layoutFileInput.addEventListener("change", () => {
       const data = JSON.parse(rd.result);
       if (!data || typeof data.fills !== "object") { status("Not a TESSERA layout file."); return; }
       fills = data.fills;
+      roomDoors = []; roomSpawn = null;   // layout files carry no roll decorations
+      persistDecor();
       fieldCols = data.gcols || 44; fieldRows = data.grows || 26; persistGrid();
       if (Array.isArray(data.slopes)) { userSlopes = data.slopes; persistUserSlopes(); }
       if (data.remaps) { maskRemaps = data.remaps; persistRemaps(); }
       if (data.roleRemaps) { roleRemaps = data.roleRemaps; persistRoleRemaps(); }
+      if (data.deepVariants) { deepVarOverrides = data.deepVariants; persistDeepVars(); }
       persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
       status("Layout loaded." + (data.overrides ? " (Pin-era data in this file was ignored — rules are taught in-app now.)" : ""));
     } catch (e) { status("Could not read layout: " + e.message); }
@@ -3219,7 +3544,9 @@ $("btnReset").addEventListener("click", () => {
   const sameSlopes = JSON.stringify(userSlopes) === JSON.stringify(DEFAULT_SLOPES);
   if (same && sameSlopes && layoutMode === "field") { status("Layout is already the default."); return; }
   if (!confirm("Reset the Playfield to the default mock arrangement? Painted cells and drawn slopes will revert; taught rules are never touched. (Undoable.)")) return;
-  levelSnapshot();   // fills + drawn slopes restorable via undo
+  levelSnapshot();   // fills + drawn slopes + decorations restorable via undo
+  roomDoors = []; roomSpawn = null;   // the default playfield has no roll decorations
+  persistDecor();
   fieldCols = 44; fieldRows = 26; persistGrid();
   fills = def;
   userSlopes = JSON.parse(JSON.stringify(DEFAULT_SLOPES));
@@ -3228,10 +3555,12 @@ $("btnReset").addEventListener("click", () => {
 });
 $("btnRulesReset").addEventListener("click", () => {
   const nMask = Object.keys(ctRemaps()).length, nRole = Object.keys(ctRoleRemaps()).length;
-  if (!nMask && !nRole) { status("No overrides for " + CT.label + " — already showing the app's baked rule set."); return; }
-  if (!confirm("Clear ALL " + (nMask + nRole) + " in-progress overrides for " + CT.label + " (" + nMask + " mask, " + nRole + " role)? The app's baked rule set takes over everywhere. This cannot be undone.")) return;
+  const nDeep = (deepVarOverrides[CT.id] || []).length ? 1 : 0;
+  if (!nMask && !nRole && !nDeep) { status("No overrides for " + CT.label + " — already showing the app's baked rule set."); return; }
+  if (!confirm("Clear ALL " + (nMask + nRole) + " in-progress overrides for " + CT.label + " (" + nMask + " mask, " + nRole + " role)" + (nDeep ? " plus the edited variation pool" : "") + "? The app's baked rule set takes over everywhere. This cannot be undone.")) return;
   maskRemaps[CT.id] = {}; roleRemaps[CT.id] = {};
-  persistRemaps(); persistRoleRemaps();
+  delete deepVarOverrides[CT.id];
+  persistRemaps(); persistRoleRemaps(); persistDeepVars();
   rebuild(); renderPreview(); blit(); drawGrid();
   status("Overrides cleared — " + CT.label + " is showing the app's baked rule set.");
 });
@@ -3439,7 +3768,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.29.8";
+const APP_VERSION = "6.34.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
