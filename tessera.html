@@ -80,6 +80,8 @@
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   #varybar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #iobar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
+    background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   #varybar .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; }
   .fly { position: relative; display: inline-flex; }
   #optbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
@@ -134,6 +136,8 @@
     <span class="vsep"></span>
     <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
     <button class="ibtn pvmode" data-pvmode="cells" data-icon="layout" title="Cells — paint or erase whole terrain cells"></button>
+    <span class="vsep"></span>
+    <button class="ibtn" id="btnIO" data-icon="share" title="Import/Export — rules and room JSON files (rules describe the tileset; rooms describe drawn geometry)"></button>
   </div>
   <span class="spacer"></span>
   <span class="fly"><button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size and shape, shared by pencil and eraser"></button>
@@ -174,8 +178,6 @@
   <button class="ibtn ptool" data-ptool="erase" data-icon="eraser" title="Erase terrain cells — erasing any cell of a slope removes that whole run"></button>
   <span class="vsep"></span>
   <button class="ibtn" id="btnDice" data-icon="dice" title="Roll a random test room — Metroid-style layout stressing every slope family; replaces the Level layout (undo restores it)"></button>
-  <button class="ibtn" id="btnLayoutSave" data-icon="download" title="Save this layout as a JSON file — share it or load it on another device"></button>
-  <button class="ibtn" id="btnLayoutLoad" data-icon="upload" title="Load a layout JSON file"></button>
   <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
   <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
 </div>
@@ -187,6 +189,17 @@
   <span class="vlbl">VARIATION POOL</span>
   <button class="ibtn" id="btnVaryDraw" data-icon="sqplus" title="Draw — tap a free template cell to add it to the variation pool (weight 4; tap it afterwards to adjust). Cells the ruleset already draws from are blocked."></button>
   <button class="ibtn" id="btnVaryErase" data-icon="eraser" title="Erase — tap a yellow-outlined variant to remove it from the pool (asks first). The green primary can't be erased; set its weight to 0 to switch it off."></button>
+</div>
+
+<!-- Import/Export tray (v6.36): rules JSON = the tileset's full effective
+     ruleset (for ATLAS + sharing); room JSON = drawn geometry + a baked
+     resolved layer. Toggled by btnIO on the Level tab. -->
+<div id="iobar">
+  <button class="optline" id="btnRulesImport" title="Load a rules JSON — replaces this format's taught rules and variation pool (old combined layout files work too: only their rules are read)"><span data-icon="sqplus"></span>Import Rules</button>
+  <button class="optline" id="btnRulesExport" title="Save this format's FULL effective ruleset — contract geometry, taught rules, variation pool, sheet hash. Name it after its tileset PNG for ATLAS."><span data-icon="share"></span>Export Rules</button>
+  <span class="vsep"></span>
+  <button class="optline" id="btnRoomImport" title="Load a room JSON — replaces the drawn level geometry (undoable). Old combined layout files load geometry only."><span data-icon="sqplus"></span>Import Level</button>
+  <button class="optline" id="btnRoomExport" title="Save the drawn level — geometry plus a baked resolved-tile layer and a rules stamp"><span data-icon="share"></span>Export Level</button>
 </div>
 
 <!-- BG flyout — opened by the swatch at the bottom of the rail; order per James:
@@ -3156,6 +3169,7 @@ function setTab(tab) {   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share 
   if (tab !== "ed" && float) floatFlatten();
   if (canvasMode) exitCanvasMode();
   closeOptMenu();
+  closeIOBar();
   syncCellbar(tab === "pv");
   syncVarybar();
   syncSelbar();
@@ -3492,17 +3506,39 @@ $("btnDice").addEventListener("click", () => {
   if (activeTab === "pv") fitView("pv");
   status("Rolled: " + g.name + " \u2014 undo restores the previous layout.");
 });
-$("btnLayoutSave").addEventListener("click", () => {
-  const json = JSON.stringify({ tessera_layout: 1, gcols: fieldCols, grows: fieldRows, fills, slopes: userSlopes,
-    remaps:     { [CT.id]: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) } },
-    roleRemaps: { [CT.id]: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) } },
-    deepVariants: { [CT.id]: effDeepVariants(CT).map((p) => ({ ...p })) } });
+/* ---- Import/Export (v6.36): rules and rooms are separate files ----
+   Rules = the tileset's contract: full merged effective ruleset, so a
+   consumer (ATLAS) never needs TESSERA's baked constants. Rooms = drawn
+   geometry, plus the deterministic resolver's output as a baked layer and
+   a rulesHash stamp for staleness detection. */
+function fnv1aStr(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16).padStart(8, "0"); }
+function sheetHash() {
+  const d = edCtx.getImageData(0, 0, TW, TH).data;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < d.length; i++) { h ^= d[i]; h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+function rulesPayload() {
+  return {
+    tessera_rules: 1, contractId: CT.id, app: APP_VERSION, savedAt: new Date().toISOString(),
+    sheet: { cols: TW / TILE, rows: TH / TILE }, sheetHash: sheetHash(),
+    contract: CONTRACTS[CT.id],
+    maskRules: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) },
+    roleRules: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) },
+    deepVariants: effDeepVariants(CT).map((p) => ({ ...p })),
+  };
+}
+function rulesHash() {
+  const p = rulesPayload();
+  return fnv1aStr(JSON.stringify({ c: p.contractId, m: p.maskRules, r: p.roleRules, d: p.deepVariants }));
+}
+function shareJSON(json, filename) {
   try {
     if (navigator.share && navigator.canShare) {
-      const file = new File([json], "tessera_layout.json", { type: "application/json" });
+      const file = new File([json], filename, { type: "application/json" });
       if (navigator.canShare({ files: [file] })) {
         navigator.share({ files: [file] })
-          .then(() => status("Shared tessera_layout.json."))
+          .then(() => status("Shared " + filename + "."))
           .catch((err) => { if (err && err.name !== "AbortError") status("Share failed: " + err.message); });
         return;
       }
@@ -3510,36 +3546,83 @@ $("btnLayoutSave").addEventListener("click", () => {
   } catch (e) {}   // fall through to the download
   const a = document.createElement("a");
   a.href = "data:application/json," + encodeURIComponent(json);
-  a.download = "tessera_layout.json";
+  a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  status("Layout saved as tessera_layout.json.");
+  status("Saved " + filename + ".");
+}
+$("btnRulesExport").addEventListener("click", () => {
+  shareJSON(JSON.stringify(rulesPayload()), "tessera_" + CT.id + ".rules.json");
 });
-const layoutFileInput = document.createElement("input");
-layoutFileInput.type = "file"; layoutFileInput.accept = ".json,application/json";
-layoutFileInput.addEventListener("change", () => {
-  const f = layoutFileInput.files[0];
-  if (!f) return;
-  const rd = new FileReader();
-  rd.onload = () => {
-    try {
-      const data = JSON.parse(rd.result);
-      if (!data || typeof data.fills !== "object") { status("Not a TESSERA layout file."); return; }
-      fills = data.fills;
-      roomDoors = []; roomSpawn = null;   // layout files carry no roll decorations
-      persistDecor();
-      fieldCols = data.gcols || 44; fieldRows = data.grows || 26; persistGrid();
-      if (Array.isArray(data.slopes)) { userSlopes = data.slopes; persistUserSlopes(); }
-      if (data.remaps) { maskRemaps = data.remaps; persistRemaps(); }
-      if (data.roleRemaps) { roleRemaps = data.roleRemaps; persistRoleRemaps(); }
-      if (data.deepVariants) { deepVarOverrides = data.deepVariants; persistDeepVars(); }
-      persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
-      status("Layout loaded." + (data.overrides ? " (Pin-era data in this file was ignored — rules are taught in-app now.)" : ""));
-    } catch (e) { status("Could not read layout: " + e.message); }
-  };
-  rd.readAsText(f);
-  layoutFileInput.value = "";
+$("btnRoomExport").addEventListener("click", () => {
+  if (layoutMode !== "field") { status("Rooms export from the Level tab."); return; }
+  shareJSON(JSON.stringify({
+    tessera_room: 1, contractId: CT.id, app: APP_VERSION, savedAt: new Date().toISOString(),
+    rulesHash: rulesHash(),
+    gcols: fieldCols, grows: fieldRows, fills, slopes: userSlopes,
+    resolved,   // baked layer: the deterministic resolver's output for this geometry
+  }), "tessera_room.json");
 });
-$("btnLayoutLoad").addEventListener("click", () => layoutFileInput.click());
+function importRules(data) {
+  const touched = [];
+  if (data && data.tessera_rules === 1) {
+    const id = data.contractId;
+    if (!CONTRACTS[id]) { status("Rules file targets unknown format '" + id + "'."); return; }
+    maskRemaps[id] = data.maskRules || {};
+    roleRemaps[id] = data.roleRules || {};
+    deepVarOverrides[id] = (data.deepVariants || []).map((p) => ({ ...p }));
+    touched.push(id);
+  } else if (data && (data.remaps || data.roleRemaps || data.deepVariants)) {
+    // old combined layout file: extract the rules sections only
+    for (const id of Object.keys(data.remaps || {})) { maskRemaps[id] = data.remaps[id]; if (!touched.includes(id)) touched.push(id); }
+    for (const id of Object.keys(data.roleRemaps || {})) { roleRemaps[id] = data.roleRemaps[id]; if (!touched.includes(id)) touched.push(id); }
+    for (const id of Object.keys(data.deepVariants || {})) { deepVarOverrides[id] = data.deepVariants[id]; if (!touched.includes(id)) touched.push(id); }
+  } else { status("Not a TESSERA rules file."); return; }
+  persistRemaps(); persistRoleRemaps(); persistDeepVars();
+  rebuild(); renderPreview(); blit(); drawGrid();
+  status("Rules imported for " + touched.join(", ") + (touched.includes(CT.id) ? "." : " — switch format to see them."));
+}
+function importRoom(data) {
+  if (!data || typeof data.fills !== "object") { status("Not a TESSERA room/layout file."); return; }
+  levelSnapshot();   // undoable, decorations ride the snapshot
+  fills = data.fills;
+  roomDoors = []; roomSpawn = null;   // room files carry no roll decorations
+  persistDecor();
+  fieldCols = data.gcols || 44; fieldRows = data.grows || 26; persistGrid();
+  userSlopes = Array.isArray(data.slopes) ? data.slopes : []; persistUserSlopes();
+  persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
+  status("Room loaded." +
+    (data.remaps || data.roleRemaps || data.deepVariants ? " (Old combined file — its rules were NOT applied; use Import Rules for those.)" : "") +
+    (data.contractId && data.contractId !== CT.id ? " Authored for " + data.contractId + "." : ""));
+}
+function makeJSONInput(handler) {
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = ".json,application/json";
+  inp.addEventListener("change", () => {
+    const f = inp.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => { try { handler(JSON.parse(rd.result)); } catch (e) { status("Could not read file: " + e.message); } };
+    rd.readAsText(f);
+    inp.value = "";
+  });
+  return inp;
+}
+const rulesFileInput = makeJSONInput(importRules);
+const roomFileInput = makeJSONInput(importRoom);
+$("btnRulesImport").addEventListener("click", () => rulesFileInput.click());
+$("btnRoomImport").addEventListener("click", () => roomFileInput.click());
+function closeIOBar() {
+  const b = $("iobar");
+  if (b.style.display === "flex") { b.style.display = "none"; sizeOverlay(); }
+  $("btnIO").classList.remove("on");
+}
+$("btnIO").addEventListener("click", () => {
+  const b = $("iobar");
+  if (b.style.display === "flex") { closeIOBar(); return; }
+  b.style.display = "flex"; sizeOverlay();
+  $("btnIO").classList.add("on");
+});
+document.querySelectorAll("#iobar .optline").forEach((b) => b.addEventListener("click", () => closeIOBar()));
 $("btnReset").addEventListener("click", () => {
   const def = buildDefaultFills();
   const same = (() => {
@@ -3773,7 +3856,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.35.0";
+const APP_VERSION = "6.36.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
