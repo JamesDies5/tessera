@@ -1336,7 +1336,7 @@ const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tesser
    (pen, finger, bg, brush, palettes) never travel with a project. */
 const PROJECT_KEYS = [
   LS.contract, LS.size, LS.fills, LS.slopes, LS.decor,
-  "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars",
+  "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars", "tessera.palsel",
   ...Object.keys(CONTRACTS).map((id) => CONTRACTS[id].lsKey),
 ];
 const PROJ_ACTIVE = "tessera.activeProject";
@@ -1417,6 +1417,33 @@ function projThumbSrc(rec) {
 function projFmtDate(iso) {
   try { const d = new Date(iso); return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
 }
+/* Thumbnails render through the project's remembered palette — the same
+   luminance→LUT mapping tintedDecor uses. The stored PNG stays grayscale
+   truth; only the gallery <img> is recolored. */
+function projTintThumb(img, rec) {
+  const want = rec.keys && rec.keys["tessera.palsel"];
+  if (!want) return;
+  const pal = palettes.find((p) => p.name === want);
+  if (!pal || !pal.base) return;
+  const src = new Image();
+  src.onload = () => {
+    try {
+      const cv = document.createElement("canvas"); cv.width = src.width; cv.height = src.height;
+      const g = cv.getContext("2d");
+      g.drawImage(src, 0, 0);
+      const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
+      const d2 = g.getImageData(0, 0, cv.width, cv.height), dd = d2.data;
+      for (let i = 0; i < dd.length; i += 4) {
+        if (dd[i + 3] === 0) continue;
+        const l = Math.min(255, Math.round(dd[i] * 0.299 + dd[i + 1] * 0.587 + dd[i + 2] * 0.114));
+        dd[i] = lut[l * 3]; dd[i + 1] = lut[l * 3 + 1]; dd[i + 2] = lut[l * 3 + 2];
+      }
+      g.putImageData(d2, 0, 0);
+      img.src = cv.toDataURL("image/png");
+    } catch (e) {}
+  };
+  src.src = img.src;
+}
 function projRenderGallery() {
   projList().then((all) => {
     all.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
@@ -1427,6 +1454,7 @@ function projRenderGallery() {
       card.dataset.pid = rec.id;
       const th = document.createElement("div"); th.className = "thumb";
       const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
+      projTintThumb(img, rec);
       const meta = document.createElement("div"); meta.className = "meta";
       const nm = document.createElement("div"); nm.className = "pname";
       nm.textContent = rec.name + (rec.id === activeProjectId ? "  \u2022  open" : "");
@@ -4157,6 +4185,7 @@ function refreshPalSelect() {
 }
 $("palSelect").addEventListener("change", (e) => {
   palIdx = parseInt(e.target.value, 10);
+  try { localStorage.setItem("tessera.palsel", palettes[palIdx].name); } catch (err) {}
   pvDirty = true; renderPreview(); refreshSwatches(); syncColorChip();
   if (activeTab === "ed") blit();   // template recolors via edDisplay's stale key
   closeColorMenu();
@@ -4339,7 +4368,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.43.1";
+const APP_VERSION = "6.44.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -4508,6 +4537,12 @@ $("btnConvert").addEventListener("click", () => {
   try {
     const savedPals = JSON.parse(localStorage.getItem(LS.pals) || "[]");
     for (const p of savedPals) if (p && p.base && !palettes.some((q) => q.name === p.name)) palettes.push(p);
+  } catch (e) {}
+  /* Per-project palette memory (v6.44): the selection persists by NAME so it
+     survives palette-list growth and travels inside project snapshots. */
+  try {
+    const want = localStorage.getItem("tessera.palsel");
+    if (want) { const i = palettes.findIndex((p) => p.name === want); if (i >= 0) palIdx = i; }
   } catch (e) {}
   refreshPalSelect();
   try {
