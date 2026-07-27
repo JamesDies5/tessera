@@ -136,6 +136,17 @@
   .projCard .pacts { display: flex; gap: 2px; padding: 2px 6px 6px; }
   .projCard .pacts button { background: none; border: none; color: #9a9a9a; font-size: 11px; padding: 4px 6px; cursor: pointer; border-radius: 6px; }
   .projCard .pacts button:active { background: #2e2e2e; }
+
+  /* ---- GitHub sync (v6.40) ---- */
+  #projSyncPanel { display: none; border-bottom: 1px solid var(--line); padding: 10px 18px; }
+  #projSyncPanel.show { display: block; }
+  .syncRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  #ghTokenInput { flex: 1; max-width: 420px; background: #1d1d1d; border: 1px solid var(--line); border-radius: 8px;
+    color: #ddd; font-size: 12px; padding: 7px 10px; }
+  #ghRemoteList { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .ghRemote { display: flex; align-items: center; gap: 8px; background: #1d1d1d; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #ddd; }
+  .ghRemote button { background: none; border: none; color: #8fb996; font-size: 12px; cursor: pointer; padding: 2px 4px; }
 </style>
 </head>
 <body>
@@ -243,8 +254,19 @@
   <div id="projHead">
     <h2>Projects</h2>
     <span class="spacer"></span>
+    <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
     <button class="optline" id="btnProjNew" title="Create a new, blank project (name required)"><span data-icon="sqplus"></span>New</button>
     <button class="optline" id="btnProjClose" title="Back to the open project"><span data-icon="sqx"></span>Close</button>
+  </div>
+  <!-- GitHub sync (v6.40): the token is stored ONLY in device localStorage
+       (tessera.ghtoken) — never in project snapshots, never pushed. -->
+  <div id="projSyncPanel">
+    <div class="syncRow">
+      <input type="password" id="ghTokenInput" autocomplete="off" placeholder="Paste GitHub fine-grained token">
+      <button class="optline" id="btnGhTokenSave">Save token</button>
+      <button class="optline" id="btnGhRefresh"><span data-icon="reload"></span>List GitHub projects</button>
+    </div>
+    <div id="ghRemoteList"></div>
   </div>
   <div id="projGrid"></div>
 </div>
@@ -1265,6 +1287,7 @@ const ICONS = {
   flipV: '<path d="M3 12h18M8 7l4-4 4 4M8 17l4 4 4 4" transform="scale(1,1)"/>',
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
   folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>',
@@ -1415,6 +1438,10 @@ function projRenderGallery() {
         if (!confirm('Delete "' + rec.name + '" forever? This cannot be undone.')) return;
         projDel(rec.id).then(projRenderGallery).catch(() => status("Delete failed."));
       });
+      mk("Push", () => {
+        const doPush = () => projGet(rec.id).then((fresh) => ghPushProject(fresh || rec)).catch(() => ghPushProject(rec));
+        if (rec.id === activeProjectId) saveActiveProject().then(doPush); else doPush();
+      });
       card.appendChild(th); card.appendChild(meta); card.appendChild(acts);
       card.addEventListener("click", () => {
         if (rec.id === activeProjectId) { $("projOverlay").classList.remove("show"); return; }
@@ -1434,6 +1461,123 @@ $("btnProjNew").addEventListener("click", () => {
   const rec = projNewRecord(name);
   saveActiveProject().then(() => projPut(rec)).then(() => { projLoadKeys(rec); location.reload(); })
     .catch(() => status("Couldn't create the project."));
+});
+
+/* ==== GITHUB SYNC (v6.40) =========================================
+   The repo is the durable store; the local library is the working
+   cache. Each project pushes as one commit-tracked JSON file at
+   projects/<slug>.json on main, so version history is git history.
+   Push/pull are explicit; last write wins. The token is a fine-grained
+   PAT scoped to Contents on this one repo, stored ONLY in device
+   localStorage — never inside a project record, never in a payload. */
+const GH = { owner: "JamesDies5", repo: "tessera", branch: "main", dir: "projects" };
+const GH_TOKEN_KEY = "tessera.ghtoken";
+
+function ghToken() { try { return localStorage.getItem(GH_TOKEN_KEY) || ""; } catch (e) { return ""; } }
+function ghFetch(path, opts, accept) {
+  opts = opts || {};
+  const headers = Object.assign(
+    { Accept: accept || "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    opts.headers || {}
+  );
+  const tok = ghToken(); if (tok) headers.Authorization = "Bearer " + tok;
+  return fetch("https://api.github.com" + path, Object.assign({}, opts, { headers }));
+}
+function ghErr(r) {
+  if (r.status === 401) return new Error("token rejected (401)");
+  if (r.status === 403) return new Error("forbidden (403) — check the token's repo + Contents permissions");
+  return new Error("HTTP " + r.status);
+}
+function b64EncodeUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function projSlug(rec) {
+  if (rec.slug) return rec.slug;
+  rec.slug = (rec.name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+  return rec.slug;
+}
+function ghListDir() {
+  return ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "?ref=" + GH.branch).then((r) => {
+    if (r.status === 404) return [];               // no projects/ dir yet — first push creates it
+    if (!r.ok) return Promise.reject(ghErr(r));
+    return r.json();
+  });
+}
+function ghPushProject(rec) {
+  if (!ghToken()) { status("Set your GitHub token in Sync first."); return; }
+  const fname = projSlug(rec) + ".json";
+  const path = "/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "/" + fname;
+  const payload = { tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} };
+  status("Pushing “" + rec.name + "”…");
+  ghListDir()
+    .then((entries) => {
+      const hit = (entries || []).find((f) => f.name === fname);   // dir listing carries the sha at any file size
+      const body = { message: "TESSERA: save project “" + rec.name + "”", branch: GH.branch, content: b64EncodeUtf8(JSON.stringify(payload)) };
+      if (hit) body.sha = hit.sha;
+      return ghFetch(path, { method: "PUT", body: JSON.stringify(body) });
+    })
+    .then((r) => {
+      if (!r.ok) return Promise.reject(ghErr(r));
+      projPut(rec).catch(() => {});                 // persist the slug assignment
+      status("Pushed “" + rec.name + "” to GitHub.");
+    })
+    .catch((e) => status("Push failed: " + e.message));
+}
+function ghPullProject(fname) {
+  status("Pulling " + fname + "…");
+  ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "/" + fname + "?ref=" + GH.branch, null, "application/vnd.github.raw+json")
+    .then((r) => (r.ok ? r.text() : Promise.reject(ghErr(r))))
+    .then((txt) => {
+      const data = JSON.parse(txt);
+      if (!data || data.tessera_project !== 1 || !data.id) return Promise.reject(new Error("not a TESSERA project file"));
+      return projGet(data.id).then((local) => {
+        if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
+        const rec = { id: data.id, name: data.name || fname, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: fname.replace(/\.json$/, "") };
+        return projPut(rec).then(() => rec);
+      });
+    })
+    .then((rec) => {
+      if (!rec) return;
+      if (rec.id === activeProjectId && confirm("This is the OPEN project. Load the pulled version into the workspace now? The current workspace state will be replaced.")) {
+        projLoadKeys(rec); location.reload(); return;
+      }
+      status("Pulled “" + rec.name + "” into the library.");
+      projRenderGallery();
+    })
+    .catch((e) => status("Pull failed: " + e.message));
+}
+function ghRenderRemoteList(entries) {
+  const list = $("ghRemoteList"); list.innerHTML = "";
+  const files = (entries || []).filter((f) => f.type === "file" && /\.json$/.test(f.name));
+  if (!files.length) { list.textContent = "No projects on GitHub yet."; return; }
+  for (const f of files) {
+    const row = document.createElement("div"); row.className = "ghRemote";
+    const nm = document.createElement("span"); nm.textContent = f.name.replace(/\.json$/, "");
+    const b = document.createElement("button"); b.textContent = "Pull";
+    b.addEventListener("click", () => ghPullProject(f.name));
+    row.appendChild(nm); row.appendChild(b);
+    list.appendChild(row);
+  }
+}
+function ghTokenHint() {
+  const inp = $("ghTokenInput");
+  inp.value = "";
+  inp.placeholder = ghToken() ? "Token saved on this device — paste to replace, Save empty to clear" : "Paste GitHub fine-grained token";
+}
+$("btnProjSync").addEventListener("click", () => { ghTokenHint(); $("projSyncPanel").classList.toggle("show"); });
+$("btnGhTokenSave").addEventListener("click", () => {
+  const v = $("ghTokenInput").value.trim();
+  try { if (v) localStorage.setItem(GH_TOKEN_KEY, v); else localStorage.removeItem(GH_TOKEN_KEY); } catch (e) {}
+  ghTokenHint();
+  status(v ? "Token saved on this device." : "Token cleared.");
+});
+$("btnGhRefresh").addEventListener("click", () => {
+  status("Listing GitHub projects…");
+  ghListDir().then((entries) => { ghRenderRemoteList(entries); status("GitHub project list updated."); })
+    .catch((e) => status("List failed: " + e.message));
 });
 /* Per-contract sheet size in cells (extends the contract's base TCOLS/TROWS;
    never below base, so structural cells can't be cropped). */
@@ -4069,7 +4213,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.39.0";
+const APP_VERSION = "6.40.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
