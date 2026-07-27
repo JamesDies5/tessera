@@ -128,7 +128,13 @@
   #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; padding: 16px 18px; align-content: start; }
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
   .projCard.active { border-color: #8fb996; }
-  .projCard .thumb { background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .projCard .thumb { position: relative; background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .syncbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; background: rgba(18,18,18,.72); padding: 0; }
+  .syncbadge svg { width: 17px; height: 17px; }
+  .syncbadge.fresh { color: #8fb996; border: 1.5px solid #8fb996; }
+  .syncbadge.stale { color: #d9a556; border: 1.5px solid #d9a556; }
+  .syncbadge:active { background: #2e2e2e; }
   .projCard .thumb img { max-width: 92%; max-height: 92%; image-rendering: pixelated; }
   .projCard .meta { padding: 8px 10px 4px; }
   .projCard .pname { font-size: 13px; color: #ddd; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1443,10 +1449,18 @@ function projRenderGallery() {
         if (!confirm('Delete "' + rec.name + '" forever? This cannot be undone.')) return;
         projDel(rec.id).then(projRenderGallery).catch(() => status("Delete failed."));
       });
-      mk("Push", () => {
+      const badge = document.createElement("button");
+      const curHash = fnv1aStr(JSON.stringify(rec.keys || {}));
+      const inSync = rec.pushedHash === curHash;
+      badge.className = "syncbadge " + (inSync ? "fresh" : "stale");
+      badge.title = inSync ? "In sync with GitHub" : "Changes since last push — tap to push";
+      badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS.reload + '</svg>';
+      badge.addEventListener("click", (e) => {
+        e.stopPropagation();
         const doPush = () => projGet(rec.id).then((fresh) => ghPushProject(fresh || rec)).catch(() => ghPushProject(rec));
         if (rec.id === activeProjectId) saveActiveProject().then(doPush); else doPush();
       });
+      th.appendChild(badge);
       const bar = document.createElement("div"); bar.className = "pushbar";
       const fill = document.createElement("div"); fill.className = "pushfill"; bar.appendChild(fill);
       const note = document.createElement("div"); note.className = "pushnote";
@@ -1534,21 +1548,82 @@ function ghPutFile(path, b64, msg, sha) {
   if (sha) body.sha = sha;
   return ghFetch(path, { method: "PUT", body: JSON.stringify(body) }).then((r) => (r.ok ? r : Promise.reject(ghErr(r))));
 }
+/* ---- snapshot artifact builders (v6.42) ----
+   Push publishes for ANY project by rebuilding the game-facing artifacts
+   from the record's own keys — the same constants and the same
+   store-over-baked merge that rulesPayload() uses live, and the same
+   FNV-1a pixel hash that sheetHash() runs, decoded from the record's PNG. */
+function ghRecJSON(rec, key) {
+  try { return JSON.parse(rec.keys && rec.keys[key] || "null") || {}; } catch (e) { return {}; }
+}
+function ghRecContractId(rec) {
+  const cid = (rec.keys && rec.keys[LS.contract]) || "v1";
+  return CONTRACTS[cid] ? cid : "v1";
+}
+function ghRecSheetDims(rec, cid) {
+  const ext = ghRecJSON(rec, LS.size)[cid] || {};
+  return { cols: ext.cols || CONTRACTS[cid].TCOLS, rows: ext.rows || CONTRACTS[cid].TROWS };
+}
+function ghRecPngDataURL(rec, cid) {
+  return (rec.keys && rec.keys[CONTRACTS[cid].lsKey]) || DEFAULT_PNGS[cid];
+}
+function ghSheetHashFromDataURL(dataURL, cols, rows) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const cv = document.createElement("canvas");
+        cv.width = cols * TILE; cv.height = rows * TILE;
+        const cx = cv.getContext("2d");
+        cx.drawImage(img, 0, 0);
+        const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+        let h = 0x811c9dc5;
+        for (let i = 0; i < d.length; i++) { h ^= d[i]; h = Math.imul(h, 0x01000193); }
+        res((h >>> 0).toString(16).padStart(8, "0"));
+      } catch (e) { rej(e); }
+    };
+    img.onerror = () => rej(new Error("couldn't decode tileset PNG"));
+    img.src = dataURL;
+  });
+}
+function ghRulesFromRecord(rec, cid, dims, hash) {
+  const mask = ghRecJSON(rec, "tessera.remaps");
+  const role = ghRecJSON(rec, "tessera.roleremaps");
+  const deep = ghRecJSON(rec, "tessera.deepvars");
+  const dv = (deep[cid] && deep[cid].length) ? deep[cid] : CONTRACTS[cid].DEEP_VARIANTS;
+  return {
+    tessera_rules: 1, contractId: cid, app: APP_VERSION, savedAt: new Date().toISOString(),
+    sheet: { cols: dims.cols, rows: dims.rows }, sheetHash: hash,
+    contract: CONTRACTS[cid],
+    maskRules: { ...(DEFAULT_MASK_REMAPS[cid] || {}), ...(mask[cid] || {}) },
+    roleRules: { ...(DEFAULT_ROLE_RULES[cid] || {}), ...(role[cid] || {}) },
+    deepVariants: dv.map((p) => ({ ...p })),
+  };
+}
+function ghArtifactsFromRecord(rec, slug) {
+  const cid = ghRecContractId(rec);
+  const dims = ghRecSheetDims(rec, cid);
+  const png = ghRecPngDataURL(rec, cid);
+  return ghSheetHashFromDataURL(png, dims.cols, dims.rows).then((hash) => [
+    { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
+    { name: slug + ".png", b64: png.split(",")[1] },
+    { name: slug + ".rules.json", b64: b64EncodeUtf8(JSON.stringify(ghRulesFromRecord(rec, cid, dims, hash))) },
+  ]);
+}
 function ghPushProject(rec) {
   if (!ghToken()) { status("Set your GitHub token in Sync first."); return; }
   const slug = projSlug(rec);
   const base = GH.dir + "/" + slug;
-  const isOpen = rec.id === activeProjectId;
-  /* The game-facing artifacts (tileset PNG + effective rules) are built by the
-     SAME code paths as the manual export buttons — ed.toDataURL and
-     rulesPayload() — which read live workspace state. So they publish only
-     when pushing the OPEN project; library pushes bank the snapshot json. */
-  const files = [{ name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) }];
-  if (isOpen) {
-    files.push({ name: slug + ".png", b64: ed.toDataURL("image/png").split(",")[1] });
-    files.push({ name: slug + ".rules.json", b64: b64EncodeUtf8(JSON.stringify(rulesPayload())) });
+  /* Open project: refresh the record's canvas key from the live artboard so
+     the pushed PNG (and its hash) is byte-exact with the screen. */
+  if (rec.id === activeProjectId) {
+    try { rec.keys = rec.keys || {}; rec.keys[CT.lsKey] = ed.toDataURL("image/png"); } catch (e) {}
   }
-  projPushUI(rec.id, 0.1, "Preparing…");
+  projPushUI(rec.id, 0.05, "Building artifacts…");
+  ghArtifactsFromRecord(rec, slug)
+    .then((files) => ghPushFiles(rec, base, files));
+}
+function ghPushFiles(rec, base, files) {
   ghListSub(base)
     .then((entries) => {
       const shas = {};
@@ -1564,8 +1639,11 @@ function ghPushProject(rec) {
       return chain;
     })
     .then(() => {
-      projPut(rec).catch(() => {});                 // persist the slug assignment
-      projPushUI(rec.id, 1, isOpen ? "Pushed ✓ project + PNG + rules" : "Pushed ✓ snapshot — open it to publish PNG + rules", "ok");
+      rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));
+      projPut(rec).catch(() => {});                 // persist slug + push fingerprint
+      const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
+      if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
+      projPushUI(rec.id, 1, "Pushed ✓ project + PNG + rules", "ok");
       status("Pushed “" + rec.name + "” to GitHub.");
     })
     .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
@@ -4260,7 +4338,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.41.0";
+const APP_VERSION = "6.43.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
