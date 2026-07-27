@@ -125,7 +125,7 @@
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
   #projHead .spacer { flex: 1; }
-  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; padding: 16px 18px; align-content: start; }
+  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; padding: 16px 18px; align-content: start; }
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
   .projCard.active { border-color: #8fb996; }
   .projCard .thumb { background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -133,9 +133,13 @@
   .projCard .meta { padding: 8px 10px 4px; }
   .projCard .pname { font-size: 13px; color: #ddd; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .projCard .pdate { font-size: 10px; color: #8a8a8a; margin-top: 2px; }
-  .projCard .pacts { display: flex; gap: 2px; padding: 2px 6px 6px; }
-  .projCard .pacts button { background: none; border: none; color: #9a9a9a; font-size: 11px; padding: 4px 6px; cursor: pointer; border-radius: 6px; }
-  .projCard .pacts button:active { background: #2e2e2e; }
+  .projCard .pacts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 8px; }
+  .projCard .pacts button { background: #262626; border: 1px solid var(--line); color: #cfcfcf; font-size: 11px; padding: 5px 9px; cursor: pointer; border-radius: 7px; }
+  .projCard .pacts button:active { background: #3a3a3a; }
+  .projCard .pushbar { height: 4px; background: #262626; }
+  .projCard .pushfill { height: 100%; width: 0%; background: #8fb996; transition: width .25s; }
+  .projCard .pushfill.err { background: #c96a6a; }
+  .projCard .pushnote { font-size: 10px; color: #9fbfa5; padding: 3px 10px 6px; min-height: 12px; }
 
   /* ---- GitHub sync (v6.40) ---- */
   #projSyncPanel { display: none; border-bottom: 1px solid var(--line); padding: 10px 18px; }
@@ -1413,6 +1417,7 @@ function projRenderGallery() {
     for (const rec of all) {
       const card = document.createElement("div");
       card.className = "projCard" + (rec.id === activeProjectId ? " active" : "");
+      card.dataset.pid = rec.id;
       const th = document.createElement("div"); th.className = "thumb";
       const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
       const meta = document.createElement("div"); meta.className = "meta";
@@ -1442,7 +1447,10 @@ function projRenderGallery() {
         const doPush = () => projGet(rec.id).then((fresh) => ghPushProject(fresh || rec)).catch(() => ghPushProject(rec));
         if (rec.id === activeProjectId) saveActiveProject().then(doPush); else doPush();
       });
-      card.appendChild(th); card.appendChild(meta); card.appendChild(acts);
+      const bar = document.createElement("div"); bar.className = "pushbar";
+      const fill = document.createElement("div"); fill.className = "pushfill"; bar.appendChild(fill);
+      const note = document.createElement("div"); note.className = "pushnote";
+      card.appendChild(th); card.appendChild(meta); card.appendChild(acts); card.appendChild(bar); card.appendChild(note);
       card.addEventListener("click", () => {
         if (rec.id === activeProjectId) { $("projOverlay").classList.remove("show"); return; }
         projSwitch(rec);
@@ -1506,36 +1514,73 @@ function ghListDir() {
     return r.json();
   });
 }
+function projPushUI(id, frac, note, cls) {
+  const card = document.querySelector('.projCard[data-pid="' + id + '"]');
+  if (!card) return;
+  const fill = card.querySelector(".pushfill"), msg = card.querySelector(".pushnote");
+  if (fill) { fill.style.width = Math.round(frac * 100) + "%"; fill.className = "pushfill" + (cls ? " " + cls : ""); }
+  if (msg) msg.textContent = note || "";
+  if (frac >= 1 && cls === "ok") setTimeout(() => { if (fill) fill.style.width = "0%"; if (msg) msg.textContent = ""; }, 3000);
+}
+function ghListSub(subdir) {
+  return ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + subdir + "?ref=" + GH.branch).then((r) => {
+    if (r.status === 404) return [];
+    if (!r.ok) return Promise.reject(ghErr(r));
+    return r.json();
+  });
+}
+function ghPutFile(path, b64, msg, sha) {
+  const body = { message: msg, branch: GH.branch, content: b64 };
+  if (sha) body.sha = sha;
+  return ghFetch(path, { method: "PUT", body: JSON.stringify(body) }).then((r) => (r.ok ? r : Promise.reject(ghErr(r))));
+}
 function ghPushProject(rec) {
   if (!ghToken()) { status("Set your GitHub token in Sync first."); return; }
-  const fname = projSlug(rec) + ".json";
-  const path = "/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "/" + fname;
-  const payload = { tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} };
-  status("Pushing “" + rec.name + "”…");
-  ghListDir()
+  const slug = projSlug(rec);
+  const base = GH.dir + "/" + slug;
+  const isOpen = rec.id === activeProjectId;
+  /* The game-facing artifacts (tileset PNG + effective rules) are built by the
+     SAME code paths as the manual export buttons — ed.toDataURL and
+     rulesPayload() — which read live workspace state. So they publish only
+     when pushing the OPEN project; library pushes bank the snapshot json. */
+  const files = [{ name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) }];
+  if (isOpen) {
+    files.push({ name: slug + ".png", b64: ed.toDataURL("image/png").split(",")[1] });
+    files.push({ name: slug + ".rules.json", b64: b64EncodeUtf8(JSON.stringify(rulesPayload())) });
+  }
+  projPushUI(rec.id, 0.1, "Preparing…");
+  ghListSub(base)
     .then((entries) => {
-      const hit = (entries || []).find((f) => f.name === fname);   // dir listing carries the sha at any file size
-      const body = { message: "TESSERA: save project “" + rec.name + "”", branch: GH.branch, content: b64EncodeUtf8(JSON.stringify(payload)) };
-      if (hit) body.sha = hit.sha;
-      return ghFetch(path, { method: "PUT", body: JSON.stringify(body) });
+      const shas = {};
+      for (const f of entries || []) shas[f.name] = f.sha;
+      let chain = Promise.resolve(), done = 0;
+      for (const f of files) {
+        chain = chain.then(() => {
+          projPushUI(rec.id, 0.15 + 0.8 * (done / files.length), "Uploading " + f.name + "…");
+          return ghPutFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + base + "/" + f.name,
+            f.b64, "TESSERA: " + rec.name + " — " + f.name, shas[f.name]).then(() => { done += 1; });
+        });
+      }
+      return chain;
     })
-    .then((r) => {
-      if (!r.ok) return Promise.reject(ghErr(r));
+    .then(() => {
       projPut(rec).catch(() => {});                 // persist the slug assignment
+      projPushUI(rec.id, 1, isOpen ? "Pushed ✓ project + PNG + rules" : "Pushed ✓ snapshot — open it to publish PNG + rules", "ok");
       status("Pushed “" + rec.name + "” to GitHub.");
     })
-    .catch((e) => status("Push failed: " + e.message));
+    .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
 }
-function ghPullProject(fname) {
-  status("Pulling " + fname + "…");
-  ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "/" + fname + "?ref=" + GH.branch, null, "application/vnd.github.raw+json")
+function ghPullProject(slug, legacy) {
+  status("Pulling " + slug + "…");
+  const fpath = legacy ? GH.dir + "/" + slug + ".json" : GH.dir + "/" + slug + "/project.json";
+  ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + fpath + "?ref=" + GH.branch, null, "application/vnd.github.raw+json")
     .then((r) => (r.ok ? r.text() : Promise.reject(ghErr(r))))
     .then((txt) => {
       const data = JSON.parse(txt);
       if (!data || data.tessera_project !== 1 || !data.id) return Promise.reject(new Error("not a TESSERA project file"));
       return projGet(data.id).then((local) => {
         if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
-        const rec = { id: data.id, name: data.name || fname, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: fname.replace(/\.json$/, "") };
+        const rec = { id: data.id, name: data.name || slug, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: slug };
         return projPut(rec).then(() => rec);
       });
     })
@@ -1551,13 +1596,15 @@ function ghPullProject(fname) {
 }
 function ghRenderRemoteList(entries) {
   const list = $("ghRemoteList"); list.innerHTML = "";
-  const files = (entries || []).filter((f) => f.type === "file" && /\.json$/.test(f.name));
-  if (!files.length) { list.textContent = "No projects on GitHub yet."; return; }
-  for (const f of files) {
+  const items = (entries || []).filter((f) => f.type === "dir" || (f.type === "file" && /\.json$/.test(f.name)));
+  if (!items.length) { list.textContent = "No projects on GitHub yet."; return; }
+  for (const f of items) {
+    const legacy = f.type !== "dir";
+    const slug = legacy ? f.name.replace(/\.json$/, "") : f.name;
     const row = document.createElement("div"); row.className = "ghRemote";
-    const nm = document.createElement("span"); nm.textContent = f.name.replace(/\.json$/, "");
+    const nm = document.createElement("span"); nm.textContent = slug + (legacy ? " (old flat file)" : "");
     const b = document.createElement("button"); b.textContent = "Pull";
-    b.addEventListener("click", () => ghPullProject(f.name));
+    b.addEventListener("click", () => ghPullProject(slug, legacy));
     row.appendChild(nm); row.appendChild(b);
     list.appendChild(row);
   }
@@ -4213,7 +4260,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.40.0";
+const APP_VERSION = "6.41.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
