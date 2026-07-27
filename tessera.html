@@ -129,12 +129,13 @@
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
   .projCard.active { border-color: #8fb996; }
   .projCard .thumb { position: relative; background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .syncbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; cursor: pointer; background: rgba(18,18,18,.72); padding: 0; }
+  .syncbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; color: #fff; padding: 0; }
   .syncbadge svg { width: 17px; height: 17px; }
-  .syncbadge.fresh { color: #8fb996; border: 1.5px solid #8fb996; }
-  .syncbadge.stale { color: #d9a556; border: 1.5px solid #d9a556; }
-  .syncbadge:active { background: #2e2e2e; }
+  .syncbadge.fresh { background: #6f9e77; }
+  .syncbadge.stale { background: #c9963f; }
+  .syncbadge.fresh:active { background: #5c8664; }
+  .syncbadge.stale:active { background: #a97e33; }
   .projCard .thumb img { max-width: 92%; max-height: 92%; image-rendering: pixelated; }
   .projCard .meta { padding: 8px 10px 4px; }
   .projCard .pname { font-size: 13px; color: #ddd; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4338,7 +4339,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.43.0";
+const APP_VERSION = "6.43.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
