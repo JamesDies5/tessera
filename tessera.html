@@ -118,11 +118,30 @@
   #ver { position: absolute; right: 8px; bottom: 6px; color: var(--dim); font-size: 10px; opacity: .75; pointer-events: none; letter-spacing: 1px; }
   #tip { position: fixed; z-index: 99; background: #2f2f2fee; border: 1px solid var(--line); border-radius: 6px;
     padding: 5px 8px; color: var(--text); font-size: 11px; max-width: 250px; pointer-events: none; display: none; line-height: 1.45; }
+
+  /* ---- Projects gallery (v6.39) ---- */
+  #projOverlay { position: fixed; inset: 0; z-index: 80; display: none; flex-direction: column; background: #121212; }
+  #projOverlay.show { display: flex; }
+  #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
+  #projHead .spacer { flex: 1; }
+  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; padding: 16px 18px; align-content: start; }
+  .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+  .projCard.active { border-color: #8fb996; }
+  .projCard .thumb { background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .projCard .thumb img { max-width: 92%; max-height: 92%; image-rendering: pixelated; }
+  .projCard .meta { padding: 8px 10px 4px; }
+  .projCard .pname { font-size: 13px; color: #ddd; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .projCard .pdate { font-size: 10px; color: #8a8a8a; margin-top: 2px; }
+  .projCard .pacts { display: flex; gap: 2px; padding: 2px 6px 6px; }
+  .projCard .pacts button { background: none; border: none; color: #9a9a9a; font-size: 11px; padding: 4px 6px; cursor: pointer; border-radius: 6px; }
+  .projCard .pacts button:active { background: #2e2e2e; }
 </style>
 </head>
 <body>
 <header>
   <h1>TESSERA</h1>
+  <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset lives in its own project; opening this gallery or switching auto-saves the open one"></button>
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
   <button class="tab" data-tab="zoo" data-icon="puzzle" title="Zoo — generated coverage: every blob mask + all twelve slope stamps"></button>
@@ -215,6 +234,20 @@
 <!-- Eyedropper loupe: appears while a hold-pick is engaged, tracks the
      finger, shows the sampled color through the active palette -->
 <div id="loupe"></div>
+
+<!-- Projects gallery (v6.39): Procreate-style project switcher. A project is a
+     snapshot of the workspace's localStorage keys; the OPEN project IS the live
+     workspace, so the rest of the app never knows projects exist. Switching
+     auto-saves the open project, swaps the keys, and reloads. -->
+<div id="projOverlay">
+  <div id="projHead">
+    <h2>Projects</h2>
+    <span class="spacer"></span>
+    <button class="optline" id="btnProjNew" title="Create a new, blank project (name required)"><span data-icon="sqplus"></span>New</button>
+    <button class="optline" id="btnProjClose" title="Back to the open project"><span data-icon="sqx"></span>Close</button>
+  </div>
+  <div id="projGrid"></div>
+</div>
 
 <div id="stage">
   <div id="rail">
@@ -1232,6 +1265,7 @@ const ICONS = {
   flipV: '<path d="M3 12h18M8 7l4-4 4 4M8 17l4 4 4 4" transform="scale(1,1)"/>',
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>',
   marquee: '<rect x="4" y="5" width="16" height="14" rx="2" stroke-dasharray="3 3"/>',
@@ -1258,6 +1292,149 @@ const DEFAULT_PNGS = {
   v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
 };
 const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush", size: "tessera.size", decor: "tessera.decor" };
+
+/* ==== PROJECTS (v6.39) ============================================
+   A project is a snapshot of the workspace's localStorage keys.
+   The live keys ARE the open project; nothing else in the app changes.
+   Saving bundles the keys into one IndexedDB record; switching writes
+   the current bundle out, loads the target bundle into the live keys,
+   and reloads so every subsystem boots from them. Device preferences
+   (pen, finger, bg, brush, palettes) never travel with a project. */
+const PROJECT_KEYS = [
+  LS.contract, LS.size, LS.fills, LS.slopes, LS.decor,
+  "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars",
+  ...Object.keys(CONTRACTS).map((id) => CONTRACTS[id].lsKey),
+];
+const PROJ_ACTIVE = "tessera.activeProject";
+
+function projDB() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open("tessera-projects", 1);
+    rq.onupgradeneeded = () => { rq.result.createObjectStore("projects", { keyPath: "id" }); };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+function projTx(mode, fn) {
+  return projDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction("projects", mode);
+    const rq = fn(tx.objectStore("projects"));
+    tx.oncomplete = () => { db.close(); res(rq ? rq.result : undefined); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+    tx.onabort = () => { db.close(); rej(tx.error); };
+  }));
+}
+const projList = () => projTx("readonly", (st) => st.getAll());
+const projGet = (id) => projTx("readonly", (st) => st.get(id));
+const projPut = (rec) => projTx("readwrite", (st) => st.put(rec));
+const projDel = (id) => projTx("readwrite", (st) => st.delete(id));
+
+let activeProjectId = null;
+try { activeProjectId = localStorage.getItem(PROJ_ACTIVE); } catch (e) {}
+
+function projSnapshotKeys() {
+  const keys = {};
+  for (const k of PROJECT_KEYS) { try { const v = localStorage.getItem(k); if (v !== null) keys[k] = v; } catch (e) {} }
+  return keys;
+}
+function projNewRecord(name) {
+  const now = new Date().toISOString();
+  return { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, createdAt: now, savedAt: now, keys: {} };
+}
+function saveActiveProject() {
+  if (!activeProjectId) return Promise.resolve();
+  return projGet(activeProjectId).then((rec) => {
+    if (!rec) return undefined;
+    rec.keys = projSnapshotKeys(); rec.savedAt = new Date().toISOString();
+    return projPut(rec);
+  }).catch(() => {});
+}
+function projLoadKeys(rec) {
+  for (const k of PROJECT_KEYS) {
+    try {
+      if (rec.keys && rec.keys[k] !== undefined) localStorage.setItem(k, rec.keys[k]);
+      else localStorage.removeItem(k);
+    } catch (e) {}
+  }
+  try { localStorage.setItem(PROJ_ACTIVE, rec.id); } catch (e) {}
+}
+function projSwitch(rec) { saveActiveProject().then(() => { projLoadKeys(rec); location.reload(); }); }
+
+/* One-time migration: wrap the pre-projects workspace into a project so
+   nothing is lost the first time v6.39 boots. Renamable in the gallery. */
+if (!activeProjectId) {
+  const rec = projNewRecord("Untitled Project");
+  rec.keys = projSnapshotKeys();
+  activeProjectId = rec.id;
+  try { localStorage.setItem(PROJ_ACTIVE, rec.id); } catch (e) {}
+  projPut(rec).catch(() => {});
+}
+
+/* Snapshot insurance: iPad Safari can kill background tabs, so bank the
+   open project whenever the page goes hidden. Best-effort, async. */
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveActiveProject(); });
+window.addEventListener("pagehide", () => { saveActiveProject(); });
+
+function projThumbSrc(rec) {
+  const cid = (rec.keys && rec.keys[LS.contract]) || "v1";
+  const ct = CONTRACTS[cid] || CONTRACTS.v1;
+  return (rec.keys && (rec.keys[ct.lsKey] || rec.keys["tessera.png"] || rec.keys["tessera.png4x4"] || rec.keys["tessera.png5x5"])) || DEFAULT_PNGS[cid] || DEFAULT_PNGS.v1;
+}
+function projFmtDate(iso) {
+  try { const d = new Date(iso); return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
+}
+function projRenderGallery() {
+  projList().then((all) => {
+    all.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+    const grid = $("projGrid"); grid.innerHTML = "";
+    for (const rec of all) {
+      const card = document.createElement("div");
+      card.className = "projCard" + (rec.id === activeProjectId ? " active" : "");
+      const th = document.createElement("div"); th.className = "thumb";
+      const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
+      const meta = document.createElement("div"); meta.className = "meta";
+      const nm = document.createElement("div"); nm.className = "pname";
+      nm.textContent = rec.name + (rec.id === activeProjectId ? "  \u2022  open" : "");
+      const dt = document.createElement("div"); dt.className = "pdate"; dt.textContent = projFmtDate(rec.savedAt);
+      meta.appendChild(nm); meta.appendChild(dt);
+      const acts = document.createElement("div"); acts.className = "pacts";
+      const mk = (label, fn) => { const b = document.createElement("button"); b.textContent = label;
+        b.addEventListener("click", (e) => { e.stopPropagation(); fn(); }); acts.appendChild(b); };
+      mk("Rename", () => {
+        const name = (prompt("Rename project:", rec.name) || "").trim();
+        if (!name) return;
+        rec.name = name; projPut(rec).then(projRenderGallery).catch(() => status("Rename failed."));
+      });
+      mk("Duplicate", () => {
+        const copy = projNewRecord(rec.name + " copy");
+        copy.keys = JSON.parse(JSON.stringify(rec.keys || {}));
+        projPut(copy).then(projRenderGallery).catch(() => status("Duplicate failed."));
+      });
+      mk("Delete", () => {
+        if (rec.id === activeProjectId) { status("The open project can't be deleted \u2014 switch to another one first."); return; }
+        if (!confirm('Delete "' + rec.name + '" forever? This cannot be undone.')) return;
+        projDel(rec.id).then(projRenderGallery).catch(() => status("Delete failed."));
+      });
+      card.appendChild(th); card.appendChild(meta); card.appendChild(acts);
+      card.addEventListener("click", () => {
+        if (rec.id === activeProjectId) { $("projOverlay").classList.remove("show"); return; }
+        projSwitch(rec);
+      });
+      grid.appendChild(card);
+    }
+  }).catch(() => status("Couldn't read the project library."));
+}
+$("btnProjects").addEventListener("click", () => {
+  saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); });
+});
+$("btnProjClose").addEventListener("click", () => $("projOverlay").classList.remove("show"));
+$("btnProjNew").addEventListener("click", () => {
+  const name = (prompt("New project name:") || "").trim();
+  if (!name) { status("A project needs a name \u2014 nothing created."); return; }
+  const rec = projNewRecord(name);
+  saveActiveProject().then(() => projPut(rec)).then(() => { projLoadKeys(rec); location.reload(); })
+    .catch(() => status("Couldn't create the project."));
+});
 /* Per-contract sheet size in cells (extends the contract's base TCOLS/TROWS;
    never below base, so structural cells can't be cropped). */
 let sheetSize = {};
@@ -3892,7 +4069,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.38.0";
+const APP_VERSION = "6.39.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
