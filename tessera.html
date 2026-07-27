@@ -171,6 +171,7 @@
     <option value="v1">3&times;3</option>
     <option value="v2">4&times;4</option>
     <option value="v3">5&times;5</option>
+    <option value="v4">7&times;7</option>
   </select>
   <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
@@ -394,7 +395,7 @@
    A diagonal counts only when both of its adjacent cardinals are filled.
    ============================================================ */
 const TILE = 16;
-let GCOLS = 44, GROWS = 26;   // ACTIVE grid dims (rebuild syncs: zoo pins 44×26, field follows fieldCols/Rows)
+let GCOLS = 44, GROWS = 26;   // ACTIVE grid dims (rebuild syncs: zoo pins the contract's zoo dims — 44×26 default, 44×36 for v4 — field follows fieldCols/Rows)
 const SCREEN_TC = 30, SCREEN_TR = 17;   // one game screen = 480×270 px (landscape) → 30×17 tiles
 let fieldCols = 44, fieldRows = 26;
 try { const g = JSON.parse(localStorage.getItem("tessera.grid") || "null"); if (g && g.c && g.r) { fieldCols = g.c; fieldRows = g.r; } } catch (e) {}
@@ -611,6 +612,56 @@ const CONTRACTS = {
       slope_3to1: { floor: {ax:8,ay:9}, ceil: {ax:8,ay:10} },
     },
   },
+  /* ==== 7×7 terrain (v4) — v6.45 ====
+     GENERATED from lavune-cave_rules.json (savedAt 2026-07-27T15:59:11.892Z,
+     app 6.44.0) through the 5->7 region map — see remap5to7 + gen_v4.js.
+     v4 is a SIBLING of v3: the 5x5 contract, sheet, and stores are never
+     modified. Rings: edge(0/6) / deep(1/5) / deeper(2/4 — art and resolver
+     pending, strips ship blank) / core(3,3). DEEP_VARIANTS carry the export's
+     edited 12-entry pool (full effective ruleset, per James 2026-07-27). */
+  v4: {
+    "id": "v4",
+    "label": "7\u00d77 terrain",
+    "TCOLS": 12,
+    "TROWS": 14,
+    "MIRROR_SLOPES": true,
+    "SLOPE_SIDE_AIR": true,
+    "filename": "autotile_template_7x7.png",
+    "lsKey": "tessera.png7x7",
+    "LOOKUP": {"0":{"ax":7,"ay":3},"1":{"ax":7,"ay":2},"4":{"ax":8,"ay":4},"5":{"ax":4,"ay":9},"7":{"ax":0,"ay":6},"16":{"ax":7,"ay":0},"17":{"ax":7,"ay":1},"20":{"ax":4,"ay":7},"21":{"ax":4,"ay":8},"23":{"ax":0,"ay":7},"28":{"ax":0,"ay":0},"29":{"ax":0,"ay":8},"31":{"ax":0,"ay":1},"64":{"ax":10,"ay":4},"65":{"ax":6,"ay":9},"68":{"ax":9,"ay":4},"69":{"ax":5,"ay":9},"71":{"ax":3,"ay":8},"80":{"ax":6,"ay":7},"81":{"ax":6,"ay":8},"84":{"ax":5,"ay":7},"85":{"ax":5,"ay":8},"87":{"ax":9,"ay":2},"92":{"ax":3,"ay":7},"93":{"ax":9,"ay":3},"95":{"ax":10,"ay":1},"112":{"ax":6,"ay":0},"113":{"ax":1,"ay":8},"116":{"ax":2,"ay":7},"117":{"ax":8,"ay":2},"119":{"ax":3,"ay":9},"124":{"ax":1,"ay":0},"125":{"ax":10,"ay":0},"127":{"ax":9,"ay":1},"193":{"ax":6,"ay":6},"197":{"ax":2,"ay":8},"199":{"ax":1,"ay":6},"209":{"ax":1,"ay":7},"213":{"ax":8,"ay":3},"215":{"ax":10,"ay":3},"221":{"ax":2,"ay":9},"223":{"ax":9,"ay":0},"241":{"ax":6,"ay":1},"245":{"ax":10,"ay":2},"247":{"ax":8,"ay":0},"253":{"ax":8,"ay":1},"255":{"ax":3,"ay":3}},
+    /* v6.48 — the 16 split-opened cells wired (James 2026-07-27): edges and
+       top/bottom deep bands grow to FIVE variants (80px repeats, %5, arrays
+       ascending so the same index stacks edge over band in one column);
+       side deep bands are FIVE y-variants with corners in-family (v6.50,
+       B2..B6 / F2..F6) so band index always equals edge index and rows
+       author as locked groups. The deeper ring stays a 3-family — its
+       drift against ring 1 is the accepted 5-vs-3 mismatch. */
+    "EDGE_VARIANTS": {"31":{"axis":"y","cells":[[0,1],[0,2],[0,3],[0,4],[0,5]]},"124":{"axis":"x","cells":[[1,0],[2,0],[3,0],[4,0],[5,0]]},"199":{"axis":"x","cells":[[1,6],[2,6],[3,6],[4,6],[5,6]]},"241":{"axis":"y","cells":[[6,1],[6,2],[6,3],[6,4],[6,5]]}},
+    "RIM_CELLS": null,
+    "TRANSITION": {"iTL":[1,1],"iT":[3,1],"iTR":[5,1],"iL":[1,3],"iR":[5,3],"iBL":[1,5],"iB":[3,5],"iBR":[5,5]},
+    "RIM_VARIANTS": {"top":[[1,1],[2,1],[3,1],[4,1],[5,1]],"bottom":[[1,5],[2,5],[3,5],[4,5],[5,5]],"left":[[1,1],[1,2],[1,3],[1,4],[1,5]],"right":[[5,1],[5,2],[5,3],[5,4],[5,5]]},
+    "DEEP_VARIANTS": [{"ax":3,"ay":3,"weight":88},{"ax":11,"ay":0,"weight":4},{"ax":11,"ay":1,"weight":4},{"ax":11,"ay":2,"weight":4},{"ax":11,"ay":3,"weight":4},{"ax":7,"ay":5,"w":3,"h":2,"weight":3,"spaced":true,"rotCCW":true},{"ax":12,"ay":0,"w":1,"h":4,"weight":3,"spaced":true,"rotCW":true},{"ax":10,"ay":5,"w":1,"h":2,"weight":5,"spaced":true,"rotCW":true},{"ax":10,"ay":7,"weight":2,"spaced":true,"rotCW":true,"rotCCW":true},{"ax":9,"ay":7,"weight":2,"rotCW":true,"spaced":true,"rotCCW":true},{"ax":8,"ay":7,"weight":4,"rotCW":true,"spaced":true},{"ax":12,"ay":4,"weight":2}],
+    "SLOPE_STAMPS": {"slope_45":[[{"ax":0,"ay":10},{"ax":0,"ay":11}]],"slope_2to1":[[{"ax":1,"ay":10},{"ax":1,"ay":11}],[{"ax":2,"ay":10},{"ax":2,"ay":11}]],"slope_3to1":[[{"ax":3,"ay":10},{"ax":3,"ay":11}],[{"ax":4,"ay":10},{"ax":4,"ay":11}],[{"ax":5,"ay":10},{"ax":5,"ay":11}]]},
+    "CEIL_SLOPE_STAMPS": {"slope_45":[[{"ax":0,"ay":13},{"ax":0,"ay":12}]],"slope_2to1":[[{"ax":1,"ay":13},{"ax":1,"ay":12}],[{"ax":2,"ay":13},{"ax":2,"ay":12}]],"slope_3to1":[[{"ax":3,"ay":13},{"ax":3,"ay":12}],[{"ax":4,"ay":13},{"ax":4,"ay":12}],[{"ax":5,"ay":13},{"ax":5,"ay":12}]]},
+    "SLOPE_CAPS": {"slope_45":{"floor":{"ax":6,"ay":10},"ceil":{"ax":6,"ay":13}},"slope_2to1":{"floor":{"ax":7,"ay":10},"ceil":{"ax":7,"ay":13}},"slope_3to1":{"floor":{"ax":8,"ay":10},"ceil":{"ax":8,"ay":13}}},
+    "TIP45_UNDERLAY": {"east":{"ax":9,"ay":10},"west":{"ax":9,"ay":11}},
+    "CEIL_ATTACH": {"ax":0,"ay":12},
+    "CEIL_ATTACH_THIN": {"ax":6,"ay":12},
+    "FLOOR_ATTACH_THIN": {"ax":6,"ay":11},
+    "SLOPE_WALL_JOINTS": {"runFloor":{"east":{"ax":8,"ay":0},"west":{"ax":9,"ay":0}},"runCeil":{"east":{"ax":8,"ay":1},"west":{"ax":9,"ay":1}},"wallFloor":{"east":{"ax":8,"ay":1},"west":{"ax":9,"ay":1}},"wallCeil":{"east":{"ax":8,"ay":0},"west":{"ax":9,"ay":0}}},
+    "FLOOR_ATTACH": {"ax":0,"ay":11},
+    "TIP45_RESERVED": {"floorY":{"ax":9,"ay":12},"ceilR":{"ax":9,"ay":13}},
+    "BASE_CAPS": {"slope_45":{"floor":{"ax":6,"ay":11},"ceil":{"ax":6,"ay":12}},"slope_2to1":{"floor":{"ax":7,"ay":11},"ceil":{"ax":7,"ay":12}},"slope_3to1":{"floor":{"ax":8,"ay":11},"ceil":{"ax":8,"ay":12}}},
+    /* v6.46 — the DEEPER ring: full bridge ring at distance 2 with its own
+       corner joints, in the strips the 5->7 split opened (C3:E3, C4/E4,
+       C5:E5; core stays D4). RIM_VARIANTS2 mirrors the v6.2 cadence rule:
+       the plain deeper band carries the same c%3 families as the bands
+       above it, so its corner cells double as the cadence variants. */
+    "TRANSITION2": {"iTL":[2,2],"iT":[3,2],"iTR":[4,2],"iL":[2,3],"iR":[4,3],"iBL":[2,4],"iB":[3,4],"iBR":[4,4]},
+    "RIM_VARIANTS2": {"top":[[2,2],[3,2],[4,2]],"bottom":[[2,4],[3,4],[4,4]]},
+    "ZOO_ROWS": 36,
+    "CADENCE_ANCHOR": "run",
+  },
 };
 
 const TERR_SLOPE_KEYS = { "1,asc":"slope_45_asc","1,desc":"slope_45_desc","2,asc":"slope_2to1_asc","2,desc":"slope_2to1_desc","3,asc":"slope_3to1_asc","3,desc":"slope_3to1_desc" };
@@ -772,6 +823,35 @@ function resolveAll(cells, ct) {
     masks[k] = maskAt(cells, c, r, ct);
   }
   const out = {};
+  /* v6.50 — EXTENT-ANCHORED CADENCE (contracts with CADENCE_ANCHOR:"run",
+     i.e. 7×7): cadence counts from the start of the contiguous run of
+     FILLED cells in this row (x-families) or column (y-families) — the
+     mass extent, slopes included. Replaces v6.49's same-mask-run anchor,
+     which let a flush junction carry one side of a wall higher than the
+     other so the two sides phase-diverged (James's 2026-07-27 wall
+     screenshot; reproduced in repro_phase.js). Anchoring every family to
+     its own row/column extent phase-LOCKS all families of one structure:
+     with all four ring-1 families 5-long, corners in-family, and inset 1,
+     row N of any wall reads A(n) B(n) .. F(n) G(n) — tiles author as
+     row-locked groups, per James. Inset = the family's offset from the
+     structure boundary: 1 for the edge and ring-1 families, 2 for the
+     3-cell deeper families (whose 5-vs-3 drift against ring 1 stays the
+     accepted mismatch). An edge that begins mid-column (below a flush
+     junction) starts mid-family by design — the anchor is the mass top. */
+  const runAnchored = ct.CADENCE_ANCHOR === "run";
+  const cadPick = (arr, pos, cc, rr, axis, inset) => {
+    let i = pos;
+    if (runAnchored) {
+      let a = pos;
+      for (;;) {
+        const nk = axis === "x" ? K(a - 1, rr) : K(cc, a - 1);
+        if (!cells[nk]) break;
+        a--;
+      }
+      i = pos - a - inset;
+    }
+    return arr[((i % arr.length) + arr.length) % arr.length];
+  };
   const deepKeys = [];   // deep cells defer to the post-loop pass (groups need global placement)
   for (const k of Object.keys(cells)) {
     const v = cells[k];
@@ -898,12 +978,53 @@ function resolveAll(cells, ct) {
         const col = eW && !eE ? "L" : eE && !eW ? "R" : "";
         if (row && !col && ct.RIM_VARIANTS) {
           const rv = ct.RIM_VARIANTS[row === "T" ? "top" : "bottom"];
-          const vc = rv[c % rv.length];
+          const vc = cadPick(rv, c, c, r, "x", 1);
+          out[k] = { ax: vc[0], ay: vc[1] };
+          continue;
+        }
+        /* v6.48 — side deep bands (7×7 only): left/right rim families with
+           VERTICAL cadence (r % len), the y-axis mirror of the top/bottom
+           rule. v3 carries no left/right arrays, so its single iL/iR path
+           below is untouched. */
+        if (col && !row && ct.RIM_VARIANTS && ct.RIM_VARIANTS.left) {
+          const rv = ct.RIM_VARIANTS[col === "L" ? "left" : "right"];
+          const vc = cadPick(rv, r, c, r, "y", 1);
           out[k] = { ax: vc[0], ay: vc[1] };
           continue;
         }
         const cell = row && col ? T["i" + row + col] : row ? T["i" + row] : col ? T["i" + col] : null;
         if (cell) { out[k] = { ax: cell[0], ay: cell[1] }; continue; }
+        /* v6.46 — DEEPER tier (7×7 only): a second bridge ring at cardinal
+           distance 2, reached only when tier 1 found no contact. Probes run
+           through PLAIN fills only (a slope at distance 1 blocks the probe —
+           "below slopes stays core" extends down a ring); slope seam
+           underlays count as edge at distance 2 exactly as tier 1 counts
+           them at distance 1. Top/west WIN tier-2 sandwiches: a 5-thick slab
+           reads edge/deep/deeper/deep/edge and a 6-thick reads
+           edge/deep/deeper/deeper/deep/edge (James 2026-07-27). Tier-1
+           sandwiches (3-thick slabs) keep their v3 collapse-to-core, and
+           diagonal-only contact still falls through to the deep pool.
+           GATE: any tier-1 cardinal contact — including a sandwich tier 1
+           collapsed without a tile — is distance 1, so tier 2 requires all
+           four cardinals clean or a thin slab's ends would sprout deeper
+           side tiles (caught by the harness, 2026-07-27). */
+        if (ct.TRANSITION2 && !eN && !eS && !eW && !eE) {
+          const thru = (dc, dr) => { const n = cells[K(c + dc, r + dr)]; return !!(n && n.kind !== "slope"); };
+          const a2 = cells[K(c, r - 2)], b2 = cells[K(c, r + 2)];
+          const e2N = thru(0, -1) && (isEdge(0, -2) || !!(a2 && a2.kind === "slope" && a2.face !== "c" && a2.seamBand));
+          const e2S = thru(0, 1) && (isEdge(0, 2) || !!(b2 && b2.kind === "slope" && b2.face === "c" && b2.seamBand));
+          const row2 = e2N ? "T" : e2S ? "B" : "";
+          const col2 = (thru(-1, 0) && isEdge(-2, 0)) ? "L" : (thru(1, 0) && isEdge(2, 0)) ? "R" : "";
+          if (row2 && !col2 && ct.RIM_VARIANTS2) {
+            const rv2 = ct.RIM_VARIANTS2[row2 === "T" ? "top" : "bottom"];
+            const vc2 = cadPick(rv2, c, c, r, "x", 2);
+            out[k] = { ax: vc2[0], ay: vc2[1] };
+            continue;
+          }
+          const T2 = ct.TRANSITION2;
+          const cell2 = row2 && col2 ? T2["i" + row2 + col2] : row2 ? T2["i" + row2] : col2 ? T2["i" + col2] : null;
+          if (cell2) { out[k] = { ax: cell2[0], ay: cell2[1] }; continue; }
+        }
         deepKeys.push(k);
         continue;
       }
@@ -960,7 +1081,7 @@ function resolveAll(cells, ct) {
       }
     }
     const ev = ct.EDGE_VARIANTS[m];
-    if (ev) { const cell = ev.cells[(ev.axis === "x" ? c : r) % ev.cells.length]; out[k] = { ax: cell[0], ay: cell[1] }; continue; }
+    if (ev) { const cell = cadPick(ev.cells, ev.axis === "x" ? c : r, c, r, ev.axis, 1); out[k] = { ax: cell[0], ay: cell[1] }; continue; }
     const cell = ct.LOOKUP[m];
     if (cell) out[k] = { ax: cell.ax, ay: cell.ay };
   }
@@ -1166,9 +1287,88 @@ const DEFAULT_ROLE_RULES = {
     "f:slope_2to1:asc:u:open:of": {"ax":9,"ay":12},
     "f:slope_2to1:desc:u:open:of": {"ax":9,"ay":12,"flipH":true},
   },
+  // v4: generated from lavune-cave_rules.json via the 5->7 region map (2026-07-27)
+  v4: {
+    "f:slope_45:asc:s:base:oo": {"ax":0,"ay":10},
+    "f:slope_45:desc:s:base:oo": {"ax":0,"ay":10,"flipH":true},
+    "f:slope_2to1:asc:s:base:oo": {"ax":1,"ay":10},
+    "f:slope_2to1:desc:s:base:oo": {"ax":1,"ay":10,"flipH":true},
+    "f:slope_3to1:asc:s:base:oo": {"ax":3,"ay":10},
+    "f:slope_3to1:desc:s:base:oo": {"ax":3,"ay":10,"flipH":true},
+    "f:slope_45:asc:u:base:oo": {"ax":0,"ay":1},
+    "f:slope_45:desc:u:base:oo": {"ax":6,"ay":1},
+    "f:slope_45:desc:u:base:of": {"ax":6,"ay":1},
+    "f:slope_45:asc:u:open:of": {"ax":6,"ay":11},
+    "f:slope_45:asc:u:open:ff": {"ax":0,"ay":11},
+    "f:slope_45:desc:u:open:ff": {"ax":0,"ay":11,"flipH":true},
+    "f:slope_45:desc:u:open:pp": {"ax":9,"ay":11,"flipH":true},
+    "f:slope_45:asc:u:open:ff:o": {"ax":9,"ay":11},
+    "f:slope_45:desc:u:open:ff:o": {"ax":9,"ay":11,"flipH":true},
+    "f:slope_2to1:asc:u:open:ff:o": {"ax":9,"ay":10},
+    "f:slope_2to1:desc:u:open:ff:o": {"ax":9,"ay":10,"flipH":true},
+    "f:slope_3to1:asc:u:open:ff:o": {"ax":10,"ay":10},
+    "f:slope_3to1:desc:u:open:ff:o": {"ax":10,"ay":10,"flipH":true},
+    "c:slope_45:desc:u:open:ofoo:o": {"ax":7,"ay":1},
+    "c:slope_45:asc:u:open:ofoo:o": {"ax":7,"ay":1,"flipH":true},
+    "c:slope_45:desc:u:open:oooo:o": {"ax":7,"ay":1},
+    "c:slope_45:asc:u:open:oooo:o": {"ax":7,"ay":1,"flipH":true},
+    "c:slope_45:desc:u:open:ff:o": {"ax":10,"ay":11},
+    "c:slope_45:asc:u:open:ff:o": {"ax":10,"ay":11,"flipH":true},
+    "c:slope_2to1:desc:u:open:ff:o": {"ax":10,"ay":12},
+    "c:slope_2to1:asc:u:open:ff:o": {"ax":10,"ay":12,"flipH":true},
+    "c:slope_3to1:desc:u:open:ff:o": {"ax":10,"ay":13},
+    "c:slope_3to1:asc:u:open:ff:o": {"ax":10,"ay":13,"flipH":true},
+    "c:slope_45:desc:u:base:oo:o": {"ax":0,"ay":1},
+    "c:slope_45:asc:u:base:oo:o": {"ax":6,"ay":1},
+    "f:slope_2to1:asc:u:open:ff": {"ax":2,"ay":11},
+    "f:slope_2to1:desc:u:open:ff": {"ax":2,"ay":11,"flipH":true},
+    "f:slope_3to1:asc:u:open:ff": {"ax":5,"ay":11},
+    "f:slope_3to1:desc:u:open:ff": {"ax":5,"ay":11,"flipH":true},
+    "c:slope_45:asc:u:base:of": {"ax":6,"ay":1},
+    "c:slope_45:desc:u:base:of": {"ax":0,"ay":1},
+    "c:slope_45:asc:u:open:of": {"ax":6,"ay":12},
+    "c:slope_45:desc:u:open:of": {"ax":6,"ay":12,"flipH":true},
+    "c:slope_45:asc:u:open:oo": {"ax":6,"ay":12},
+    "c:slope_45:desc:u:open:oo": {"ax":6,"ay":12,"flipH":true},
+    "f:slope_45:asc:u:open:oo": {"ax":6,"ay":11},
+    "f:slope_45:desc:u:open:oo": {"ax":6,"ay":11,"flipH":true},
+    "c:slope_45:desc:u:open": {"ax":6,"ay":12,"flipH":true},
+    "c:slope_45:asc:u:open": {"ax":6,"ay":12},
+    "c:slope_45:asc:u:base": {"ax":6,"ay":1},
+    "c:slope_45:desc:u:base": {"ax":0,"ay":1},
+    "f:slope_45:asc:s:base": {"ax":0,"ay":10},
+    "f:slope_45:desc:s:base": {"ax":0,"ay":10,"flipH":true},
+    "f:slope_2to1:asc:s:base": {"ax":1,"ay":10},
+    "f:slope_2to1:desc:s:base": {"ax":1,"ay":10,"flipH":true},
+    "f:slope_45:asc:u:open": {"ax":9,"ay":11},
+    "f:slope_45:desc:u:open": {"ax":9,"ay":11,"flipH":true},
+    "f:slope_2to1:asc:u:open": {"ax":8,"ay":1},
+    "f:slope_2to1:desc:u:open": {"ax":8,"ay":1,"flipH":true},
+    "f:slope_3to1:asc:u:open": {"ax":8,"ay":1},
+    "f:slope_3to1:desc:u:open": {"ax":8,"ay":1,"flipH":true},
+    "f:slope_3to1:asc:s:base": {"ax":3,"ay":10},
+    "f:slope_3to1:desc:s:base": {"ax":3,"ay":10,"flipH":true},
+    "f:slope_45:asc:u:base": {"ax":0,"ay":1},
+    "f:slope_45:desc:u:base": {"ax":0,"ay":1,"flipH":true},
+    "c:slope_2to1:asc:u:open:oo": {"ax":7,"ay":14},
+    "c:slope_2to1:desc:u:open:oo": {"ax":7,"ay":14,"flipH":true},
+    "c:slope_3to1:asc:u:open:oo": {"ax":8,"ay":14},
+    "c:slope_3to1:desc:u:open:oo": {"ax":8,"ay":14,"flipH":true},
+    "f:slope_2to1:asc:u:open:oo": {"ax":9,"ay":14},
+    "f:slope_2to1:desc:u:open:oo": {"ax":9,"ay":14,"flipH":true},
+    "f:slope_3to1:desc:u:open:oo": {"ax":10,"ay":14,"flipH":true},
+    "f:slope_3to1:asc:u:open:of": {"ax":10,"ay":14},
+    "f:slope_3to1:desc:u:open:of": {"ax":10,"ay":14,"flipH":true},
+    "f:slope_3to1:asc:u:open:oo": {"ax":10,"ay":14},
+    "f:slope_45:asc:u:open:oooo": {"ax":7,"ay":1},
+    "f:slope_45:desc:u:open:oooo": {"ax":7,"ay":1},
+    "f:slope_45:desc:u:open:of": {"ax":6,"ay":11,"flipH":true},
+    "f:slope_2to1:asc:u:open:of": {"ax":9,"ay":14},
+    "f:slope_2to1:desc:u:open:of": {"ax":9,"ay":14,"flipH":true},
+  },
 };
 
-const DEFAULT_MASK_REMAPS = { v3: { 253: { ax: 6, ay: 1 } } };
+const DEFAULT_MASK_REMAPS = { v3: { 253: { ax: 6, ay: 1 } }, v4: { 253: { ax: 8, ay: 1 } } };
 function buildCells(fills, ct, extraRuns) {
   const cells = {};
   for (const k of Object.keys(fills)) cells[k] = fills[k];
@@ -1225,6 +1425,16 @@ function buildZooCells(ct) {
     { grad: 1, dir: "asc",  c: 37, r: 23, steps: 2 },
   ]) Object.assign(cells, expandSlopeRun(run, ct));
   rect(32, 24, 33, 25); rect(37, 24, 38, 25);   // crest pedestals
+  /* v6.46 — deeper-ring liveness sentinels (7×7 contracts only; rows past
+     26 exist only when ct.ZOO_ROWS extends the pinned grid):
+     - 7×7 solid: all eight TRANSITION2 slots + core in one island
+     - 9×5 bar: tier-2 sandwich, top-wins (edge/deep/deeper/deep/edge)
+     - 9×6 bar: double-deeper band (edge/deep/deeper/deeper/deep/edge) */
+  if (ct.TRANSITION2) {
+    rect(1, 28, 7, 34);     // 7x7
+    rect(10, 29, 18, 33);   // 9 wide x 5 tall
+    rect(21, 28, 29, 33);   // 9 wide x 6 tall
+  }
   return addSlopeSupports(cells);
 }
 
@@ -1755,6 +1965,55 @@ let deepVarOverrides = (() => { try { return JSON.parse(localStorage.getItem("te
 function persistDeepVars() { try { localStorage.setItem("tessera.deepvars", JSON.stringify(deepVarOverrides)); } catch (e) {} }
 function effDeepVariants(ct) { const o = deepVarOverrides[ct.id]; return (o && o.length) ? o : ct.DEEP_VARIANTS; }
 function materializeDeepVars() { if (!deepVarOverrides[CT.id] || !deepVarOverrides[CT.id].length) deepVarOverrides[CT.id] = CT.DEEP_VARIANTS.map((p) => ({ ...p })); return deepVarOverrides[CT.id]; }
+
+/* ==== 5->7 cell remap + v4 bootstrap (v6.45) ========================
+   Region map, per James's key sheet (2026-07-27):
+     - terrain block A1:E5 -> A1:G7 (internal split: 0,1 keep; 2 -> 3; 3,4 -> +2)
+     - right strip F1:K5 -> H1:M5 (cols +2)
+     - pipe decorations H6:K8 -> unchanged
+     - mid-left A6:G8 and slopes A9+ -> rows +2
+   Keep in sync with gen_v4.js (the build-time table generator). */
+const V4_SPLIT = (v) => (v <= 1 ? v : v === 2 ? 3 : v + 2);
+function remap5to7(ax, ay) {
+  if (ax <= 4 && ay <= 4) return [V4_SPLIT(ax), V4_SPLIT(ay)];
+  if (ay <= 4) return [ax + 2, ay];
+  if (ay <= 7 && ax >= 7) return [ax, ay];
+  return [ax, ay + 2];
+}
+const v4RemapVal = (v) => { const m = remap5to7(v.ax, v.ay); return { ...v, ax: m[0], ay: m[1] }; };
+/* First entry into v4 derives everything from the CURRENT 5x5 work. It READS
+   the v3 keys and never writes them, so switching back to 5x5 finds the 5x5
+   world exactly as left. All three steps are idempotent (run-once guards). */
+function v4SeedSheetSize() {   // synchronous, before setContract reads dims
+  if (sheetSize.v4) return;
+  const e3 = sheetSize.v3 || {};
+  sheetSize.v4 = { cols: (e3.cols || CONTRACTS.v3.TCOLS) + 2, rows: (e3.rows || CONTRACTS.v3.TROWS) + 2 };
+  try { localStorage.setItem(LS.size, JSON.stringify(sheetSize)); } catch (e) {}
+}
+function v4PortStores() {   // taught-rule drift since the v4 bake; store-over-baked makes duplicates harmless
+  if (roleRemaps.v4 || maskRemaps.v4 || deepVarOverrides.v4) return;
+  const r3 = roleRemaps.v3 || {}, m3 = maskRemaps.v3 || {}, d3 = deepVarOverrides.v3 || [];
+  roleRemaps.v4 = {}; for (const k of Object.keys(r3)) roleRemaps.v4[k] = v4RemapVal(r3[k]);
+  maskRemaps.v4 = {}; for (const k of Object.keys(m3)) maskRemaps.v4[k] = v4RemapVal(m3[k]);
+  if (d3.length) deepVarOverrides.v4 = d3.map(v4RemapVal);
+  persistRoleRemaps(); persistRemaps(); persistDeepVars();
+}
+function v4DeriveSheet(cb) {   // 16px per-cell re-slice; deeper-ring strips stay blank
+  const srcPng = (() => { try { return localStorage.getItem(CONTRACTS.v3.lsKey); } catch (e) { return null; } })() || DEFAULT_PNGS.v3;
+  const img = new Image();
+  img.onload = () => {
+    const sc = Math.round(img.width / TILE), sr = Math.round(img.height / TILE);
+    const cv = document.createElement("canvas"); cv.width = (sc + 2) * TILE; cv.height = (sr + 2) * TILE;
+    const cx = cv.getContext("2d"); cx.imageSmoothingEnabled = false;
+    for (let ay = 0; ay < sr; ay++) for (let ax = 0; ax < sc; ax++) {
+      const m = remap5to7(ax, ay);
+      cx.drawImage(img, ax * TILE, ay * TILE, TILE, TILE, m[0] * TILE, m[1] * TILE, TILE, TILE);
+    }
+    cb(cv.toDataURL("image/png"), sc + 2, sr + 2);
+  };
+  img.onerror = () => cb(null, 0, 0);
+  img.src = srcPng;
+}
 /* v6.0 — ONE ruleset. The baked DEFAULT_ROLE_RULES / DEFAULT_MASK_REMAPS
    tables ARE the app's rule set. The localStorage store holds only the
    corrections taught since the last bake; reads layer store-over-baked,
@@ -3075,7 +3334,7 @@ function pickAt(x, y) {
 
 /* ---- preview render (lazy when hidden) ---- */
 function rebuild() {
-  const wc = layoutMode === "zoo" ? 44 : fieldCols, wr = layoutMode === "zoo" ? 26 : fieldRows;
+  const wc = layoutMode === "zoo" ? (CT.ZOO_COLS || 44) : fieldCols, wr = layoutMode === "zoo" ? (CT.ZOO_ROWS || 26) : fieldRows;
   GCOLS = wc; GROWS = wr;
   if (pv.width !== wc * TILE || pv.height !== wr * TILE) {
     pv.width = wc * TILE; pv.height = wr * TILE;   // resize resets ctx state
@@ -4200,6 +4459,7 @@ function setContract(id, opts) {
   if (CT && CT.id === id) return;
   if (CT) { boards[CT.id].undo = undoStack; boards[CT.id].redo = redoStack; }
   CT = CONTRACTS[id];
+  if (id === "v4") { v4SeedSheetSize(); v4PortStores(); }   // v6.45: 7x7 bootstrap (reads v3, never writes it)
   const _ext = sheetSize[id] || {};
   TW = TILE * Math.max(CT.TCOLS, Math.min(26, _ext.cols || CT.TCOLS));
   TH = TILE * Math.max(CT.TROWS, Math.min(99, _ext.rows || CT.TROWS));
@@ -4221,6 +4481,15 @@ function setContract(id, opts) {
   if (!b.loaded) {
     b.loaded = true;
     const saved = (() => { try { return localStorage.getItem(CT.lsKey); } catch (e) { return null; } })();
+    if (id === "v4" && !saved) {   // v6.45: derive from the 5x5 sheet through the region map
+      v4DeriveSheet((url, dc, dr) => {
+        if (!url) { status("7×7 derive failed — could not read the 5×5 sheet."); return; }
+        try { localStorage.setItem(CONTRACTS.v4.lsKey, url); } catch (e) {}
+        if (TW !== dc * TILE || TH !== dr * TILE) applySheetDims(dc, dr);
+        loadPngIntoEditor(url, `${CT.label} — sheet derived from your 5×5 work; deeper-ring strips are blank.`, true);
+      });
+      return;
+    }
     loadPngIntoEditor(saved || DEFAULT_PNGS[id], saved ? `${CT.label} — restored your last session.` : `${CT.label} — loaded the shipped sheet.`, true);
   } else {
     refreshFileSwatches(); blit(); drawGrid(); renderPreview();
@@ -4279,6 +4548,21 @@ function seedSpecialCells() {
   if (CT.CEIL_SLOPE_STAMPS && CT.MIRROR_SLOPES) for (const [key, cols] of Object.entries(CT.CEIL_SLOPE_STAMPS)) {
     const srcCols = CT.SLOPE_STAMPS[key];
     cols.forEach((col, j) => col.forEach((cell, i) => { if (empty(cell.ax, cell.ay)) copy(srcCols[j][i], cell.ax, cell.ay, true); }));
+  }
+  if (CT.TRANSITION2) {   // v6.47: HEAL the v6.46 mis-seed. Deeper cells were
+    // seeded as VERBATIM copies of their tier-1 ring sources (never part of
+    // James's spec) and persisted into saved sheets. Clear any deeper cell
+    // whose pixels are byte-identical to its tier-1 source — repainted cells
+    // differ and are untouched. Deeper cells now ship BLANK until authored.
+    for (const slot of Object.keys(CT.TRANSITION2)) {
+      const s = CT.TRANSITION[slot], d = CT.TRANSITION2[slot];
+      if (!s || !d || empty(d[0], d[1])) continue;
+      const a = edCtx.getImageData(s[0] * TILE, s[1] * TILE, TILE, TILE).data;
+      const b = edCtx.getImageData(d[0] * TILE, d[1] * TILE, TILE, TILE).data;
+      let same = true;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { same = false; break; }
+      if (same) edCtx.clearRect(d[0] * TILE, d[1] * TILE, TILE, TILE);
+    }
   }
   return n;
 }
@@ -4368,7 +4652,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.44.0";
+const APP_VERSION = "6.50.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
