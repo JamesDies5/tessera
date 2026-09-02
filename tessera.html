@@ -85,12 +85,14 @@
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   #varybar .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; }
   .fly { position: relative; display: inline-flex; }
-  #optbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
+  #optbar, .tray { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .optline { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px; height: 32px;
     padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 1px; }
   .optline svg { width: 16px; height: 16px; }
   .optline:active { background: var(--line); }
+  .tray .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
+  .tray .lbl { margin-right: 6px; }
   .optItem { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 66px;
     padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
     cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 1px; color: var(--text); }
@@ -152,15 +154,7 @@
   #newDlg .seg button.on { color: var(--accent); border-color: var(--accent); }
   #newDlg select { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; height: 34px; padding: 0 8px; font: inherit; }
   #bgLabel { font-size: 11px; letter-spacing: 1px; color: #f0d47a; padding: 0 6px; white-space: nowrap; }
-  /* View flyout (v6.66): tiled preview + symmetry, background projects only */
-  .vmenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 10px; width: 400px; max-width: 92vw;
-    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
-  .vmenu .vrow { display: flex; align-items: center; gap: 8px; }
-  .vmenu .vrow .lbl { flex: 0 0 72px; }
-  .vmenu .seg { display: flex; gap: 5px; flex: 1; }
-  .vmenu .seg button { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--dim); border-radius: 8px; padding: 9px 6px; white-space: nowrap; font: inherit; font-size: 10px; letter-spacing: .5px; cursor: pointer; }
-  .vmenu .seg button.on { color: var(--accent); border-color: var(--accent); }
-  .vmenu .vnote { font-size: 10px; color: var(--dim); letter-spacing: .5px; }
+  /* Tiled / Symmetry trays (v6.67) share the Options tray look — see .tray */
   /* Layers flyout (v6.63): Procreate-style list, top layer first, pinned
      right beside the color chip. Rows: thumb, name, lock, visibility. */
   #layerMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; gap: 8px; width: 352px; max-width: 92vw; max-height: 72vh;
@@ -243,18 +237,8 @@
   </select>
   <span id="bgLabel" style="display:none" title="Background project — canvas size"></span>
   <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
-  <span class="fly"><button class="ibtn" id="btnBgTiled" data-icon="tiled" title="Tiled preview — repeat the canvas into the space around it" style="display:none"></button>
-  <div class="vmenu" id="bgTiledMenu">
-    <div class="vrow"><span class="lbl">TILED</span><div class="seg" data-set="tiled">
-      <button data-v="off">OFF</button><button data-v="both">BOTH</button><button data-v="x">ACROSS</button><button data-v="y">DOWN</button></div></div>
-    <div class="vnote">Repeats the canvas into the space around it, live. The real canvas is outlined.</div>
-  </div></span>
-  <span class="fly"><button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
-  <div class="vmenu" id="bgSymMenu">
-    <div class="vrow"><span class="lbl">SYMMETRY</span><div class="seg" data-set="sym">
-      <button data-v="off">OFF</button><button data-v="h">LEFT&thinsp;&harr;&thinsp;RIGHT</button><button data-v="v">TOP&thinsp;&harr;&thinsp;BOTTOM</button><button data-v="quad">QUAD</button></div></div>
-    <div class="vnote">Mirrors pencil, eraser, and fill across the canvas center.</div>
-  </div></span>
+  <button class="ibtn" id="btnBgTiled" data-icon="tiled" title="Tiled preview — repeat the canvas into the space around it" style="display:none"></button>
+  <button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
     <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
@@ -291,6 +275,21 @@
 
 <!-- Options tray: template file + canvas operations, one line each.
      Toggled by the wrench; actions close it. -->
+<!-- Tiled / Symmetry trays (v6.67): background projects only, opened from the header like Options -->
+<div class="tray" id="tiledbar" data-set="tiled">
+  <span class="lbl">TILED</span>
+  <button class="optline" data-v="off" title="Tiled preview off"><span data-icon="tileOff"></span>Off</button>
+  <button class="optline" data-v="both" title="Repeat the canvas in every direction"><span data-icon="tiled"></span>Both</button>
+  <button class="optline" data-v="x" title="Repeat the canvas left and right only"><span data-icon="tileX"></span>Across</button>
+  <button class="optline" data-v="y" title="Repeat the canvas up and down only"><span data-icon="tileY"></span>Down</button>
+</div>
+<div class="tray" id="symbar" data-set="sym">
+  <span class="lbl">SYMMETRY</span>
+  <button class="optline" data-v="off" title="Symmetry off"><span data-icon="symOff"></span>Off</button>
+  <button class="optline" data-v="h" title="Horizontal symmetry — mirror left and right across the vertical center line"><span data-icon="symmetry"></span>Horizontal</button>
+  <button class="optline" data-v="v" title="Vertical symmetry — mirror top and bottom across the horizontal center line"><span data-icon="symV"></span>Vertical</button>
+  <button class="optline" data-v="quad" title="Mirror into all four quadrants"><span data-icon="symQuad"></span>Quad</button>
+</div>
 <div id="optbar">
   <button class="optline" id="btnReload" title="Reload the app — fetches the latest deployed version (cache-busting), for pinned home-screen installs"><span data-icon="reload"></span>Reload</button>
   <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
@@ -1836,6 +1835,12 @@ const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   symmetry: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9 7 4 12l5 5"/><path d="m15 7 5 5-5 5"/>',
+  symV: '<path d="M3 12h18" stroke-dasharray="2.5 2.5"/><path d="M7 9l5-5 5 5"/><path d="m7 15 5 5 5-5"/>',
+  symQuad: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M3 12h18" stroke-dasharray="2.5 2.5"/><path d="M6 6h3v3H6zM15 6h3v3h-3zM6 15h3v3H6zM15 15h3v3h-3z"/>',
+  symOff: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M4 4 20 20"/>',
+  tileOff: '<rect x="7" y="7" width="10" height="10" rx="1"/>',
+  tileX: '<rect x="2" y="8" width="9" height="8" rx="1"/><rect x="13" y="8" width="9" height="8" rx="1"/>',
+  tileY: '<rect x="8" y="2" width="8" height="9" rx="1"/><rect x="8" y="13" width="8" height="9" rx="1"/>',
   tiled: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
@@ -5305,6 +5310,7 @@ function bgFolderComposite(fid, w, h) {   // members only, for thumbnails and gr
 }
 function bgPersist() {
   if (!bgDoc) return;
+  if ($("layerMenu").style.display === "flex" && !lyDrag) bgRenderLayerList();   // open panel: refresh thumbnails after each edit
   try {
     const A = bgLayers[bgDoc.active]; if (A && A.canvas) A.png = null;   // the stroke landed here; other layers keep their cached PNGs
     bgDoc.layers.forEach((L, i) => { if (isFolder(L)) { delete L.png; return; } if (!bgLayers[i].png) bgLayers[i].png = bgLayers[i].canvas.toDataURL("image/png"); L.png = bgLayers[i].png; });
@@ -5776,41 +5782,38 @@ function bgRenderLayerList() {
   }
 }
 function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display = "none"; $("btnLayers").classList.remove("on"); closeLayerOpts(); } }
-/* ---- view flyouts: tiled preview and symmetry, one button each (v6.66.1) ---- */
-const BG_VIEWS = { tiled: { btn: "btnBgTiled", menu: "bgTiledMenu" }, sym: { btn: "btnBgSym", menu: "bgSymMenu" } };
+/* ---- Tiled / Symmetry trays (v6.67): open from the header like Options,
+   one bespoke-icon button per value, chosen value stays lit; picking one
+   applies it and closes the tray, exactly as the Options tray behaves. ---- */
+const BG_VIEWS = { tiled: { btn: "btnBgTiled", tray: "tiledbar" }, sym: { btn: "btnBgSym", tray: "symbar" } };
 function bgViewSync() {
   if (!bgDoc) return;
   for (const set in BG_VIEWS) {
-    const val = bgDoc[set] || "off", m = $(BG_VIEWS[set].menu);
-    m.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("on", b.dataset.v === val));
-    $(BG_VIEWS[set].btn).classList.toggle("on", val !== "off" || m.style.display === "flex");
+    const val = bgDoc[set] || "off", t = $(BG_VIEWS[set].tray);
+    t.querySelectorAll(".optline").forEach((b) => b.classList.toggle("on", b.dataset.v === val));
+    $(BG_VIEWS[set].btn).classList.toggle("on", val !== "off" || t.style.display === "flex");
   }
 }
-function closeBgViewMenu() { for (const set in BG_VIEWS) { const m = $(BG_VIEWS[set].menu); if (m) m.style.display = "none"; } bgViewSync(); }
+function closeBgViewMenu() {
+  let changed = false;
+  for (const set in BG_VIEWS) { const t = $(BG_VIEWS[set].tray); if (t && t.style.display === "flex") { t.style.display = "none"; changed = true; } }
+  if (changed) sizeOverlay();
+  bgViewSync();
+}
 for (const set in BG_VIEWS) {
-  const btn = $(BG_VIEWS[set].btn), m = $(BG_VIEWS[set].menu);
+  const btn = $(BG_VIEWS[set].btn), t = $(BG_VIEWS[set].tray);
   btn.addEventListener("click", () => {
-    if (m.style.display === "flex") { closeBgViewMenu(); return; }
+    if (t.style.display === "flex") { closeBgViewMenu(); return; }
     closeColorMenu(); closeBrushMenu(); closeOptMenu(); closeLayerMenu(); closeBgViewMenu();
-    const b = btn.getBoundingClientRect();
-    m.style.top = (b.bottom + 8) + "px"; m.style.left = Math.max(8, Math.min(window.innerWidth - 408, b.left)) + "px";
-    m.style.display = "flex"; bgViewSync();
+    t.style.display = "flex"; sizeOverlay(); bgViewSync();
   });
-  m.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  t.querySelectorAll(".optline").forEach((b) => b.addEventListener("click", () => {
     bgDoc[set] = b.dataset.v;
-    bgViewSync(); persistPng(); blit(); drawGrid();
+    persistPng(); closeBgViewMenu(); blit(); drawGrid();
     if (set === "tiled") status(b.dataset.v === "off" ? "Tiled preview off." : "Tiled preview on \u2014 the canvas repeats " + (b.dataset.v === "both" ? "in every direction." : b.dataset.v === "x" ? "left and right." : "up and down."));
-    else status(b.dataset.v === "off" ? "Symmetry off." : "Symmetry on \u2014 " + (b.dataset.v === "h" ? "mirrored left \u2194 right." : b.dataset.v === "v" ? "mirrored top \u2194 bottom." : "mirrored into all four quadrants."));
+    else status(b.dataset.v === "off" ? "Symmetry off." : "Symmetry on \u2014 " + (b.dataset.v === "h" ? "horizontal (left \u2194 right)." : b.dataset.v === "v" ? "vertical (top \u2194 bottom)." : "quad (all four quadrants)."));
   }));
 }
-document.addEventListener("pointerdown", (e) => {
-  for (const set in BG_VIEWS) {
-    const m = $(BG_VIEWS[set].menu);
-    if (m.style.display !== "flex") continue;
-    if (m.contains(e.target) || $(BG_VIEWS[set].btn).contains(e.target)) continue;
-    closeBgViewMenu();
-  }
-}, true);
 $("btnLayers").addEventListener("click", () => {
   const m = $("layerMenu");
   if (m.style.display === "flex") { closeLayerMenu(); return; }
@@ -5822,13 +5825,14 @@ $("btnLayers").addEventListener("click", () => {
   m.style.display = "flex";
   $("btnLayers").classList.add("on");
 });
-document.addEventListener("pointerdown", (e) => {   // outside tap closes AND proceeds, like the color flyout
-  const m = $("layerMenu"), o = $("layerOpts");
+document.addEventListener("pointerdown", (e) => {   // v6.67.1: the panel stays open while you work on the canvas (Procreate-style);
+  const m = $("layerMenu"), o = $("layerOpts");         // canvas taps only dismiss the options popover, header/rail taps close the panel
   if (o.contains(e.target)) return;                       // tapping an option
   if (m.style.display !== "flex") return;
   if (m.contains(e.target)) return;                        // rows/grips/buttons manage the popover themselves
   if ($("btnLayers").contains(e.target)) return;
-  closeLayerMenu();                                        // outside: close panel + popover, let the tap proceed
+  if (viewport.contains(e.target)) { closeLayerOpts(); return; }   // drawing, pinching, tap-undo: panel stays
+  closeLayerMenu();                                        // elsewhere: close panel + popover, let the tap proceed
 }, true);
 $("lyAdd").addEventListener("click", () => { closeLayerOpts(); bgMulti.clear(); bgAddLayer(null); });
 $("lyOpts").addEventListener("click", () => {
@@ -5898,7 +5902,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.66.6";
+const APP_VERSION = "6.67.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
