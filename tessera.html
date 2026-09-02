@@ -163,9 +163,9 @@
   .lyRow.multi { background: #2c3340; }
   .lyRow.on.multi { background: #3a4252; }
   .lyRow.hidden .lyName { color: var(--dim); }
-  .lyRow.dragging { opacity: .45; }
-  .lyRow.dropAbove { box-shadow: inset 0 2px 0 var(--accent); }
-  .lyRow.dropBelow { box-shadow: inset 0 -2px 0 var(--accent); }
+  .lyRow { position: relative; transition: transform .16s ease; will-change: transform; }
+  .lyRow.swiping, .lyRow.dragging { transition: none; }
+  .lyRow.dragging { opacity: .92; z-index: 2; background: #444; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
   .lyGrip { width: 26px; height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: #6a6a6a; cursor: grab; touch-action: none; }
   .lyGrip svg { width: 18px; height: 18px; }
   .lyThumb { width: 80px; height: 45px; border-radius: 5px; border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
@@ -5424,65 +5424,99 @@ function bgRenderLayerList() {
     vs.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleVisible(i); });
     row.appendChild(grip); row.appendChild(th); row.appendChild(nm); row.appendChild(lk); row.appendChild(vs);
     // tap / swipe on the row body
-    let p0 = null, swiped = false;
-    row.addEventListener("pointerdown", (e) => { if (e.target.closest(".lyBtn, .lyGrip")) return; p0 = { x: e.clientX, y: e.clientY }; swiped = false; });
-    row.addEventListener("pointermove", (e) => {
-      if (!p0 || swiped) return;
-      const dx = e.clientX - p0.x, dy = e.clientY - p0.y;
-      if (dx > 36 && Math.abs(dy) < 24) {   // right swipe: toggle membership in the group
-        swiped = true;
-        if (i === bgDoc.active) status("The selected layer is always part of the group.");
-        else { if (bgMulti.has(L.id)) bgMulti.delete(L.id); else bgMulti.add(L.id); closeLayerOpts(); bgRenderLayerList(); }
-      }
+    let p0 = null, slid = 0;
+    const SWIPE = 36, MAXX = 84;
+    row.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".lyBtn, .lyGrip")) return;
+      p0 = { x: e.clientX, y: e.clientY }; slid = 0;
+      try { row.setPointerCapture(e.pointerId); } catch (err) {}
     });
-    row.addEventListener("pointerup", (e) => {
-      if (!p0 || swiped) { p0 = null; return; }
-      const moved = Math.hypot(e.clientX - p0.x, e.clientY - p0.y) > 8; p0 = null;
-      if (moved) return;
+    row.addEventListener("pointermove", (e) => {
+      if (!p0) return;
+      const dx = e.clientX - p0.x, dy = e.clientY - p0.y;
+      if (dx > 6 && Math.abs(dy) < 28) {   // the strip follows the finger to the right, easing past the trigger point
+        slid = Math.min(MAXX, dx <= SWIPE ? dx : SWIPE + (dx - SWIPE) * 0.35);
+        row.classList.add("swiping"); row.style.transform = "translateX(" + slid + "px)";
+      } else if (slid) { slid = 0; row.style.transform = ""; }
+    });
+    const settle = (e) => {
+      if (!p0) return;
+      const dx = e.clientX - p0.x, dy = e.clientY - p0.y, wasSlide = slid > 0; p0 = null;
+      row.classList.remove("swiping"); row.style.transform = "";   // bounce back
+      if (wasSlide) {
+        if (dx > SWIPE && Math.abs(dy) < 28) {   // right swipe: toggle membership in the group
+          if (i === bgDoc.active) status("The selected layer is always part of the group.");
+          else { if (bgMulti.has(L.id)) bgMulti.delete(L.id); else bgMulti.add(L.id); closeLayerOpts(); setTimeout(bgRenderLayerList, 170); }
+        }
+        return;
+      }
+      if (Math.hypot(dx, dy) > 8) return;
       if (i === bgDoc.active) { if ($("layerOpts").style.display === "flex") closeLayerOpts(); else openLayerOpts(row); return; }
       closeLayerOpts(); bgMulti.clear();
       if (float) floatFlatten();
       bgSelectLayer(i);
-    });
-    row.addEventListener("pointercancel", () => { p0 = null; });
+    };
+    row.addEventListener("pointerup", settle);
+    row.addEventListener("pointercancel", (e) => { p0 = null; slid = 0; row.classList.remove("swiping"); row.style.transform = ""; });
     // grip drag: reorder the row (or the whole group, if it's in one)
     grip.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation(); closeLayerOpts();
       const inGroup = bgGroupIdx().includes(i);
       const idxs = inGroup ? bgGroupIdx() : [i];
-      const rows = [...host.querySelectorAll(".lyRow")];
-      lyDrag = { idxs, rows, lastTarget: null, lastPos: null };
-      rows.forEach((r) => { if (idxs.includes(+r.dataset.idx)) r.classList.add("dragging"); });
+      // a scattered group gathers around the grabbed row first, so it drags as one block
+      let rows = [...host.querySelectorAll(".lyRow")];
+      const block = rows.filter((r) => idxs.includes(+r.dataset.idx));
+      if (block.length > 1) {
+        const anchor = row, above = block.filter((r) => +r.dataset.idx > i).reverse(), below = block.filter((r) => +r.dataset.idx < i);
+        above.forEach((r) => host.insertBefore(r, anchor)); below.reverse().forEach((r) => host.insertBefore(r, anchor.nextSibling));
+        // (visual only — the real stack order is applied on drop)
+        rows = [...host.querySelectorAll(".lyRow")];
+      }
+      const rects = rows.map((r) => r.getBoundingClientRect());
+      const bi = rows.indexOf(block.sort((a, b) => rows.indexOf(a) - rows.indexOf(b))[0]);
+      const blockTop = rects[bi].top, blockH = block.reduce((a, r) => a + r.getBoundingClientRect().height, 0);
+      lyDrag = { idxs, rows, rects, block, blockTop, blockH, y0: e.clientY, dy: 0, target: null, pos: null };
+      block.forEach((r) => r.classList.add("dragging"));
       grip.setPointerCapture(e.pointerId);
     });
     grip.addEventListener("pointermove", (e) => {
-      if (!lyDrag) return;
-      const rows = lyDrag.rows;
-      rows.forEach((r) => r.classList.remove("dropAbove", "dropBelow"));
+      const d = lyDrag; if (!d) return;
+      d.dy = e.clientY - d.y0;
+      d.block.forEach((r) => { r.style.transform = "translateY(" + d.dy + "px)"; });
+      const center = d.blockTop + d.dy + d.blockH / 2;
       let target = null, pos = null;
-      for (const r of rows) {
-        if (lyDrag.idxs.includes(+r.dataset.idx)) continue;
-        const b = r.getBoundingClientRect();
-        if (e.clientY < b.top + b.height / 2) { target = r; pos = "above"; break; }
+      d.rows.forEach((r, k) => {
+        if (d.block.includes(r)) return;
+        const rc = d.rects[k], rcC = rc.top + rc.height / 2;
+        const before = rc.top < d.blockTop;   // originally above the block on screen
+        let shift = 0;
+        if (before && center < rcC) shift = d.blockH;          // block passed upward over it -> it slides down
+        else if (!before && center > rcC) shift = -d.blockH;   // block passed downward -> it slides up
+        r.style.transform = shift ? "translateY(" + shift + "px)" : "";
+      });
+      // the drop slot is the first non-block row the block center sits above, else below the last
+      for (let k = 0; k < d.rows.length; k++) {
+        const r = d.rows[k]; if (d.block.includes(r)) continue;
+        const rc = d.rects[k];
+        if (center < rc.top + rc.height / 2) { target = r; pos = "above"; break; }
         target = r; pos = "below";
       }
-      if (target) target.classList.add(pos === "above" ? "dropAbove" : "dropBelow");
-      lyDrag.lastTarget = target; lyDrag.lastPos = pos;
-      // keep the list scrolling while dragging near its edges
-      const hb = host.getBoundingClientRect();
+      d.target = target; d.pos = pos;
+      const hb = host.getBoundingClientRect();   // keep the list scrolling near its edges
       if (e.clientY < hb.top + 24) host.scrollTop -= 6; else if (e.clientY > hb.bottom - 24) host.scrollTop += 6;
     });
     const endDrag = () => {
-      if (!lyDrag) return;
-      const d = lyDrag; lyDrag = null;
-      d.rows.forEach((r) => r.classList.remove("dragging", "dropAbove", "dropBelow"));
-      if (!d.lastTarget) return;
-      // list is top-first; convert the visual drop slot into a stack index among the remaining layers
-      const t = +d.lastTarget.dataset.idx;
-      const remaining = bgDoc.layers.map((_, k) => k).filter((k) => !d.idxs.includes(k));
-      const tpos = remaining.indexOf(t);
-      const insertAt = d.lastPos === "above" ? tpos + 1 : tpos;
-      bgMoveGroupTo(d.idxs, insertAt);
+      const d = lyDrag; if (!d) return; lyDrag = null;
+      d.rows.forEach((r) => { r.classList.remove("dragging"); r.style.transform = ""; });
+      let moved = false;
+      if (d.target) {
+        // list is top-first; convert the drop slot into a stack index among the remaining layers
+        const t = +d.target.dataset.idx;
+        const remaining = bgDoc.layers.map((_, k) => k).filter((k) => !d.idxs.includes(k));
+        const tpos = remaining.indexOf(t);
+        moved = bgMoveGroupTo(d.idxs, d.pos === "above" ? tpos + 1 : tpos);
+      }
+      if (!moved) bgRenderLayerList();   // nothing changed: restore the real order (undoes the visual gather)
     };
     grip.addEventListener("pointerup", endDrag);
     grip.addEventListener("pointercancel", endDrag);
@@ -5568,7 +5602,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.64.0";
+const APP_VERSION = "6.64.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
