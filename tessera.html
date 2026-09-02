@@ -274,6 +274,16 @@
 
 <!-- Options tray: template file + canvas operations, one line each.
      Toggled by the wrench; actions close it. -->
+<!-- Shapes tray (v6.70): shown while the Shapes tool is active -->
+<div class="tray" id="shapebar">
+  <span class="lbl">SHAPE</span>
+  <button class="optline shkind" data-v="rect" title="Rectangle — drag corner to corner"><span data-icon="shRect"></span>Rectangle</button>
+  <button class="optline shkind" data-v="ellipse" title="Ellipse — drag the bounding box (Bresenham midpoint, pixel-exact)"><span data-icon="shEllipse"></span>Ellipse</button>
+  <button class="optline shkind" data-v="line" title="Line — drag from end to end"><span data-icon="shLine"></span>Line</button>
+  <span class="vsep"></span>
+  <button class="optline shfill" data-v="0" title="Outline — the edge only, in the current brush width"><span data-icon="shOutline"></span>Outline</button>
+  <button class="optline shfill" data-v="1" title="Filled — solid interior plus the edge"><span data-icon="shFilled"></span>Filled</button>
+</div>
 <!-- Tiled / Symmetry trays (v6.67): background projects only, opened from the header like Options -->
 <div class="tray" id="tiledbar" data-set="tiled">
   <span class="lbl">TILED</span>
@@ -402,6 +412,7 @@
   <div id="rail">
     <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
     <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
+    <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes (U) — drag to place a pixel-exact rectangle, ellipse, or line; outline or filled, in the current color and brush width"></button>
     <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
     <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform (V) — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
@@ -1835,6 +1846,12 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
+  shRect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+  shEllipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
+  shLine: '<path d="M4 19 20 5"/><circle cx="4" cy="19" r="1.5" fill="currentColor"/><circle cx="20" cy="5" r="1.5" fill="currentColor"/>',
+  shOutline: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+  shFilled: '<rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/>',
   invert: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M21 3v18H3z" fill="currentColor" stroke="none" opacity=".45"/>',
   wand: '<path d="m3 21 10-10"/><path d="M15 3v3M15 12v3M11 7h3M18 7h3M12.2 4.2l1.6 1.6M17.2 8.8l1.6 1.6M17.2 5.8l1.6-1.6M12.2 9.8l1.6-1.6"/>',
   symmetry: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9 7 4 12l5 5"/><path d="m15 7 5 5-5 5"/>',
@@ -2870,37 +2887,46 @@ function drawGrid() {
       ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
     }
   }
+  if (activeTab === "ed" && stroke && stroke.kind === "shape") {   // v6.70: shape preview, pixel-exact, in the mapped color
+    const px = shapePixels(shapeKind, shapeFill, stroke.x0, stroke.y0, stroke.x1, stroke.y1);
+    const pal = palettes[palIdx], l = color.r;
+    let fill;
+    if (pal.base) { const lut = pal.lut || (pal.lut = buildPalLut(pal.base)); fill = `rgba(${lut[l*3]},${lut[l*3+1]},${lut[l*3+2]},0.85)`; }
+    else fill = `rgba(${color.r},${color.g},${color.b},0.85)`;
+    ovCtx.fillStyle = fill;
+    const off = brushOffsets();
+    for (let i = 0; i < px.inner.length; i += 2) ovCtx.fillRect(v.x + px.inner[i] * v.s, v.y + px.inner[i + 1] * v.s, v.s, v.s);
+    for (let i = 0; i < px.edge.length; i += 2) for (const o of off) ovCtx.fillRect(v.x + (px.edge[i] + o[0]) * v.s, v.y + (px.edge[i + 1] + o[1]) * v.s, v.s, v.s);
+    ovCtx.strokeStyle = "rgba(255,255,255,0.5)"; ovCtx.lineWidth = 1;
+    const lx = Math.min(stroke.x0, stroke.x1), ty = Math.min(stroke.y0, stroke.y1), w2 = Math.abs(stroke.x1 - stroke.x0) + 1, h2 = Math.abs(stroke.y1 - stroke.y0) + 1;
+    if (shapeKind !== "line") ovCtx.strokeRect(v.x + lx * v.s + 0.5, v.y + ty * v.s + 0.5, w2 * v.s, h2 * v.s);
+  }
   if (activeTab === "ed" && (selEdges || float || selPoly || (stroke && stroke.kind === "sel"))) {
     const vs = v.s;
-    if (float && floatEdges) {   // ants travel with the float — v6.69.1: 2px, 6/6 dash
-      ovCtx.lineWidth = 2;
-      ovCtx.beginPath();
-      for (const e2 of floatEdges) { ovCtx.moveTo(v.x + (float.x + e2[0]) * vs, v.y + (float.y + e2[1]) * vs); ovCtx.lineTo(v.x + (float.x + e2[2]) * vs, v.y + (float.y + e2[3]) * vs); }
-      ovCtx.strokeStyle = "rgba(0,0,0,0.85)"; ovCtx.setLineDash([]); ovCtx.stroke();
-      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([6, 6]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
-      ovCtx.setLineDash([]); ovCtx.lineDashOffset = 0;
+    if (float) {   // v6.70.1: Transform shows a static bounding box (Procreate-style), no ants
+      const bx = v.x + float.x * vs, by = v.y + float.y * vs, bw = float.w * vs, bh = float.h * vs;
+      ovCtx.setLineDash([]);
+      ovCtx.lineWidth = 3; ovCtx.strokeStyle = "rgba(0,0,0,0.55)"; ovCtx.strokeRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ovCtx.lineWidth = 1.5; ovCtx.strokeStyle = "rgba(255,255,255,0.95)"; ovCtx.strokeRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ovCtx.fillStyle = "#fff"; ovCtx.strokeStyle = "rgba(0,0,0,0.6)"; ovCtx.lineWidth = 1;
+      for (const [hx, hy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) { ovCtx.beginPath(); ovCtx.arc(hx, hy, 3.5, 0, Math.PI * 2); ovCtx.fill(); ovCtx.stroke(); }
     }
-    if (selEdges && selMask && !float) {   // v6.69.1: everything OUTSIDE the selection gets a diagonal hatch (Procreate-style)
-      const dpr = window.devicePixelRatio || 1, hp = selHatchPattern();
+    if (selEdges && selMask && !float) {   // v6.70.1: the hatch IS the selection display (no ants, no timer);
+      const dpr = window.devicePixelRatio || 1, hp = selHatchPattern();   // rebuilt only when mask, zoom, or DPR change
       if (hp) {
-        const cw = W * vs, ch = H * vs;
-        selHatch.width = Math.max(1, Math.round(cw * dpr)); selHatch.height = Math.max(1, Math.round(ch * dpr));
-        const hg = selHatch.getContext("2d");
-        hg.setTransform(dpr, 0, 0, dpr, 0, 0);
-        hg.fillStyle = hp; hg.fillRect(0, 0, cw, ch);
-        hg.globalCompositeOperation = "destination-out";   // punch the selected pixels out of the hatch
-        hg.imageSmoothingEnabled = false;
-        hg.drawImage(selMaskCanvas(), 0, 0, cw, ch);
+        const cw = W * vs, ch = H * vs, key = [cw, ch, dpr].join("|");
+        if (selHatchMask !== selMask || selHatchKey !== key) {
+          selHatchMask = selMask; selHatchKey = key;
+          selHatch.width = Math.max(1, Math.round(cw * dpr)); selHatch.height = Math.max(1, Math.round(ch * dpr));
+          const hg = selHatch.getContext("2d");
+          hg.setTransform(dpr, 0, 0, dpr, 0, 0);
+          hg.fillStyle = hp; hg.fillRect(0, 0, cw, ch);
+          hg.globalCompositeOperation = "destination-out";   // punch the selected pixels out of the hatch
+          hg.imageSmoothingEnabled = false;
+          hg.drawImage(selMaskCanvas(), 0, 0, cw, ch);
+        }
         ovCtx.drawImage(selHatch, v.x, v.y, cw, ch);
       }
-    }
-    if (selEdges) {   // committed mask: marching ants (dark base, bright dashes) — v6.69.1: 2px, 6/6 dash
-      ovCtx.lineWidth = 2;
-      ovCtx.beginPath();
-      for (const e2 of selEdges) { ovCtx.moveTo(v.x + e2[0] * vs, v.y + e2[1] * vs); ovCtx.lineTo(v.x + e2[2] * vs, v.y + e2[3] * vs); }
-      ovCtx.strokeStyle = "rgba(0,0,0,0.85)"; ovCtx.setLineDash([]); ovCtx.stroke();
-      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([6, 6]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
-      ovCtx.setLineDash([]); ovCtx.lineDashOffset = 0;
     }
     if (stroke && stroke.kind === "sel" && stroke.drag && selShape !== "lasso") {
       const x = Math.min(stroke.x0, stroke.x1), y = Math.min(stroke.y0, stroke.y1);
@@ -3571,14 +3597,14 @@ let selShape = "rect", selMode = "add", antPhase = 0;
    part of the canvas, with the selection punched out. Pattern built once per
    DPR; the mask canvas is rebuilt only when the selection changes. */
 const selHatch = document.createElement("canvas");
-let selHatchPat = null, selHatchDpr = 0;
+let selHatchPat = null, selHatchDpr = 0, selHatchMask = null, selHatchKey = "";
 function selHatchPattern() {
   const dpr = window.devicePixelRatio || 1;
   if (selHatchPat && selHatchDpr === dpr) return selHatchPat;
   const c = document.createElement("canvas"); c.width = Math.round(8 * dpr); c.height = Math.round(8 * dpr);
   const g = c.getContext("2d"); g.scale(dpr, dpr);
-  g.fillStyle = "rgba(0,0,0,0.28)"; g.fillRect(0, 0, 8, 8);
-  g.strokeStyle = "rgba(255,255,255,0.16)"; g.lineWidth = 1.2;
+  g.fillStyle = "rgba(0,0,0,0.30)"; g.fillRect(0, 0, 8, 8);
+  g.strokeStyle = "rgba(255,255,255,0.20)"; g.lineWidth = 2.4;
   g.beginPath(); g.moveTo(-2, 10); g.lineTo(10, -2); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
   selHatchPat = selHatch.getContext("2d").createPattern(c, "repeat"); selHatchDpr = dpr;
   try { selHatchPat.setTransform(new DOMMatrix().scale(1 / dpr)); } catch (e) {}
@@ -3643,6 +3669,88 @@ function selApply(shape) {
   selRebuildEdges();
   status(selMask ? "Selection updated." : "Selection empty.");
   drawGrid();
+}
+/* ==== Shapes tool (v6.70) ====
+   Rectangle / ellipse / line, outline or filled. Ellipse is a port of
+   Aseprite's algo_ellipse (src/doc/algo.cpp — Bresenham/Zingl midpoint
+   ellipse, integer error term, correct for even and odd diameters); the
+   filled variant fills each row between that outline's extremes, which is
+   what algo_ellipsefill produces. Outline pixels go through stampEd (brush
+   width + symmetry), fill pixels through putPx (selection clipping). */
+let shapeKind = "rect", shapeFill = false;
+try { const sp = JSON.parse(localStorage.getItem("tessera.shape") || "null"); if (sp) { shapeKind = sp.kind || "rect"; shapeFill = !!sp.fill; } } catch (e) {}
+function shapeSyncBar() {
+  document.querySelectorAll("#shapebar .shkind").forEach((b) => b.classList.toggle("on", b.dataset.v === shapeKind));
+  document.querySelectorAll("#shapebar .shfill").forEach((b) => b.classList.toggle("on", (b.dataset.v === "1") === shapeFill));
+  const want = activeTab === "ed" && tool === "shape" ? "flex" : "none";
+  if ($("shapebar").style.display !== want) { $("shapebar").style.display = want; sizeOverlay(); }
+  try { localStorage.setItem("tessera.shape", JSON.stringify({ kind: shapeKind, fill: shapeFill })); } catch (e) {}
+}
+function ellipseOutlinePts(x0, y0, x1, y1) {   // verbatim port of Aseprite adjust_ellipse_args + algo_ellipse (src/doc/algo.cpp)
+  const pts = [], proc = (x, y) => pts.push(x, y);
+  let hPixels = 0, vPixels = 0;
+  if (x0 > x1) [x0, x1] = [x1, x0];
+  if (y0 > y1) [y0, y1] = [y1, y0];
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const hDiameter = w - hPixels, vDiameter = h - vPixels;
+  if (w === 8 || w === 12 || w === 22) hPixels++;          // manual adjustment (straight mid-section pixels)
+  if (h === 8 || h === 12 || h === 22) vPixels++;
+  hPixels = hDiameter > 5 ? hPixels : 0;
+  vPixels = vDiameter > 5 ? vPixels : 0;
+  if (hDiameter % 2 === 0 && hDiameter > 5) hPixels--;
+  if (vDiameter % 2 === 0 && vDiameter > 5) vPixels--;
+  x1 -= hPixels; y1 -= vPixels;
+  let a = Math.abs(x1 - x0), b = Math.abs(y1 - y0), b1 = b & 1;
+  let dx = 4 * (1.0 - a) * b * b, dy = 4 * (b1 + 1) * a * a;
+  let err = dx + dy + b1 * a * a, e2;
+  y0 += (b + 1) >> 1; y1 = y0 - b1;
+  a = 8 * a * a; b1 = 8 * b * b;
+  const initialY0 = y0, initialY1 = y1, initialX0 = x0, initialX1 = x1 + hPixels;
+  do {
+    proc(x1 + hPixels, y0 + vPixels); proc(x0, y0 + vPixels); proc(x0, y1); proc(x1 + hPixels, y1);
+    e2 = 2 * err;
+    if (e2 <= dy) { y0++; y1--; err += dy += a; }
+    if (e2 >= dx || 2 * err > dy) { x0++; x1--; err += dx += b1; }
+  } while (x0 <= x1);
+  while (y0 + vPixels - y1 + 1 <= h) {   // too early stop of flat ellipses a=1 -> finish the tip
+    proc(x0 - 1, y0 + vPixels); proc(x1 + 1 + hPixels, y0++ + vPixels); proc(x0 - 1, y1); proc(x1 + 1 + hPixels, y1--);
+  }
+  if (hPixels > 0) for (let i = x0; i < x1 + hPixels + 1; i++) { proc(i, y1 + 1); proc(i, y0 + vPixels - 1); }
+  if (vPixels > 0) for (let i = initialY1 + 1; i < initialY0 + vPixels; i++) { proc(initialX0, i); proc(initialX1, i); }
+  return pts;
+}
+function shapePixels(kind, fill, x0, y0, x1, y1) {   // -> { edge: [x,y,...], inner: [x,y,...] }
+  const edge = [], inner = [];
+  const lx = Math.min(x0, x1), rx = Math.max(x0, x1), ty = Math.min(y0, y1), by = Math.max(y0, y1);
+  if (kind === "line") {
+    let ax = x0, ay = y0; const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let err = dx - dy;
+    while (true) { edge.push(ax, ay); if (ax === x1 && ay === y1) break; const e2 = 2 * err; if (e2 > -dy) { err -= dy; ax += sx; } if (e2 < dx) { err += dx; ay += sy; } }
+    return { edge, inner };
+  }
+  if (kind === "rect") {
+    for (let x = lx; x <= rx; x++) { edge.push(x, ty); if (by !== ty) edge.push(x, by); }
+    for (let y = ty + 1; y < by; y++) { edge.push(lx, y); if (rx !== lx) edge.push(rx, y); }
+    if (fill) for (let y = ty + 1; y < by; y++) for (let x = lx + 1; x < rx; x++) inner.push(x, y);
+    return { edge, inner };
+  }
+  const pts = ellipseOutlinePts(lx, ty, rx, by);
+  const seen = new Set();
+  for (let i = 0; i < pts.length; i += 2) { const k = pts[i] + "," + pts[i + 1]; if (!seen.has(k)) { seen.add(k); edge.push(pts[i], pts[i + 1]); } }
+  if (fill) {
+    const rowMin = new Map(), rowMax = new Map();
+    for (let i = 0; i < edge.length; i += 2) { const x = edge[i], y = edge[i + 1]; rowMin.set(y, Math.min(rowMin.has(y) ? rowMin.get(y) : x, x)); rowMax.set(y, Math.max(rowMax.has(y) ? rowMax.get(y) : x, x)); }
+    for (const [y, mn] of rowMin) for (let x = mn + 1; x < rowMax.get(y); x++) if (!seen.has(x + "," + y)) inner.push(x, y);
+  }
+  return { edge, inner };
+}
+function shapeCommit(s) {
+  const px = shapePixels(shapeKind, shapeFill, s.x0, s.y0, s.x1, s.y1);
+  snapshot();
+  for (let i = 0; i < px.inner.length; i += 2) { putPx(px.inner[i], px.inner[i + 1]); const m = symOf(px.inner[i], px.inner[i + 1]); if (m) for (const q of m) putPx(q[0], q[1]); }
+  for (let i = 0; i < px.edge.length; i += 2) stampEd(px.edge[i], px.edge[i + 1]);
+  templateChanged(); persistPng(); refreshFileSwatches();
+  const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
+  status((shapeFill ? "Filled " : "") + (shapeKind === "line" ? "line" : shapeKind === "rect" ? "rectangle" : "ellipse") + (shapeKind === "line" ? "" : " " + w + " \u00d7 " + h) + " placed.");
 }
 function shapeRect(x0, y0, x1, y1) {
   const m = new Uint8Array(TW * TH);
@@ -4214,6 +4322,7 @@ function beginStroke(e) {
     if (tool === "slopeF" || tool === "slopeC") { status("Slope tools draw in the LEVEL tab."); return; }
     if (tool === "pick") { pickAt(x, y); return; }
     if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
+    if (tool === "shape") { stroke = { kind: "shape", x0: x, y0: y, x1: x, y1: y }; drawGrid(); return; }
     if (tool === "marquee") {
       if (selShape === "wand") { wandSelect(x, y); return; }   // v6.69: automatic selection is a tap, not a drag
       stroke = { kind: "sel", x0: x, y0: y, x1: x, y1: y, pts: [[x, y]], downVp: vpPoint(e), drag: false };
@@ -4289,6 +4398,7 @@ function moveStroke(e) {
     if (float) { float.x = stroke.sx + (x - stroke.ax); float.y = stroke.sy + (y - stroke.ay); blit(); drawGrid(); }
     return;
   }
+  if (stroke.kind === "shape") { const [x, y] = edPos(e); if (x !== stroke.x1 || y !== stroke.y1) { stroke.x1 = x; stroke.y1 = y; drawGrid(); } return; }
   if (stroke.kind === "sel") {
     const [x, y] = edPos(e);
     if (!stroke.drag) {
@@ -4372,6 +4482,7 @@ function endStroke() {
     stroke = null;
     return;
   }
+  if (stroke && stroke.kind === "shape") { const s = stroke; stroke = null; shapeCommit(s); drawGrid(); return; }
   if (stroke && stroke.kind === "sel") {
     const s = stroke; stroke = null;
     if (selShape === "rect") { selApply(shapeRect(s.x0, s.y0, s.x1, s.y1)); return; }
@@ -4606,8 +4717,10 @@ function setTool(t) {
   if (t !== "vary") { closeVaryPanel(); closeVaryConfirm(); }
   syncVarybar();
   drawGrid();   // vary outlines appear/disappear with the tool
-  syncSelbar();
+  syncSelbar(); shapeSyncBar();
 }
+document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => { shapeKind = b.dataset.v; shapeSyncBar(); }));
+document.querySelectorAll("#shapebar .shfill").forEach((b) => b.addEventListener("click", () => { shapeFill = b.dataset.v === "1"; shapeSyncBar(); }));
 document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => {
   const t = b.dataset.tool;
   setTool((t === tool && (t === "slopeF" || t === "slopeC")) ? "pencil" : t);   // slope tools toggle off
@@ -4640,7 +4753,7 @@ $("btnPaste").addEventListener("click", doPaste);
 $("btnFlipH").addEventListener("click", () => floatXform("fh"));
 $("btnFlipV").addEventListener("click", () => floatXform("fv"));
 $("btnRot90").addEventListener("click", () => floatXform("rot"));
-setInterval(() => { if ((selEdges || float) && activeTab === "ed") { antPhase = (antPhase + 2) % 12; drawGrid(); } }, 140);
+/* v6.70.1: no marching-ants timer — selection is shown by the hatch, Transform by its bounding box */
 function syncCellbar(levelTab) {   // levelTab: is the Level tab the active one?
   const want = levelTab && pvMode === "cells" ? "flex" : "none";
   const bar = $("cellbar");
@@ -5985,7 +6098,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.69.1";
+const APP_VERSION = "6.70.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
