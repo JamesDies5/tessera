@@ -293,7 +293,6 @@
      Toggled by the wrench; actions close it. -->
 <div id="optbar">
   <button class="optline" id="btnReload" title="Reload the app — fetches the latest deployed version (cache-busting), for pinned home-screen installs"><span data-icon="reload"></span>Reload</button>
-  <button class="optline" id="btnGestureLog" title="PROBE — share the last 80 touch/pen contacts as text (for tuning palm handling)"><span data-icon="tag"></span>Gesture log</button>
   <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
   <button class="optline" id="btnCanvas" title="Resize the sheet — drag the right/bottom handles in 16px cells; cannot shrink below the contract's base cells"><span data-icon="frame"></span>Canvas</button>
   <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
@@ -4029,23 +4028,11 @@ let fingerHold = null;   // pen mode: one finger is hold-pick only; two fingers 
 let gesture = null;  // { t0, moved, maxN } — quick still 2-finger tap = undo, 3 = redo
 let penSeen = false, fingerDraws = true;
 function penActive() { return [...pointers.values()].some((p) => p.type === "pen"); }
-/* Gesture probe (v6.66.4, remove when palm handling is settled): every touch
-   contact is logged with its landing time, position, reported size, and how
-   many pointers were down, plus lift time and whether a tap gesture fired.
-   Options → Gesture log shares the last 80 entries as text. Zero behaviour
-   change — the gesture code below is byte-for-byte v6.66.1. */
-const gestureLog = [];
-function glog(kind, e, extra) {
-  const r = viewport.getBoundingClientRect();
-  gestureLog.push(Object.assign({ t: Math.round(performance.now()), k: kind, id: e && e.pointerId, pt: e && e.pointerType,
-    x: e ? Math.round(e.clientX - r.left) : undefined, y: e ? Math.round(e.clientY - r.top) : undefined,
-    w: e ? Math.round(e.width) : undefined, h: e ? Math.round(e.height) : undefined, n: pointers.size }, extra || {}));
-  if (gestureLog.length > 80) gestureLog.shift();
-}
-function gestureLogText() {
-  const lines = gestureLog.map((g) => [g.t, g.k, g.pt, "#" + g.id, g.x !== undefined ? g.x + "," + g.y : "", g.w !== undefined ? g.w + "x" + g.h : "", "n=" + g.n, g.note || ""].join("  "));
-  return "Tessera gesture log v" + APP_VERSION + "  (t ms, kind, type, id, x,y, contact w×h, pointers down, note)\n" + lines.join("\n");
-}
+/* Palm-handling baseline measured on James's iPad, 2026-09-02 (gesture probe,
+   since removed): pen contacts report 1×1; fingertips 42×42 / 63×63; palm
+   contacts 83×83 to 271×271 and are cancelled by iPadOS 5–35 ms after landing
+   (pointercancel), while every deliberate finger gesture ends in pointerup.
+   That cancel/up distinction is the whole palm rule — see vpUp. */
 function setFingerDraws(v, auto) {
   fingerDraws = v;
   try { localStorage.setItem(LS.finger, v ? "1" : "0"); } catch (e) {}
@@ -4402,8 +4389,7 @@ viewport.addEventListener("pointerdown", (e) => {
     penSeen = true; try { localStorage.setItem(LS.pen, "1"); } catch (err) {}
     if (fingerDraws) setFingerDraws(false, true);   // first Pencil contact flips fingers to gesture-only
   }
-  if (isTouch && !fingerDraws && penActive()) { glog("down-ignored(pen active)", e); return; }   // palm while the pen is down — ignored outright
-  glog("down", e);
+  if (isTouch && !fingerDraws && penActive()) return;   // palm while the pen is down — ignored outright
   if (e.pointerType === "pen" && !fingerDraws && pointers.size && !penActive()) {
     pointers.forEach((_, id) => { try { viewport.releasePointerCapture(id); } catch (err) {} });
     clearFingerHold();
@@ -4461,20 +4447,19 @@ viewport.addEventListener("pointermove", (e) => {
 const vpUp = (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
-  glog(e.type, e);
   const cancelled = e.type === "pointercancel";
   if (eyedrop && pointers.size === 0) { eyedropEnd(); return; }
   if (fingerHold && pointers.size === 0) { clearFingerHold(); fingerHold = null; return; }
   if (pinch && pointers.size < 2) {   // lifting out of a pinch never resumes drawing
     if (cancelled) {   // OS-rejected palm: undo whatever nudge it gave the view, and never count it as a tap
       if (gesture && gesture.moved) { view[activeTab] = { ...pinch.v0 }; applyView(activeTab); }
-      pinch = null; glog("gesture cancelled", e, { note: "palm — ignored" }); gesture = null; return;
+      pinch = null; gesture = null; return;
     }
     pinch = null;
     if (gesture && !gesture.moved && performance.now() - gesture.t0 < 300) {
-      if (gesture.maxN === 2) { undo(); status("Undo"); glog("UNDO fired", e, { note: "tap " + Math.round(performance.now() - gesture.t0) + "ms" }); }
-      else if (gesture.maxN === 3) { redo(); status("Redo"); glog("REDO fired", e, { note: "tap " + Math.round(performance.now() - gesture.t0) + "ms" }); }
-    } else if (gesture) glog("gesture ended", e, { note: (gesture.moved ? "moved" : "still") + " " + Math.round(performance.now() - gesture.t0) + "ms maxN=" + gesture.maxN });
+      if (gesture.maxN === 2) { undo(); status("Undo"); }
+      else if (gesture.maxN === 3) { redo(); status("Redo"); }
+    }
     gesture = null;
     return;
   }
@@ -5913,7 +5898,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.66.5";
+const APP_VERSION = "6.66.6";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -5979,13 +5964,6 @@ $("btnOptions").addEventListener("click", () => {
   $("btnOptions").classList.add("on");
 });
 document.querySelectorAll("#optbar .optline").forEach((b) => b.addEventListener("click", () => closeOptMenu()));
-$("btnGestureLog").addEventListener("click", () => {   // PROBE — remove with the gesture probe
-  const text = gestureLogText();
-  try {
-    if (navigator.share) { navigator.share({ title: "Tessera gesture log", text }).catch(() => {}); return; }
-  } catch (e) {}
-  try { navigator.clipboard.writeText(text).then(() => status("Gesture log copied to the clipboard.")); } catch (e) { prompt("Gesture log:", text); }
-});
 $("btnReload").addEventListener("click", () => {
   if (float) floatFlatten();
   persistPng();   // belt and suspenders — the sheet is already persisted per stroke
