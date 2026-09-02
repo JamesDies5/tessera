@@ -58,7 +58,7 @@
   #colorMenu .cmRow { display: flex; gap: 6px; align-items: center; }
   #colorMenu .cmRow > .lbl { flex: 0 0 52px; }
   /* WebKit sizes wrap-enabled flex rows at min-content inside fixed-position
-     shrink-to-fit, tucking the last swatch under. Five stops never need to
+     shrink-to-fit, tucking the last swatch under. Six stops never need to
      wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
   #stopSwatches { flex-wrap: nowrap; }
   #brushMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; align-items: center; gap: 8px; width: 300px; max-width: 92vw;
@@ -195,7 +195,7 @@
   <!-- Color flyout: display-mapped palette; template stays grayscale truth -->
   <div id="colorMenu">
     <div class="cmRow"><span class="lbl">STOPS</span><span class="ctx" id="stopSwatches"></span></div>
-    <div class="cmRow" id="rowInFile"><span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span><button id="btnConvert" title="Snap every template pixel to its nearest stop gray (20, 52, 139, 200, 255) — one undoable step; this row disappears once the file conforms">CONVERT</button></div>
+    <div class="cmRow" id="rowInFile"><span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span><button id="btnConvert" title="Snap every template pixel to its nearest stop gray (25, 52, 89, 139, 200, 255) — one undoable step; this row disappears once the file conforms">CONVERT</button></div>
     <div class="cmRow"><span class="lbl">PALETTE</span><select class="pal" id="palSelect" title="Zone palette — the same gradient map the game uses, shown app-wide; the template stays grayscale underneath"></select></div>
   </div></span>
   <input type="file" id="fileTpl" accept="image/png" hidden>
@@ -2285,7 +2285,7 @@ function maskRemapFor(m) {
 let userSlopes = (() => { try { return JSON.parse(localStorage.getItem(LS.slopes)) || []; } catch (e) { return []; } })();
 function persistUserSlopes() { try { localStorage.setItem(LS.slopes, JSON.stringify(userSlopes)); } catch (e) {} }
 const cellName = (ax, ay) => String.fromCharCode(65 + ax) + (ay + 1);
-let color = { r: 20, g: 20, b: 20, a: 255 };
+let color = { r: 25, g: 25, b: 25, a: 255 };   // stop 0 (tile lane); 20 is background-only per palette_canon.md
 let fills = null, cells = null, resolved = null;
 let undoStack = [], redoStack = [];
 /* ---- built-in palettes ----
@@ -2660,8 +2660,11 @@ function syncGridButtons() {
    shader's gradient-map KEY POSITIONS; the art convention paints these
    values, which the map treats well (art-25 sits just above the darkest
    key, matching the game). Stop 3 is neutral 200 by decision — the raw
-   file's #C7C9CB was a tinted export artifact. */
-const STOP_GRAYS = [25, 52, 139, 200, 255];
+   file's #C7C9CB was a tinted export artifact.
+   v6.61 (2026-09-02): 89 (mid-dark, 35%) added per palette_canon.md — a
+   background-lane tone the game interpolates from the existing five
+   shader keys (no new palette key). Stops renumber 0..5. */
+const STOP_GRAYS = [25, 52, 89, 139, 200, 255];
 function displayColor(rgba) {
   const pal = palettes[palIdx];
   if (!pal.base) return `rgb(${rgba.r},${rgba.g},${rgba.b})`;
@@ -2686,7 +2689,10 @@ function buildStopSwatches() {
   const host = $("stopSwatches"); host.innerHTML = "";
   for (let i = STOP_GRAYS.length - 1; i >= 0; i--) {   // light -> dark, per James
     const g = STOP_GRAYS[i];
-    const t = (i === 4 ? "stop 4 — reserved for characters in your value hierarchy" : `stop ${i} — tile range`) + ` (paints gray ${g})`;
+    const last = STOP_GRAYS.length - 1;
+    const t = (i === last ? `stop ${i} — reserved for characters in your value hierarchy`
+      : g === 89 ? `stop ${i} — mid-dark, background lane`
+      : `stop ${i} — tile range`) + ` (paints gray ${g})`;
     host.appendChild(swatchBtn({ r: g, g: g, b: g, a: 255 }, i, t));
   }
 }
@@ -4896,7 +4902,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.60.0";
+const APP_VERSION = "6.61.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
