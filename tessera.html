@@ -166,6 +166,9 @@
   .lyRow { position: relative; transition: transform .16s ease; will-change: transform; }
   .lyRow.swiping, .lyRow.dragging { transition: none; }
   .lyRow.dragging { opacity: .92; z-index: 2; background: #444; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+  .lyRow.stacked { display: none; }   /* group members tucked under the grabbed row while it drags */
+  .lyRow.stackTop { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 4px 0 -1px #505050, 0 8px 0 -2px #3e3e3e; }
+  .lyCount { flex: 0 0 auto; font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
   .lyGrip { width: 26px; height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: #6a6a6a; cursor: grab; touch-action: none; }
   .lyGrip svg { width: 18px; height: 18px; }
   .lyThumb { width: 80px; height: 45px; border-radius: 5px; border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
@@ -244,7 +247,7 @@
   </div></span>
   <span class="fly"><button class="ibtn" id="btnLayers" data-icon="layers" title="Layers — add, hide, lock, reorder, merge" style="display:none"></button>
   <div id="layerMenu">
-    <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
+    <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyOpts" data-icon="chevron" title="Options for the selected layer (same menu as tapping it)"></button><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
     <div id="layerList"></div>
     <div class="lmFoot">tap selected layer for options &middot; swipe right to multi-select &middot; drag grip to reorder</div>
   </div>
@@ -1805,6 +1808,7 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
@@ -5463,20 +5467,20 @@ function bgRenderLayerList() {
       e.preventDefault(); e.stopPropagation(); closeLayerOpts();
       const inGroup = bgGroupIdx().includes(i);
       const idxs = inGroup ? bgGroupIdx() : [i];
-      // a scattered group gathers around the grabbed row first, so it drags as one block
-      let rows = [...host.querySelectorAll(".lyRow")];
-      const block = rows.filter((r) => idxs.includes(+r.dataset.idx));
-      if (block.length > 1) {
-        const anchor = row, above = block.filter((r) => +r.dataset.idx > i).reverse(), below = block.filter((r) => +r.dataset.idx < i);
-        above.forEach((r) => host.insertBefore(r, anchor)); below.reverse().forEach((r) => host.insertBefore(r, anchor.nextSibling));
-        // (visual only — the real stack order is applied on drop)
-        rows = [...host.querySelectorAll(".lyRow")];
+      // a group stacks under the grabbed row, so one band moves; it re-expands on drop
+      const rows = [...host.querySelectorAll(".lyRow")];
+      const members = rows.filter((r) => idxs.includes(+r.dataset.idx) && r !== row);
+      members.forEach((r) => r.classList.add("stacked"));
+      if (members.length) {
+        row.classList.add("stackTop");
+        const badge = document.createElement("span"); badge.className = "lyCount"; badge.textContent = "\u00d7" + (members.length + 1);
+        nm.after(badge);
       }
+      const block = [row];
       const rects = rows.map((r) => r.getBoundingClientRect());
-      const bi = rows.indexOf(block.sort((a, b) => rows.indexOf(a) - rows.indexOf(b))[0]);
-      const blockTop = rects[bi].top, blockH = block.reduce((a, r) => a + r.getBoundingClientRect().height, 0);
-      lyDrag = { idxs, rows, rects, block, blockTop, blockH, y0: e.clientY, dy: 0, target: null, pos: null };
-      block.forEach((r) => r.classList.add("dragging"));
+      const blockTop = rects[rows.indexOf(row)].top, blockH = rects[rows.indexOf(row)].height;
+      lyDrag = { idxs, rows, rects, block, members, blockTop, blockH, y0: e.clientY, dy: 0, target: null, pos: null };
+      row.classList.add("dragging");
       grip.setPointerCapture(e.pointerId);
     });
     grip.addEventListener("pointermove", (e) => {
@@ -5486,7 +5490,7 @@ function bgRenderLayerList() {
       const center = d.blockTop + d.dy + d.blockH / 2;
       let target = null, pos = null;
       d.rows.forEach((r, k) => {
-        if (d.block.includes(r)) return;
+        if (d.block.includes(r) || d.members.includes(r)) return;
         const rc = d.rects[k], rcC = rc.top + rc.height / 2;
         const before = rc.top < d.blockTop;   // originally above the block on screen
         let shift = 0;
@@ -5496,7 +5500,7 @@ function bgRenderLayerList() {
       });
       // the drop slot is the first non-block row the block center sits above, else below the last
       for (let k = 0; k < d.rows.length; k++) {
-        const r = d.rows[k]; if (d.block.includes(r)) continue;
+        const r = d.rows[k]; if (d.block.includes(r) || d.members.includes(r)) continue;
         const rc = d.rects[k];
         if (center < rc.top + rc.height / 2) { target = r; pos = "above"; break; }
         target = r; pos = "below";
@@ -5507,7 +5511,7 @@ function bgRenderLayerList() {
     });
     const endDrag = () => {
       const d = lyDrag; if (!d) return; lyDrag = null;
-      d.rows.forEach((r) => { r.classList.remove("dragging"); r.style.transform = ""; });
+      d.rows.forEach((r) => { r.classList.remove("dragging", "stacked", "stackTop"); r.style.transform = ""; });
       let moved = false;
       if (d.target) {
         // list is top-first; convert the drop slot into a stack index among the remaining layers
@@ -5516,7 +5520,7 @@ function bgRenderLayerList() {
         const tpos = remaining.indexOf(t);
         moved = bgMoveGroupTo(d.idxs, d.pos === "above" ? tpos + 1 : tpos);
       }
-      if (!moved) bgRenderLayerList();   // nothing changed: restore the real order (undoes the visual gather)
+      if (!moved) bgRenderLayerList();   // nothing changed: re-expand the stack in the real order
     };
     grip.addEventListener("pointerup", endDrag);
     grip.addEventListener("pointercancel", endDrag);
@@ -5542,6 +5546,11 @@ document.addEventListener("pointerdown", (e) => {   // outside tap closes AND pr
   closeLayerMenu();                                        // outside: close panel + popover, let the tap proceed
 }, true);
 $("lyAdd").addEventListener("click", () => { closeLayerOpts(); bgMulti.clear(); bgAddLayer(null); });
+$("lyOpts").addEventListener("click", () => {
+  if ($("layerOpts").style.display === "flex") { closeLayerOpts(); return; }
+  const row = $("layerList").querySelector(".lyRow.on");
+  if (row) { row.scrollIntoView({ block: "nearest" }); openLayerOpts(row); }
+});
 function bgResize(w, h) {
   if (float) floatFlatten();
   selClear();
@@ -5602,7 +5611,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.64.1";
+const APP_VERSION = "6.64.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
