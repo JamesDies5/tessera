@@ -157,18 +157,31 @@
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #layerMenu .lmHead { display: flex; align-items: center; gap: 8px; }
   #layerMenu .lmHead .lbl { flex: 1; }
-  #layerList { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
-  .lyRow { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
-  .lyRow.on { background: #383838; border-color: var(--accent); }
+  #layerList { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; border-top: 1px solid #3a3a3a; }
+  .lyRow { display: flex; align-items: center; gap: 8px; padding: 7px 6px 7px 2px; min-height: 60px; border-bottom: 1px solid #3a3a3a; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+  .lyRow.on { background: #3a3a3a; }
+  .lyRow.multi { background: #2c3340; }
+  .lyRow.on.multi { background: #3a4252; }
   .lyRow.hidden .lyName { color: var(--dim); }
-  .lyThumb { width: 56px; height: 32px; border-radius: 4px; border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
+  .lyRow.dragging { opacity: .45; }
+  .lyRow.dropAbove { box-shadow: inset 0 2px 0 var(--accent); }
+  .lyRow.dropBelow { box-shadow: inset 0 -2px 0 var(--accent); }
+  .lyGrip { width: 26px; height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: #6a6a6a; cursor: grab; touch-action: none; }
+  .lyGrip svg { width: 18px; height: 18px; }
+  .lyThumb { width: 80px; height: 45px; border-radius: 5px; border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
     background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
-  .lyName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-  .lyBtn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--dim); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; flex: 0 0 auto; }
-  .lyBtn svg { width: 15px; height: 15px; }
+  .lyName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .lyBtn { width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--dim); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; flex: 0 0 auto; }
+  .lyBtn svg { width: 16px; height: 16px; }
   .lyBtn.on { color: var(--accent); border-color: var(--accent); }
-  #layerMenu .lmActs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-  #layerMenu .lmActs .optline { height: 30px; padding: 0 9px; }
+  #layerMenu .lmFoot { font-size: 10px; color: var(--dim); letter-spacing: .5px; text-align: center; }
+  /* per-layer options popover — opens to the left of the panel, aligned to the tapped row */
+  #layerOpts { position: fixed; z-index: 72; display: none; flex-direction: column; min-width: 190px;
+    background: rgba(18,18,18,.98); border: 1px solid #454545; border-radius: 12px; padding: 6px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #layerOpts button { background: none; border: 0; color: var(--text); text-align: left; font: inherit; font-size: 13px; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+  #layerOpts button:active { background: var(--line); }
+  #layerOpts button.danger { color: #e08a8a; }
+  #layerOpts hr { border: 0; border-top: 1px solid #3a3a3a; margin: 4px 6px; }
   .syncbadge.fresh { background: #6f9e77; }
   .syncbadge.stale { background: #c9963f; }
   .syncbadge.fresh:active { background: #5c8664; }
@@ -233,16 +246,9 @@
   <div id="layerMenu">
     <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
     <div id="layerList"></div>
-    <div class="lmActs">
-      <button class="optline" id="lyUp" title="Move the selected layer up">UP</button>
-      <button class="optline" id="lyDown" title="Move the selected layer down">DOWN</button>
-      <button class="optline" id="lyDup" title="Duplicate the selected layer">DUPLICATE</button>
-      <button class="optline" id="lyMerge" title="Merge the selected layer into the one below it">MERGE DOWN</button>
-      <button class="optline" id="lyRename" title="Rename the selected layer">RENAME</button>
-      <button class="optline" id="lyDel" title="Delete the selected layer (undoable)">DELETE</button>
-      <button class="optline" id="lyExport" title="Export just the selected layer as a PNG">EXPORT LAYER</button>
-    </div>
-  </div></span>
+    <div class="lmFoot">tap selected layer for options &middot; swipe right to multi-select &middot; drag grip to reorder</div>
+  </div>
+  <div id="layerOpts"></div></span>
   <span class="fly"><button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
   <!-- Color flyout: display-mapped palette; template stays grayscale truth -->
   <div id="colorMenu">
@@ -5219,6 +5225,7 @@ function bgStructState() {
 }
 function bgRestoreStruct(st) {
   if (float) floatFlatten();
+  bgMulti.clear();
   bgDoc.layers = st.layers.map((L) => ({ id: L.id, name: L.name, visible: L.visible, locked: L.locked, png: null }));
   bgLayers = st.layers.map((L) => { const nl = bgMakeCanvas(st.w, st.h); nl.ctx.putImageData(L.img, 0, 0); return nl; });
   TW = st.w; TH = st.h; WORLD.ed.w = TW; WORLD.ed.h = TH;
@@ -5236,7 +5243,11 @@ function bgUndoApply(from, to) {   // pop one entry from `from`, push its invers
   }
   templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList();
 }
-function bgAfterStruct(msg) { templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList(); if (msg) status(msg); }
+function bgAfterStruct(msg) {
+  const ids = new Set(bgDoc.layers.map((L) => L.id));
+  for (const id of [...bgMulti]) if (!ids.has(id)) bgMulti.delete(id);   // dropped layers leave the group
+  templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList(); if (msg) status(msg);
+}
 function bgNewLayerId() { let n = 1; const ids = new Set(bgDoc.layers.map((L) => L.id)); while (ids.has("L" + n)) n++; return "L" + n; }
 function bgNextName() { let n = bgDoc.layers.length + 1; const names = new Set(bgDoc.layers.map((L) => L.name)); while (names.has("Layer " + n)) n++; return "Layer " + n; }
 function bgAddLayer(png, name) {   // above the selected layer; optional PNG art
@@ -5300,7 +5311,98 @@ function bgRenameLayer() {
 }
 function bgToggleVisible(i) { bgDoc.layers[i].visible = !bgDoc.layers[i].visible; templateChanged(); persistPng(); bgRenderLayerList(); }
 function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); }
-/* ---- the panel ---- */
+/* ---- the panel (v6.64) ----
+   Procreate-style: tall divided rows, grip-drag to reorder, tap the
+   selected row for its options, swipe right to add a row to a group.
+   The group (bgMulti, layer ids) is secondary to bgDoc.active and is
+   cleared by a plain tap on any row. */
+let bgMulti = new Set();
+function bgGroupIdx() {   // indices of active + multi, ascending
+  const out = new Set([bgDoc.active]);
+  bgDoc.layers.forEach((L, i) => { if (bgMulti.has(L.id)) out.add(i); });
+  return [...out].sort((a, b) => a - b);
+}
+function bgMoveGroupTo(idxs, insertAt) {   // move the layers at idxs (ascending) so they start at insertAt in the remaining stack
+  if (float) floatFlatten();
+  const moving = idxs.map((i) => ({ L: bgDoc.layers[i], C: bgLayers[i] }));
+  const restL = bgDoc.layers.filter((_, i) => !idxs.includes(i)), restC = bgLayers.filter((_, i) => !idxs.includes(i));
+  const activeId = bgDoc.layers[bgDoc.active].id;
+  const at = Math.max(0, Math.min(restL.length, insertAt));
+  const same = moving.every((m, k) => bgDoc.layers[at + k] === m.L);
+  if (same) return false;
+  bgStructSnapshot();
+  bgDoc.layers = restL.slice(0, at).concat(moving.map((m) => m.L), restL.slice(at));
+  bgLayers = restC.slice(0, at).concat(moving.map((m) => m.C), restC.slice(at));
+  bgSelectLayer(bgDoc.layers.findIndex((L) => L.id === activeId), true);
+  bgAfterStruct();
+  return true;
+}
+function bgMergeSelected() {   // active + multi merge into the lowest of the group
+  const idxs = bgGroupIdx();
+  if (idxs.length < 2) { bgMergeDown(); return; }
+  if (idxs.some((i) => bgDoc.layers[i].locked)) { status("Unlock every layer in the group first."); return; }
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const base = idxs[0], target = bgLayers[base];
+  for (let k = 1; k < idxs.length; k++) if (bgDoc.layers[idxs[k]].visible) target.ctx.drawImage(bgLayers[idxs[k]].canvas, 0, 0);
+  target.png = null;
+  for (let k = idxs.length - 1; k >= 1; k--) { bgDoc.layers.splice(idxs[k], 1); bgLayers.splice(idxs[k], 1); }
+  bgMulti.clear();
+  bgSelectLayer(base, true);
+  bgAfterStruct("Merged " + idxs.length + " layers into \u201c" + bgDoc.layers[base].name + "\u201d.");
+}
+function bgDeleteSelected() {
+  const idxs = bgGroupIdx();
+  if (idxs.length >= bgDoc.layers.length) { status("A background needs at least one layer."); return; }
+  if (idxs.length < 2) { bgDeleteLayer(); return; }
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  for (let k = idxs.length - 1; k >= 0; k--) { bgDoc.layers.splice(idxs[k], 1); bgLayers.splice(idxs[k], 1); }
+  bgMulti.clear();
+  bgSelectLayer(Math.min(idxs[0], bgDoc.layers.length - 1), true);
+  bgAfterStruct("Deleted " + idxs.length + " layers \u2014 undo to restore.");
+}
+function bgSelectLayerPixels() {   // marquee = the layer's opaque pixels
+  if (float) floatFlatten();
+  const d = edCtx.getImageData(0, 0, TW, TH).data, m = new Uint8Array(TW * TH);
+  let n = 0; for (let i = 0; i < m.length; i++) if (d[i * 4 + 3]) { m[i] = 1; n++; }
+  if (!n) { status("This layer is empty \u2014 nothing to select."); return false; }
+  selMask = m; selPoly = null; selRebuildEdges(); setTool("marquee"); drawGrid();
+  return true;
+}
+function bgClearLayer() {
+  if (!bgLayerEditable()) return;
+  if (float) floatFlatten();
+  snapshot(); edCtx.clearRect(0, 0, TW, TH); templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList();
+  status("Cleared \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d \u2014 undo to restore.");
+}
+function bgExportLayer() {
+  if (float) floatFlatten();
+  const L = bgDoc.layers[bgDoc.active];
+  sharePng(ed.toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + "." + L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png");
+}
+function closeLayerOpts() { $("layerOpts").style.display = "none"; }
+function openLayerOpts(row) {
+  const o = $("layerOpts"), multi = bgGroupIdx().length > 1;
+  o.innerHTML = "";
+  const add = (label, fn, cls) => { const b = document.createElement("button"); b.textContent = label; if (cls) b.className = cls; b.addEventListener("click", () => { closeLayerOpts(); fn(); }); o.appendChild(b); };
+  const rule = () => o.appendChild(document.createElement("hr"));
+  add("Rename", bgRenameLayer);
+  add("Select", () => { if (bgSelectLayerPixels()) status("Selected the layer\u2019s pixels."); });
+  add("Copy", () => { if (bgSelectLayerPixels()) doCopy(); });
+  add("Clear", bgClearLayer);
+  rule();
+  add("Duplicate", bgDuplicateLayer);
+  add(multi ? "Merge Selected" : "Merge Down", bgMergeSelected);
+  add("Export Layer", bgExportLayer);
+  rule();
+  add(multi ? "Delete Selected" : "Delete", bgDeleteSelected, "danger");
+  o.style.display = "flex";
+  const pr = $("layerMenu").getBoundingClientRect(), rr = row.getBoundingClientRect();
+  o.style.right = (window.innerWidth - pr.left + 8) + "px";
+  o.style.top = Math.max(8, Math.min(window.innerHeight - o.offsetHeight - 8, rr.top)) + "px";
+}
+let lyDrag = null;   // { idxs, rows, lastTarget, lastPos }
 function bgRenderLayerList() {
   const host = $("layerList"); if (!host || !bgDoc) return;
   host.innerHTML = "";
@@ -5308,23 +5410,86 @@ function bgRenderLayerList() {
   for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
     const L = bgDoc.layers[i];
     const row = document.createElement("div");
-    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (L.visible ? "" : " hidden");
-    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = 56; th.height = 32;
+    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (bgMulti.has(L.id) ? " multi" : "") + (L.visible ? "" : " hidden");
+    row.dataset.idx = i;
+    const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = "Drag to reorder";
+    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = 80; th.height = 45;
     const g = th.getContext("2d"); g.imageSmoothingEnabled = false;
-    const sc = Math.min(56 / TW, 32 / TH), dw = Math.max(1, Math.round(TW * sc)), dh = Math.max(1, Math.round(TH * sc));
-    g.drawImage(bgLayers[i].canvas, Math.floor((56 - dw) / 2), Math.floor((32 - dh) / 2), dw, dh);
+    const sc = Math.min(80 / TW, 45 / TH), dw = Math.max(1, Math.round(TW * sc)), dh = Math.max(1, Math.round(TH * sc));
+    g.drawImage(bgLayers[i].canvas, Math.floor((80 - dw) / 2), Math.floor((45 - dh) / 2), dw, dh);
     const nm = document.createElement("span"); nm.className = "lyName"; nm.textContent = L.name;
     const lk = document.createElement("button"); lk.className = "lyBtn" + (L.locked ? " on" : ""); lk.innerHTML = svg(L.locked ? "lock" : "unlock"); lk.title = L.locked ? "Locked \u2014 tap to unlock" : "Unlocked \u2014 tap to lock";
-    lk.addEventListener("click", (e) => { e.stopPropagation(); bgToggleLocked(i); });
+    lk.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleLocked(i); });
     const vs = document.createElement("button"); vs.className = "lyBtn" + (L.visible ? " on" : ""); vs.innerHTML = svg("eye"); vs.title = L.visible ? "Visible \u2014 tap to hide" : "Hidden \u2014 tap to show";
-    vs.addEventListener("click", (e) => { e.stopPropagation(); bgToggleVisible(i); });
-    row.appendChild(th); row.appendChild(nm); row.appendChild(lk); row.appendChild(vs);
-    row.addEventListener("click", () => { if (i !== bgDoc.active) { if (float) floatFlatten(); bgSelectLayer(i); } });
-    row.addEventListener("dblclick", () => { bgSelectLayer(i, true); bgRenameLayer(); });
+    vs.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleVisible(i); });
+    row.appendChild(grip); row.appendChild(th); row.appendChild(nm); row.appendChild(lk); row.appendChild(vs);
+    // tap / swipe on the row body
+    let p0 = null, swiped = false;
+    row.addEventListener("pointerdown", (e) => { if (e.target.closest(".lyBtn, .lyGrip")) return; p0 = { x: e.clientX, y: e.clientY }; swiped = false; });
+    row.addEventListener("pointermove", (e) => {
+      if (!p0 || swiped) return;
+      const dx = e.clientX - p0.x, dy = e.clientY - p0.y;
+      if (dx > 36 && Math.abs(dy) < 24) {   // right swipe: toggle membership in the group
+        swiped = true;
+        if (i === bgDoc.active) status("The selected layer is always part of the group.");
+        else { if (bgMulti.has(L.id)) bgMulti.delete(L.id); else bgMulti.add(L.id); closeLayerOpts(); bgRenderLayerList(); }
+      }
+    });
+    row.addEventListener("pointerup", (e) => {
+      if (!p0 || swiped) { p0 = null; return; }
+      const moved = Math.hypot(e.clientX - p0.x, e.clientY - p0.y) > 8; p0 = null;
+      if (moved) return;
+      if (i === bgDoc.active) { if ($("layerOpts").style.display === "flex") closeLayerOpts(); else openLayerOpts(row); return; }
+      closeLayerOpts(); bgMulti.clear();
+      if (float) floatFlatten();
+      bgSelectLayer(i);
+    });
+    row.addEventListener("pointercancel", () => { p0 = null; });
+    // grip drag: reorder the row (or the whole group, if it's in one)
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); e.stopPropagation(); closeLayerOpts();
+      const inGroup = bgGroupIdx().includes(i);
+      const idxs = inGroup ? bgGroupIdx() : [i];
+      const rows = [...host.querySelectorAll(".lyRow")];
+      lyDrag = { idxs, rows, lastTarget: null, lastPos: null };
+      rows.forEach((r) => { if (idxs.includes(+r.dataset.idx)) r.classList.add("dragging"); });
+      grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!lyDrag) return;
+      const rows = lyDrag.rows;
+      rows.forEach((r) => r.classList.remove("dropAbove", "dropBelow"));
+      let target = null, pos = null;
+      for (const r of rows) {
+        if (lyDrag.idxs.includes(+r.dataset.idx)) continue;
+        const b = r.getBoundingClientRect();
+        if (e.clientY < b.top + b.height / 2) { target = r; pos = "above"; break; }
+        target = r; pos = "below";
+      }
+      if (target) target.classList.add(pos === "above" ? "dropAbove" : "dropBelow");
+      lyDrag.lastTarget = target; lyDrag.lastPos = pos;
+      // keep the list scrolling while dragging near its edges
+      const hb = host.getBoundingClientRect();
+      if (e.clientY < hb.top + 24) host.scrollTop -= 6; else if (e.clientY > hb.bottom - 24) host.scrollTop += 6;
+    });
+    const endDrag = () => {
+      if (!lyDrag) return;
+      const d = lyDrag; lyDrag = null;
+      d.rows.forEach((r) => r.classList.remove("dragging", "dropAbove", "dropBelow"));
+      if (!d.lastTarget) return;
+      // list is top-first; convert the visual drop slot into a stack index among the remaining layers
+      const t = +d.lastTarget.dataset.idx;
+      const remaining = bgDoc.layers.map((_, k) => k).filter((k) => !d.idxs.includes(k));
+      const tpos = remaining.indexOf(t);
+      const insertAt = d.lastPos === "above" ? tpos + 1 : tpos;
+      bgMoveGroupTo(d.idxs, insertAt);
+    };
+    grip.addEventListener("pointerup", endDrag);
+    grip.addEventListener("pointercancel", endDrag);
     host.appendChild(row);
   }
 }
-function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display = "none"; $("btnLayers").classList.remove("on"); } }
+function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display = "none"; $("btnLayers").classList.remove("on"); closeLayerOpts(); } }
 $("btnLayers").addEventListener("click", () => {
   const m = $("layerMenu");
   if (m.style.display === "flex") { closeLayerMenu(); return; }
@@ -5335,19 +5500,14 @@ $("btnLayers").addEventListener("click", () => {
   $("btnLayers").classList.add("on");
 });
 document.addEventListener("pointerdown", (e) => {   // outside tap closes AND proceeds, like the color flyout
-  const m = $("layerMenu");
+  const m = $("layerMenu"), o = $("layerOpts");
+  if (o.contains(e.target)) return;                       // tapping an option
   if (m.style.display !== "flex") return;
-  if (m.contains(e.target) || $("btnLayers").contains(e.target)) return;
-  closeLayerMenu();
+  if (m.contains(e.target)) return;                        // rows/grips/buttons manage the popover themselves
+  if ($("btnLayers").contains(e.target)) return;
+  closeLayerMenu();                                        // outside: close panel + popover, let the tap proceed
 }, true);
-$("lyAdd").addEventListener("click", () => bgAddLayer(null));
-$("lyUp").addEventListener("click", () => bgMoveLayer(1));
-$("lyDown").addEventListener("click", () => bgMoveLayer(-1));
-$("lyDup").addEventListener("click", bgDuplicateLayer);
-$("lyMerge").addEventListener("click", bgMergeDown);
-$("lyRename").addEventListener("click", bgRenameLayer);
-$("lyDel").addEventListener("click", bgDeleteLayer);
-$("lyExport").addEventListener("click", () => { if (float) floatFlatten(); const L = bgDoc.layers[bgDoc.active]; sharePng(ed.toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + "." + L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png"); });
+$("lyAdd").addEventListener("click", () => { closeLayerOpts(); bgMulti.clear(); bgAddLayer(null); });
 function bgResize(w, h) {
   if (float) floatFlatten();
   selClear();
@@ -5408,7 +5568,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.63.0";
+const APP_VERSION = "6.64.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
