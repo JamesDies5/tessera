@@ -2707,8 +2707,14 @@ function blit() {
   sctx.drawImage(activeTab === "ed" ? edDisplay() : pv, 0, 0);
   if (activeTab === "ed" && float) sctx.drawImage(floatDisplay(), float.x, float.y);
 }
+/* v6.71.3: view changes are coalesced to one repaint per animation frame.
+   Pinch/pan pointermoves can arrive at 120 Hz per finger; repainting the
+   full-resolution screen canvas on each one starved the frame budget. */
+let viewRaf = false;
 function applyView(tab) {
-  if (tab === activeTab) { blit(); drawGrid(); }
+  if (tab !== activeTab || viewRaf) return;
+  viewRaf = true;
+  requestAnimationFrame(() => { viewRaf = false; blit(); drawGrid(); });
 }
 function fitView(tab) {
   const r = viewport.getBoundingClientRect(), w = WORLD[tab];
@@ -2919,7 +2925,8 @@ function drawGrid() {
       const dpr = window.devicePixelRatio || 1, hp = selHatchPattern();   // rebuilt only when mask, zoom, or DPR change
       if (hp) {
         const cw = W * vs, ch = H * vs, key = [cw, ch, dpr].join("|");
-        if (selHatchMask !== selMask || selHatchKey !== key) {
+        const inGesture = !!pinch;   // two-finger pan/zoom in progress: stretch the cached hatch, rebuild crisp on release
+        if (selHatchMask !== selMask || (selHatchKey !== key && !(inGesture && selHatchMask === selMask))) {
           selHatchMask = selMask; selHatchKey = key;
           selHatch.width = Math.max(1, Math.round(cw * dpr)); selHatch.height = Math.max(1, Math.round(ch * dpr));
           const hg = selHatch.getContext("2d");
@@ -6102,7 +6109,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.71.2";
+const APP_VERSION = "6.71.3";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
