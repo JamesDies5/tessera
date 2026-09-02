@@ -481,6 +481,7 @@
     <span class="vsep"></span>
     <button class="ibtn selmode on" data-selmode="add" data-icon="plus" title="Additive — new shapes extend the selection"></button>
     <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
+    <button class="ibtn" id="btnSelInvert" data-icon="invert" title="Invert — select everything that isn't selected, within the canvas"></button>
     <span class="vsep"></span>
     <button id="btnDeselect" title="Clear the selection (and any in-progress polygon)">DESELECT</button>
     <span class="vsep"></span>
@@ -1834,6 +1835,7 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  invert: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M21 3v18H3z" fill="currentColor" stroke="none" opacity=".45"/>',
   wand: '<path d="m3 21 10-10"/><path d="M15 3v3M15 12v3M11 7h3M18 7h3M12.2 4.2l1.6 1.6M17.2 8.8l1.6 1.6M17.2 5.8l1.6-1.6M12.2 9.8l1.6-1.6"/>',
   symmetry: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9 7 4 12l5 5"/><path d="m15 7 5 5-5 5"/>',
   symV: '<path d="M3 12h18" stroke-dasharray="2.5 2.5"/><path d="M7 9l5-5 5 5"/><path d="m7 15 5 5 5-5"/>',
@@ -2870,20 +2872,34 @@ function drawGrid() {
   }
   if (activeTab === "ed" && (selEdges || float || selPoly || (stroke && stroke.kind === "sel"))) {
     const vs = v.s;
-    if (float && floatEdges) {   // ants travel with the float
-      ovCtx.lineWidth = 1;
+    if (float && floatEdges) {   // ants travel with the float — v6.69.1: 2px, 6/6 dash
+      ovCtx.lineWidth = 2;
       ovCtx.beginPath();
       for (const e2 of floatEdges) { ovCtx.moveTo(v.x + (float.x + e2[0]) * vs, v.y + (float.y + e2[1]) * vs); ovCtx.lineTo(v.x + (float.x + e2[2]) * vs, v.y + (float.y + e2[3]) * vs); }
-      ovCtx.strokeStyle = "rgba(0,0,0,0.9)"; ovCtx.setLineDash([]); ovCtx.stroke();
-      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([4, 4]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
+      ovCtx.strokeStyle = "rgba(0,0,0,0.85)"; ovCtx.setLineDash([]); ovCtx.stroke();
+      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([6, 6]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
       ovCtx.setLineDash([]); ovCtx.lineDashOffset = 0;
     }
-    if (selEdges) {   // committed mask: marching ants (black base, white dashes)
-      ovCtx.lineWidth = 1;
+    if (selEdges && selMask && !float) {   // v6.69.1: everything OUTSIDE the selection gets a diagonal hatch (Procreate-style)
+      const dpr = window.devicePixelRatio || 1, hp = selHatchPattern();
+      if (hp) {
+        const cw = W * vs, ch = H * vs;
+        selHatch.width = Math.max(1, Math.round(cw * dpr)); selHatch.height = Math.max(1, Math.round(ch * dpr));
+        const hg = selHatch.getContext("2d");
+        hg.setTransform(dpr, 0, 0, dpr, 0, 0);
+        hg.fillStyle = hp; hg.fillRect(0, 0, cw, ch);
+        hg.globalCompositeOperation = "destination-out";   // punch the selected pixels out of the hatch
+        hg.imageSmoothingEnabled = false;
+        hg.drawImage(selMaskCanvas(), 0, 0, cw, ch);
+        ovCtx.drawImage(selHatch, v.x, v.y, cw, ch);
+      }
+    }
+    if (selEdges) {   // committed mask: marching ants (dark base, bright dashes) — v6.69.1: 2px, 6/6 dash
+      ovCtx.lineWidth = 2;
       ovCtx.beginPath();
       for (const e2 of selEdges) { ovCtx.moveTo(v.x + e2[0] * vs, v.y + e2[1] * vs); ovCtx.lineTo(v.x + e2[2] * vs, v.y + e2[3] * vs); }
-      ovCtx.strokeStyle = "rgba(0,0,0,0.9)"; ovCtx.setLineDash([]); ovCtx.stroke();
-      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([4, 4]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
+      ovCtx.strokeStyle = "rgba(0,0,0,0.85)"; ovCtx.setLineDash([]); ovCtx.stroke();
+      ovCtx.strokeStyle = "#fff"; ovCtx.setLineDash([6, 6]); ovCtx.lineDashOffset = -antPhase; ovCtx.stroke();
       ovCtx.setLineDash([]); ovCtx.lineDashOffset = 0;
     }
     if (stroke && stroke.kind === "sel" && stroke.drag && selShape !== "lasso") {
@@ -3551,6 +3567,34 @@ function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ 
    vertices, drags extend the path, tapping the origin marker closes). */
 let selMask = null, selEdges = null, selPoly = null;
 let selShape = "rect", selMode = "add", antPhase = 0;
+/* Selection hatch (v6.69.1): screen-space diagonal stripes over the unselected
+   part of the canvas, with the selection punched out. Pattern built once per
+   DPR; the mask canvas is rebuilt only when the selection changes. */
+const selHatch = document.createElement("canvas");
+let selHatchPat = null, selHatchDpr = 0;
+function selHatchPattern() {
+  const dpr = window.devicePixelRatio || 1;
+  if (selHatchPat && selHatchDpr === dpr) return selHatchPat;
+  const c = document.createElement("canvas"); c.width = Math.round(8 * dpr); c.height = Math.round(8 * dpr);
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  g.fillStyle = "rgba(0,0,0,0.28)"; g.fillRect(0, 0, 8, 8);
+  g.strokeStyle = "rgba(255,255,255,0.16)"; g.lineWidth = 1.2;
+  g.beginPath(); g.moveTo(-2, 10); g.lineTo(10, -2); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
+  selHatchPat = selHatch.getContext("2d").createPattern(c, "repeat"); selHatchDpr = dpr;
+  try { selHatchPat.setTransform(new DOMMatrix().scale(1 / dpr)); } catch (e) {}
+  return selHatchPat;
+}
+const selMaskCv = document.createElement("canvas");
+let selMaskCvKey = null;
+function selMaskCanvas() {   // opaque where selected, transparent elsewhere
+  if (selMaskCvKey === selMask && selMaskCv.width === TW && selMaskCv.height === TH) return selMaskCv;
+  selMaskCv.width = TW; selMaskCv.height = TH;
+  const g = selMaskCv.getContext("2d"), img = g.createImageData(TW, TH);
+  for (let i = 0; i < selMask.length; i++) if (selMask[i]) img.data[i * 4 + 3] = 255;
+  g.putImageData(img, 0, 0);
+  selMaskCvKey = selMask;
+  return selMaskCv;
+}
 function selClear() { selMask = null; selEdges = null; selPoly = null; drawGrid(); }
 function selRebuildEdges() {   // boundary segments in template px, for the ants
   if (!selMask) { selEdges = null; return; }
@@ -4578,6 +4622,14 @@ document.querySelectorAll(".selshape").forEach((b) => b.addEventListener("click"
   document.querySelectorAll(".selshape").forEach((q) => q.classList.toggle("on", q === b));
   if (selPoly) { selPoly = null; drawGrid(); }   // shape switch abandons an open polygon
 }));
+$("btnSelInvert").addEventListener("click", () => {   // v6.69.1
+  if (float) { status("Commit the transform first."); return; }
+  if (selPoly) selPoly = null;
+  const m = new Uint8Array(TW * TH);
+  if (selMask) { for (let i = 0; i < m.length; i++) m[i] = selMask[i] ? 0 : 1; } else m.fill(1);
+  selMask = m; selRebuildEdges();
+  if (!selMask) status("Selection empty."); else { drawGrid(); status("Selection inverted."); }
+});
 document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click", () => {
   selMode = b.dataset.selmode;
   document.querySelectorAll(".selmode").forEach((q) => q.classList.toggle("on", q === b));
@@ -4588,7 +4640,7 @@ $("btnPaste").addEventListener("click", doPaste);
 $("btnFlipH").addEventListener("click", () => floatXform("fh"));
 $("btnFlipV").addEventListener("click", () => floatXform("fv"));
 $("btnRot90").addEventListener("click", () => floatXform("rot"));
-setInterval(() => { if ((selEdges || float) && activeTab === "ed") { antPhase = (antPhase + 2) % 8; drawGrid(); } }, 140);
+setInterval(() => { if ((selEdges || float) && activeTab === "ed") { antPhase = (antPhase + 2) % 12; drawGrid(); } }, 140);
 function syncCellbar(levelTab) {   // levelTab: is the Level tab the active one?
   const want = levelTab && pvMode === "cells" ? "flex" : "none";
   const bar = $("cellbar");
@@ -5933,7 +5985,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.69.0";
+const APP_VERSION = "6.69.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
