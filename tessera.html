@@ -403,7 +403,7 @@
     <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
     <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
     <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
-    <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Move — lifts the current selection so it can be dragged; flips and 90° rotation in the bottom bar. Switching to any other tool drops it in place."></button>
+    <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform (V) — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
     <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
     <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
@@ -474,9 +474,10 @@
      Visible only while the marquee tool is active on the Template tab. -->
 <div id="selbar">
   <div class="selrow" id="selrowSelect">
-    <button class="ibtn selshape on" data-selshape="lasso" data-icon="lasso" title="Freehand / polygon — drag to lasso (auto-closes on release); tap to place polygon points, then tap the origin marker to close"></button>
-    <button class="ibtn selshape" data-selshape="rect" data-icon="selrect" title="Rectangle — drag corner to corner"></button>
+    <button class="ibtn selshape on" data-selshape="rect" data-icon="selrect" title="Rectangle — drag corner to corner"></button>
     <button class="ibtn selshape" data-selshape="ellipse" data-icon="selellipse" title="Ellipse — drag the bounding box"></button>
+    <button class="ibtn selshape" data-selshape="lasso" data-icon="lasso" title="Freehand / polygon — drag to lasso (auto-closes on release); tap to place polygon points, then tap the origin marker to close"></button>
+    <button class="ibtn selshape" data-selshape="wand" data-icon="wand" title="Automatic (magic wand) — tap to select the contiguous region of the same color on this layer; Add / Remove modes apply"></button>
     <span class="vsep"></span>
     <button class="ibtn selmode on" data-selmode="add" data-icon="plus" title="Additive — new shapes extend the selection"></button>
     <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
@@ -1833,6 +1834,7 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  wand: '<path d="m3 21 10-10"/><path d="M15 3v3M15 12v3M11 7h3M18 7h3M12.2 4.2l1.6 1.6M17.2 8.8l1.6 1.6M17.2 5.8l1.6-1.6M12.2 9.8l1.6-1.6"/>',
   symmetry: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9 7 4 12l5 5"/><path d="m15 7 5 5-5 5"/>',
   symV: '<path d="M3 12h18" stroke-dasharray="2.5 2.5"/><path d="M7 9l5-5 5 5"/><path d="m7 15 5 5 5-5"/>',
   symQuad: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M3 12h18" stroke-dasharray="2.5 2.5"/><path d="M6 6h3v3H6zM15 6h3v3h-3zM6 15h3v3H6zM15 15h3v3h-3z"/>',
@@ -3548,7 +3550,7 @@ function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ 
    (auto-closes on release); tap-start = polygon session (taps place
    vertices, drags extend the path, tapping the origin marker closes). */
 let selMask = null, selEdges = null, selPoly = null;
-let selShape = "lasso", selMode = "add", antPhase = 0;
+let selShape = "rect", selMode = "add", antPhase = 0;
 function selClear() { selMask = null; selEdges = null; selPoly = null; drawGrid(); }
 function selRebuildEdges() {   // boundary segments in template px, for the ants
   if (!selMask) { selEdges = null; return; }
@@ -3563,6 +3565,32 @@ function selRebuildEdges() {   // boundary segments in template px, for the ants
   }
   if (!any) { selMask = null; selEdges = null; return; }
   selEdges = E;
+}
+/* Automatic selection (v6.69, "magic wand"): the contiguous run of pixels
+   matching the tapped pixel exactly (RGBA) on the active layer — the same
+   source the fill tool uses. Transparent counts as a color, so tapping empty
+   space selects the empty region. Goes through selApply, so Add / Remove
+   modes combine it with the existing selection like any other shape. */
+function wandSelect(x, y) {
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+  if (selPoly) { selPoly = null; }
+  const d = edCtx.getImageData(0, 0, TW, TH).data;
+  const si = (y * TW + x) * 4, t0 = d[si], t1 = d[si + 1], t2 = d[si + 2], t3 = d[si + 3];
+  const shape = new Uint8Array(TW * TH), seen = new Uint8Array(TW * TH);
+  const stack = [y * TW + x]; seen[stack[0]] = 1;
+  let n = 0;
+  while (stack.length) {
+    const idx = stack.pop(), i = idx * 4;
+    if (d[i] !== t0 || d[i + 1] !== t1 || d[i + 2] !== t2 || d[i + 3] !== t3) continue;
+    shape[idx] = 1; n++;
+    const px = idx % TW, py = (idx - px) / TW;
+    if (px + 1 < TW && !seen[idx + 1]) { seen[idx + 1] = 1; stack.push(idx + 1); }
+    if (px > 0 && !seen[idx - 1]) { seen[idx - 1] = 1; stack.push(idx - 1); }
+    if (py + 1 < TH && !seen[idx + TW]) { seen[idx + TW] = 1; stack.push(idx + TW); }
+    if (py > 0 && !seen[idx - TW]) { seen[idx - TW] = 1; stack.push(idx - TW); }
+  }
+  selApply(shape);
+  status((selMode === "add" ? "Selected " : "Removed ") + n + " px" + (t3 ? " of gray " + t0 : " of transparent") + ".");
 }
 function selApply(shape) {
   if (!selMask) selMask = new Uint8Array(TW * TH);
@@ -3730,7 +3758,7 @@ function floatBegin() {   // cut the selection into the float
   floatGen++;
   floatRebuildEdges();
   templateChanged(); persistPng(); refreshFileSwatches();
-  status("Selection lifted \u2014 drag to move; flips and rotate below. Switching tools drops it in place.");
+  status(float.origMask ? "Transform \u2014 drag to move; flip and rotate below. Switching tools commits it." : "Transform");
 }
 function floatFlatten() {   // drop the float where it rests
   if (!float) return;
@@ -3747,7 +3775,7 @@ function floatFlatten() {   // drop the float where it rests
   selMask = m; selRebuildEdges();
   float = null; floatEdges = null; floatHist = []; floatRedoHist = [];
   templateChanged(); persistPng(); refreshFileSwatches();
-  status("Moved selection placed.");
+  status("Transform committed.");
 }
 function floatXform(kind) {   // fh | fv | rot (90 CW); pixel-exact loops
   if (!float) return;
@@ -4143,6 +4171,7 @@ function beginStroke(e) {
     if (tool === "pick") { pickAt(x, y); return; }
     if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
     if (tool === "marquee") {
+      if (selShape === "wand") { wandSelect(x, y); return; }   // v6.69: automatic selection is a tap, not a drag
       stroke = { kind: "sel", x0: x, y0: y, x1: x, y1: y, pts: [[x, y]], downVp: vpPoint(e), drag: false };
       return;
     }
@@ -4514,11 +4543,17 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 
 /* ---- tool + mode UI ---- */
 function setTool(t) {
-  if (t === "selmove" && tool !== "selmove" && !float) {
-    if (!selMask) { status("Make a selection first \u2014 the Move tool lifts the selected pixels."); return; }
+  if (t === "selmove" && tool !== "selmove" && !float) {   // v6.68: Transform (Procreate model)
+    if (APP_MODE === "bg" && !bgLayerEditable()) return;
+    if (!selMask) {   // nothing selected: the whole layer's opaque pixels become the float
+      const d = edCtx.getImageData(0, 0, TW, TH).data, m = new Uint8Array(TW * TH);
+      let n = 0; for (let i = 0; i < m.length; i++) if (d[i * 4 + 3]) { m[i] = 1; n++; }
+      if (!n) { status("Nothing to transform \u2014 this layer is empty."); return; }
+      selMask = m; selPoly = null;
+    }
     floatBegin();
   }
-  if (t !== "selmove" && float) floatFlatten();
+  if (t !== "selmove" && float) { floatFlatten(); selClear(); }   // leaving Transform commits it; no marquee remains
   exitCanvasMode();
   tool = t;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
@@ -5898,7 +5933,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.67.2";
+const APP_VERSION = "6.69.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
