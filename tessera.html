@@ -16,7 +16,8 @@
   body { display: flex; flex-direction: column; }
 
   header { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; flex-wrap: wrap; flex: 0 0 auto; }
-  header h1 { font-size: 15px; margin: 0 4px 0 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; line-height: 1; }
+  .brand { display: flex; flex-direction: column; gap: 3px; margin-right: 4px; }
   .spacer { flex: 1; }
   .tab { background: none; border: 1px solid var(--line); border-bottom-width: 3px; color: var(--dim);
     border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer;
@@ -115,7 +116,7 @@
     border-radius: 7px; padding: 5px 10px; color: var(--dim); font-size: 11px; max-width: 70%;
     opacity: 0; transition: opacity .35s; pointer-events: none; }
   #statusChip.show { opacity: 1; }
-  #ver { position: absolute; right: 8px; bottom: 6px; color: var(--dim); font-size: 10px; opacity: .75; pointer-events: none; letter-spacing: 1px; }
+  #ver { color: var(--dim); font-size: 9px; opacity: .8; pointer-events: none; letter-spacing: 2px; line-height: 1; }
   #tip { position: fixed; z-index: 99; background: #2f2f2fee; border: 1px solid var(--line); border-radius: 6px;
     padding: 5px 8px; color: var(--text); font-size: 11px; max-width: 250px; pointer-events: none; display: none; line-height: 1.45; }
 
@@ -151,6 +152,15 @@
   #newDlg .seg button.on { color: var(--accent); border-color: var(--accent); }
   #newDlg select { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; height: 34px; padding: 0 8px; font: inherit; }
   #bgLabel { font-size: 11px; letter-spacing: 1px; color: #f0d47a; padding: 0 6px; white-space: nowrap; }
+  /* View flyout (v6.66): tiled preview + symmetry, background projects only */
+  .vmenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 10px; width: 400px; max-width: 92vw;
+    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  .vmenu .vrow { display: flex; align-items: center; gap: 8px; }
+  .vmenu .vrow .lbl { flex: 0 0 72px; }
+  .vmenu .seg { display: flex; gap: 5px; flex: 1; }
+  .vmenu .seg button { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--dim); border-radius: 8px; padding: 9px 6px; white-space: nowrap; font: inherit; font-size: 10px; letter-spacing: .5px; cursor: pointer; }
+  .vmenu .seg button.on { color: var(--accent); border-color: var(--accent); }
+  .vmenu .vnote { font-size: 10px; color: var(--dim); letter-spacing: .5px; }
   /* Layers flyout (v6.63): Procreate-style list, top layer first, pinned
      right beside the color chip. Rows: thumb, name, lock, visibility. */
   #layerMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; gap: 8px; width: 352px; max-width: 92vw; max-height: 72vh;
@@ -220,7 +230,7 @@
 </head>
 <body>
 <header>
-  <h1>TESSERA</h1>
+  <div class="brand"><h1>TESSERA</h1><div id="ver"></div></div>
   <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset lives in its own project; opening this gallery or switching auto-saves the open one"></button>
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
@@ -233,6 +243,18 @@
   </select>
   <span id="bgLabel" style="display:none" title="Background project — canvas size"></span>
   <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
+  <span class="fly"><button class="ibtn" id="btnBgTiled" data-icon="tiled" title="Tiled preview — repeat the canvas into the space around it" style="display:none"></button>
+  <div class="vmenu" id="bgTiledMenu">
+    <div class="vrow"><span class="lbl">TILED</span><div class="seg" data-set="tiled">
+      <button data-v="off">OFF</button><button data-v="both">BOTH</button><button data-v="x">ACROSS</button><button data-v="y">DOWN</button></div></div>
+    <div class="vnote">Repeats the canvas into the space around it, live. The real canvas is outlined.</div>
+  </div></span>
+  <span class="fly"><button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
+  <div class="vmenu" id="bgSymMenu">
+    <div class="vrow"><span class="lbl">SYMMETRY</span><div class="seg" data-set="sym">
+      <button data-v="off">OFF</button><button data-v="h">LEFT&thinsp;&harr;&thinsp;RIGHT</button><button data-v="v">TOP&thinsp;&harr;&thinsp;BOTTOM</button><button data-v="quad">QUAD</button></div></div>
+    <div class="vnote">Mirrors pencil, eraser, and fill across the canvas center.</div>
+  </div></span>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
     <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
@@ -447,7 +469,6 @@
     <canvas id="screen"></canvas>
     <canvas id="gridOverlay"></canvas>
     <div id="statusChip"></div>
-    <div id="ver"></div>
   </div>
 </div>
 
@@ -1814,6 +1835,8 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  symmetry: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9 7 4 12l5 5"/><path d="m15 7 5 5-5 5"/>',
+  tiled: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
@@ -2639,6 +2662,18 @@ function blit() {
   sctx.imageSmoothingEnabled = false;
   sctx.setTransform(dpr * v.s, 0, 0, dpr * v.s, dpr * v.x, dpr * v.y);
   const w = WORLD[activeTab];
+  if (APP_MODE === "bg" && activeTab === "ed" && bgDoc && (bgDoc.tiled || "off") !== "off") {   // v6.66: tiled preview
+    const disp = edDisplay(), mode = bgDoc.tiled;
+    const wx0 = Math.floor((0 - v.x) / v.s / TW), wx1 = Math.ceil((r.width - v.x) / v.s / TW);
+    const wy0 = Math.floor((0 - v.y) / v.s / TH), wy1 = Math.ceil((r.height - v.y) / v.s / TH);
+    sctx.fillStyle = bgFill();
+    for (let j = (mode === "x" ? 0 : wy0); j <= (mode === "x" ? 0 : wy1); j++)
+      for (let i = (mode === "y" ? 0 : wx0); i <= (mode === "y" ? 0 : wx1); i++) {
+        if (!i && !j) continue;
+        sctx.fillRect(i * TW, j * TH, TW, TH);
+        sctx.drawImage(disp, i * TW, j * TH);
+      }
+  }
   sctx.fillStyle = bgFill(); sctx.fillRect(0, 0, w.w, w.h);
   sctx.drawImage(activeTab === "ed" ? edDisplay() : pv, 0, 0);
   if (activeTab === "ed" && float) sctx.drawImage(floatDisplay(), float.x, float.y);
@@ -2684,6 +2719,16 @@ function drawGrid() {
     for (let i = 0; i <= W / TILE; i++) { const x = v.x + i * TILE * v.s; if (x >= x0 && x <= x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
     for (let j = 0; j <= H / TILE; j++) { const y = v.y + j * TILE * v.s; if (y >= y0 && y <= y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
     ovCtx.stroke();
+  }
+  if (APP_MODE === "bg" && activeTab === "ed" && bgDoc) {   // v6.66: outline the real canvas when tiled; faint yellow symmetry axes
+    if ((bgDoc.tiled || "off") !== "off") { ovCtx.strokeStyle = "rgba(255,255,255,0.55)"; ovCtx.lineWidth = 1; ovCtx.strokeRect(v.x + 0.5, v.y + 0.5, W * v.s, H * v.s); }
+    const sym = bgDoc.sym || "off";
+    if (sym !== "off") {
+      ovCtx.strokeStyle = "rgba(255,220,80,0.45)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+      if (sym === "h" || sym === "quad") { const x = Math.round(v.x + (W / 2) * v.s) + 0.5; ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); }
+      if (sym === "v" || sym === "quad") { const y = Math.round(v.y + (H / 2) * v.s) + 0.5; ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); }
+      ovCtx.stroke();
+    }
   }
   if (activeTab === "ed" && CT && $("btnCoords").classList.contains("on") && v.s >= 1.2) {
     ovCtx.font = "600 " + Math.max(8, Math.min(11, 5 * v.s)) + "px ui-monospace, monospace";
@@ -3471,7 +3516,25 @@ function brushOffsets() {
   }
   return brushCache;
 }
-function stampEd(x, y) { for (const o of brushOffsets()) putPx(x + o[0], y + o[1]); }
+/* v6.66: symmetry mirrors each painted pixel across the canvas center
+   (background projects). Mirroring per pixel — not per stamp center — keeps
+   even-sized brushes exact. */
+function symOf(px, py) {
+  const sym = (APP_MODE === "bg" && bgDoc && bgDoc.sym) || "off";
+  if (sym === "off") return null;
+  const out = [];
+  if (sym === "h" || sym === "quad") out.push([TW - 1 - px, py]);
+  if (sym === "v" || sym === "quad") out.push([px, TH - 1 - py]);
+  if (sym === "quad") out.push([TW - 1 - px, TH - 1 - py]);
+  return out;
+}
+function stampEd(x, y) {
+  for (const o of brushOffsets()) {
+    const px = x + o[0], py = y + o[1];
+    putPx(px, py);
+    const m = symOf(px, py); if (m) for (const q of m) putPx(q[0], q[1]);
+  }
+}
 function stampPv(x, y) { for (const o of brushOffsets()) { const m = levelToTemplate(x + o[0], y + o[1]); if (m) putPx(m.tx, m.ty); } }
 function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ size: brushSize, shape: brushShape })); } catch (e) {} }
 /* ==== marquee selection (Phase 1) ====
@@ -3796,7 +3859,7 @@ function canvasFill(x, y) {
   edCtx.putImageData(img, 0, 0);
 }
 function cellFill(x, y) {
-  if (APP_MODE === "bg") return canvasFill(x, y);
+  if (APP_MODE === "bg") { canvasFill(x, y); const m = symOf(x, y); if (m) for (const q of m) canvasFill(q[0], q[1]); return; }
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (selMask && !selMask[y * TW + x]) { status("Fill starts inside the selection."); return; }
   const cx = Math.floor(x / TILE) * TILE, cy = Math.floor(y / TILE) * TILE;
@@ -5698,10 +5761,45 @@ function bgRenderLayerList() {
   }
 }
 function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display = "none"; $("btnLayers").classList.remove("on"); closeLayerOpts(); } }
+/* ---- view flyouts: tiled preview and symmetry, one button each (v6.66.1) ---- */
+const BG_VIEWS = { tiled: { btn: "btnBgTiled", menu: "bgTiledMenu" }, sym: { btn: "btnBgSym", menu: "bgSymMenu" } };
+function bgViewSync() {
+  if (!bgDoc) return;
+  for (const set in BG_VIEWS) {
+    const val = bgDoc[set] || "off", m = $(BG_VIEWS[set].menu);
+    m.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("on", b.dataset.v === val));
+    $(BG_VIEWS[set].btn).classList.toggle("on", val !== "off" || m.style.display === "flex");
+  }
+}
+function closeBgViewMenu() { for (const set in BG_VIEWS) { const m = $(BG_VIEWS[set].menu); if (m) m.style.display = "none"; } bgViewSync(); }
+for (const set in BG_VIEWS) {
+  const btn = $(BG_VIEWS[set].btn), m = $(BG_VIEWS[set].menu);
+  btn.addEventListener("click", () => {
+    if (m.style.display === "flex") { closeBgViewMenu(); return; }
+    closeColorMenu(); closeBrushMenu(); closeOptMenu(); closeLayerMenu(); closeBgViewMenu();
+    const b = btn.getBoundingClientRect();
+    m.style.top = (b.bottom + 8) + "px"; m.style.left = Math.max(8, Math.min(window.innerWidth - 408, b.left)) + "px";
+    m.style.display = "flex"; bgViewSync();
+  });
+  m.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+    bgDoc[set] = b.dataset.v;
+    bgViewSync(); persistPng(); blit(); drawGrid();
+    if (set === "tiled") status(b.dataset.v === "off" ? "Tiled preview off." : "Tiled preview on \u2014 the canvas repeats " + (b.dataset.v === "both" ? "in every direction." : b.dataset.v === "x" ? "left and right." : "up and down."));
+    else status(b.dataset.v === "off" ? "Symmetry off." : "Symmetry on \u2014 " + (b.dataset.v === "h" ? "mirrored left \u2194 right." : b.dataset.v === "v" ? "mirrored top \u2194 bottom." : "mirrored into all four quadrants."));
+  }));
+}
+document.addEventListener("pointerdown", (e) => {
+  for (const set in BG_VIEWS) {
+    const m = $(BG_VIEWS[set].menu);
+    if (m.style.display !== "flex") continue;
+    if (m.contains(e.target) || $(BG_VIEWS[set].btn).contains(e.target)) continue;
+    closeBgViewMenu();
+  }
+}, true);
 $("btnLayers").addEventListener("click", () => {
   const m = $("layerMenu");
   if (m.style.display === "flex") { closeLayerMenu(); return; }
-  closeColorMenu(); closeBrushMenu(); closeOptMenu();
+  closeColorMenu(); closeBrushMenu(); closeOptMenu(); closeBgViewMenu();
   bgRenderLayerList();
   const top = $("btnLayers").getBoundingClientRect().bottom + 8;
   m.style.top = top + "px";
@@ -5761,6 +5859,7 @@ function bgBoot() {
   $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
   $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
   $("btnLayers").style.display = "";
+  $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
   $("btnSave").title = "Export the flattened background PNG";
   $("btnProjects").title = "Projects — tilesets and backgrounds; opening this gallery or switching auto-saves the open one";
   $("btnCellGrid").title = "16px tile grid over the canvas";
@@ -5784,7 +5883,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.65.2";
+const APP_VERSION = "6.66.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -5845,7 +5944,7 @@ function closeOptMenu() {
 $("btnOptions").addEventListener("click", () => {
   const b = $("optbar");
   if (b.style.display === "flex") { closeOptMenu(); return; }
-  closeColorMenu(); closeBrushMenu(); closeLayerMenu();
+  closeColorMenu(); closeBrushMenu(); closeLayerMenu(); closeBgViewMenu();
   b.style.display = "flex"; sizeOverlay();
   $("btnOptions").classList.add("on");
 });
@@ -5878,7 +5977,7 @@ function closeBrushMenu() { $("brushMenu").style.display = "none"; $("btnBrush")
 $("btnBrush").addEventListener("click", () => {
   const m = $("brushMenu");
   if (m.style.display === "flex") { closeBrushMenu(); return; }
-  closeColorMenu(); closeOptMenu(); closeLayerMenu();
+  closeColorMenu(); closeOptMenu(); closeLayerMenu(); closeBgViewMenu();
   $("brushSizeSlider").value = brushSize; $("brushSizeVal").textContent = brushSize;
   document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q.dataset.bshape === brushShape));
   m.style.top = ($("btnBrush").getBoundingClientRect().bottom + 8) + "px";   // vertical only — right edge is CSS-pinned to the screen margin
@@ -5910,7 +6009,7 @@ function closeColorMenu() { $("colorMenu").style.display = "none"; $("colorCurre
 $("colorCurrent").addEventListener("click", () => {
   const m = $("colorMenu");
   if (m.style.display === "flex") { closeColorMenu(); return; }
-  closeOptMenu(); closeBrushMenu(); closeLayerMenu();
+  closeOptMenu(); closeBrushMenu(); closeLayerMenu(); closeBgViewMenu();
   refreshSwatches();   // file colors may have changed since last open
   m.style.top = ($("colorCurrent").getBoundingClientRect().bottom + 8) + "px";   // vertical only — right edge is CSS-pinned to the screen margin
   m.style.display = "flex";
