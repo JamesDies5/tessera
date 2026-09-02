@@ -293,6 +293,7 @@
      Toggled by the wrench; actions close it. -->
 <div id="optbar">
   <button class="optline" id="btnReload" title="Reload the app — fetches the latest deployed version (cache-busting), for pinned home-screen installs"><span data-icon="reload"></span>Reload</button>
+  <button class="optline" id="btnGestureLog" title="PROBE — share the last 80 touch/pen contacts as text (for tuning palm handling)"><span data-icon="tag"></span>Gesture log</button>
   <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
   <button class="optline" id="btnCanvas" title="Resize the sheet — drag the right/bottom handles in 16px cells; cannot shrink below the contract's base cells"><span data-icon="frame"></span>Canvas</button>
   <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
@@ -4025,25 +4026,25 @@ const pointers = new Map();   // id -> { x, y, type }
 let stroke = null;   // { kind: 'ed'|'pvpx'|'pvcell', last, snap }
 let pinch = null;    // { d0, mid0, v0 }
 let fingerHold = null;   // pen mode: one finger is hold-pick only; two fingers pan/zoom
-let gesture = null;  // { t0, moved, maxN, tapOk } — quick still 2-finger tap = undo, 3 = redo
+let gesture = null;  // { t0, moved, maxN } — quick still 2-finger tap = undo, 3 = redo
 let penSeen = false, fingerDraws = true;
 function penActive() { return [...pointers.values()].some((p) => p.type === "pen"); }
-/* Palm rejection (v6.66.3). WebKit already drops every touch while the Pencil
-   is on the glass (pen and touch are mutually exclusive in Safari/WKWebView),
-   so the only palm that ever reaches us is the hand settling BETWEEN strokes.
-   Once the Pencil has been seen, a touch is a palm if it lands within PALM_MS
-   of the last pen CONTACT (down, contact-move, or lift — hover deliberately
-   does not count, or a hover-capable Pencil held in the gesturing hand would
-   block every finger). Tap gestures additionally require the fingers to land
-   together (TAP_SYNC_MS); a palm rolls on one point at a time.
-   v6.66.2's contact-size test is gone: iPadOS reports fingertips generously
-   and there is no reliable threshold. A rejected touch never becomes a
-   pointer, so it can neither draw, pan, nor count toward a tap. */
-const PALM_MS = 450, TAP_SYNC_MS = 120;
-let penLastT = -1e9;
-function palmTouch(e) {
-  if (fingerDraws) return false;                              // finger-drawing mode: no pen, no palm
-  return performance.now() - penLastT < PALM_MS;              // pen was just on the glass
+/* Gesture probe (v6.66.4, remove when palm handling is settled): every touch
+   contact is logged with its landing time, position, reported size, and how
+   many pointers were down, plus lift time and whether a tap gesture fired.
+   Options → Gesture log shares the last 80 entries as text. Zero behaviour
+   change — the gesture code below is byte-for-byte v6.66.1. */
+const gestureLog = [];
+function glog(kind, e, extra) {
+  const r = viewport.getBoundingClientRect();
+  gestureLog.push(Object.assign({ t: Math.round(performance.now()), k: kind, id: e && e.pointerId, pt: e && e.pointerType,
+    x: e ? Math.round(e.clientX - r.left) : undefined, y: e ? Math.round(e.clientY - r.top) : undefined,
+    w: e ? Math.round(e.width) : undefined, h: e ? Math.round(e.height) : undefined, n: pointers.size }, extra || {}));
+  if (gestureLog.length > 80) gestureLog.shift();
+}
+function gestureLogText() {
+  const lines = gestureLog.map((g) => [g.t, g.k, g.pt, "#" + g.id, g.x !== undefined ? g.x + "," + g.y : "", g.w !== undefined ? g.w + "x" + g.h : "", "n=" + g.n, g.note || ""].join("  "));
+  return "Tessera gesture log v" + APP_VERSION + "  (t ms, kind, type, id, x,y, contact w×h, pointers down, note)\n" + lines.join("\n");
 }
 function setFingerDraws(v, auto) {
   fingerDraws = v;
@@ -4371,13 +4372,12 @@ function endStroke() {
 }
 function startPinch() {
   const [a, b] = [...pointers.values()];
-  const tapOk = Math.abs((a.t || 0) - (b.t || 0)) <= TAP_SYNC_MS;   // both fingers landed together
   pinch = {
     d0: Math.hypot(a.x - b.x, a.y - b.y) || 1,
     mid0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
     v0: { ...view[activeTab] },
   };
-  gesture = { t0: performance.now(), moved: false, maxN: 2, tapOk };
+  gesture = { t0: performance.now(), moved: false, maxN: 2 };
 }
 function movePinch() {
   const [a, b] = [...pointers.values()];
@@ -4398,20 +4398,19 @@ viewport.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   hover = null; scheduleOverlay();
   const isTouch = e.pointerType === "touch";
-  if (e.pointerType === "pen") penLastT = performance.now();
   if (e.pointerType === "pen" && !penSeen) {
     penSeen = true; try { localStorage.setItem(LS.pen, "1"); } catch (err) {}
     if (fingerDraws) setFingerDraws(false, true);   // first Pencil contact flips fingers to gesture-only
   }
-  if (isTouch && !fingerDraws && penActive()) return;   // palm while the pen is down — ignored outright
-  if (isTouch && palmTouch(e)) return;                  // palm settling between strokes — ignored outright
+  if (isTouch && !fingerDraws && penActive()) { glog("down-ignored(pen active)", e); return; }   // palm while the pen is down — ignored outright
+  glog("down", e);
   if (e.pointerType === "pen" && !fingerDraws && pointers.size && !penActive()) {
     pointers.forEach((_, id) => { try { viewport.releasePointerCapture(id); } catch (err) {} });
     clearFingerHold();
     pointers.clear(); fingerHold = null; pinch = null; gesture = null;   // palm landed first: pen evicts it
   }
   viewport.setPointerCapture(e.pointerId);
-  pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType, t: performance.now() });
+  pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
   if (pointers.size === 1) {
     if (isTouch && !fingerDraws) {   // pen mode: one finger only hold-picks — moving cancels, never pans
       fingerHold = {
@@ -4434,7 +4433,6 @@ viewport.addEventListener("pointerdown", (e) => {
   }
 });
 viewport.addEventListener("pointermove", (e) => {
-  if (e.pointerType === "pen" && (e.buttons & 1)) penLastT = performance.now();   // contact only — hover does not count
   if (!pointers.has(e.pointerId)) {
     if (e.pointerType === "touch") return;   // fingers have no hover
     const p = vpPoint(e), v = view[activeTab];
@@ -4442,8 +4440,7 @@ viewport.addEventListener("pointermove", (e) => {
     scheduleOverlay();
     return;
   }
-  const prev = pointers.get(e.pointerId);
-  pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType, t: prev.t });
+  pointers.set(e.pointerId, { ...vpPoint(e), type: e.pointerType });
   if (pinch && pointers.size >= 2) { movePinch(); return; }
   if (eyedrop && pointers.size === 1) { eyedropMove(e); return; }
   if (fingerHold && pointers.size === 1) {
@@ -4457,17 +4454,17 @@ viewport.addEventListener("pointermove", (e) => {
   if (stroke && pointers.size === 1) moveStroke(e);
 });
 const vpUp = (e) => {
-  if (e.pointerType === "pen") penLastT = performance.now();
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
+  glog(e.type, e);
   if (eyedrop && pointers.size === 0) { eyedropEnd(); return; }
   if (fingerHold && pointers.size === 0) { clearFingerHold(); fingerHold = null; return; }
   if (pinch && pointers.size < 2) {   // lifting out of a pinch never resumes drawing
     pinch = null;
-    if (gesture && gesture.tapOk && !gesture.moved && performance.now() - gesture.t0 < 300) {
-      if (gesture.maxN === 2) { undo(); status("Undo"); }
-      else if (gesture.maxN === 3) { redo(); status("Redo"); }
-    }
+    if (gesture && !gesture.moved && performance.now() - gesture.t0 < 300) {
+      if (gesture.maxN === 2) { undo(); status("Undo"); glog("UNDO fired", e, { note: "tap " + Math.round(performance.now() - gesture.t0) + "ms" }); }
+      else if (gesture.maxN === 3) { redo(); status("Redo"); glog("REDO fired", e, { note: "tap " + Math.round(performance.now() - gesture.t0) + "ms" }); }
+    } else if (gesture) glog("gesture ended", e, { note: (gesture.moved ? "moved" : "still") + " " + Math.round(performance.now() - gesture.t0) + "ms maxN=" + gesture.maxN });
     gesture = null;
     return;
   }
@@ -5906,7 +5903,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.66.3";
+const APP_VERSION = "6.66.4";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -5972,6 +5969,13 @@ $("btnOptions").addEventListener("click", () => {
   $("btnOptions").classList.add("on");
 });
 document.querySelectorAll("#optbar .optline").forEach((b) => b.addEventListener("click", () => closeOptMenu()));
+$("btnGestureLog").addEventListener("click", () => {   // PROBE — remove with the gesture probe
+  const text = gestureLogText();
+  try {
+    if (navigator.share) { navigator.share({ title: "Tessera gesture log", text }).catch(() => {}); return; }
+  } catch (e) {}
+  try { navigator.clipboard.writeText(text).then(() => status("Gesture log copied to the clipboard.")); } catch (e) { prompt("Gesture log:", text); }
+});
 $("btnReload").addEventListener("click", () => {
   if (float) floatFlatten();
   persistPng();   // belt and suspenders — the sheet is already persisted per stroke
