@@ -4453,13 +4453,23 @@ viewport.addEventListener("pointermove", (e) => {
   }
   if (stroke && pointers.size === 1) moveStroke(e);
 });
+/* v6.66.5 — palm handling from the 2026-09-02 gesture log: iPadOS rejects
+   palm contacts itself and reports them as pointercancel (5–35 ms after they
+   land, 83–271 px wide); real fingers and the pen end in pointerup. So a
+   cancelled pointer can never complete a tap gesture, and a pinch that ends
+   in a cancel snaps the view back to where it started. Nothing else changes. */
 const vpUp = (e) => {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
   glog(e.type, e);
+  const cancelled = e.type === "pointercancel";
   if (eyedrop && pointers.size === 0) { eyedropEnd(); return; }
   if (fingerHold && pointers.size === 0) { clearFingerHold(); fingerHold = null; return; }
   if (pinch && pointers.size < 2) {   // lifting out of a pinch never resumes drawing
+    if (cancelled) {   // OS-rejected palm: undo whatever nudge it gave the view, and never count it as a tap
+      if (gesture && gesture.moved) { view[activeTab] = { ...pinch.v0 }; applyView(activeTab); }
+      pinch = null; glog("gesture cancelled", e, { note: "palm — ignored" }); gesture = null; return;
+    }
     pinch = null;
     if (gesture && !gesture.moved && performance.now() - gesture.t0 < 300) {
       if (gesture.maxN === 2) { undo(); status("Undo"); glog("UNDO fired", e, { note: "tap " + Math.round(performance.now() - gesture.t0) + "ms" }); }
@@ -5903,7 +5913,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.66.4";
+const APP_VERSION = "6.66.5";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
