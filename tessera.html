@@ -18,6 +18,7 @@
   header { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; flex-wrap: wrap; flex: 0 0 auto; }
   header h1 { font-size: 15px; margin: 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; line-height: 1; }
   .brand { display: flex; flex-direction: column; gap: 3px; margin-right: 4px; }
+  .brand #ver, .brand #bgLabel { align-self: flex-start; }
   .spacer { flex: 1; }
   .tab { background: none; border: 1px solid var(--line); border-bottom-width: 3px; color: var(--dim);
     border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer;
@@ -153,7 +154,7 @@
   #newDlg .seg button { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--dim); border-radius: 8px; padding: 7px 6px; font: inherit; font-size: 11px; cursor: pointer; }
   #newDlg .seg button.on { color: var(--accent); border-color: var(--accent); }
   #newDlg select { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; height: 34px; padding: 0 8px; font: inherit; }
-  #bgLabel { font-size: 11px; letter-spacing: 1px; color: #f0d47a; padding: 0 6px; white-space: nowrap; }
+  #bgLabel { font-size: 8px; letter-spacing: 1.5px; color: #c9b56a; line-height: 1; white-space: nowrap; pointer-events: none; }
   /* Tiled / Symmetry trays (v6.67) share the Options tray look — see .tray */
   /* Layers flyout (v6.63): Procreate-style list, top layer first, pinned
      right beside the color chip. Rows: thumb, name, lock, visibility. */
@@ -223,7 +224,8 @@
 </head>
 <body>
 <header>
-  <div class="brand"><h1>TESSERA</h1><div id="ver"></div></div>
+  <div class="brand"><h1>TESSERA</h1><div id="ver"></div><div id="bgLabel" style="display:none" title="Background project — canvas size"></div></div>
+  <button class="ibtn" id="btnReload" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
   <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset lives in its own project; opening this gallery or switching auto-saves the open one"></button>
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
@@ -234,7 +236,6 @@
     <option value="v3">5&times;5</option>
     <option value="v4">7&times;7</option>
   </select>
-  <span id="bgLabel" style="display:none" title="Background project — canvas size"></span>
   <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
   <button class="ibtn" id="btnBgTiled" data-icon="tiled" title="Tiled preview — repeat the canvas into the space around it" style="display:none"></button>
   <button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
@@ -300,9 +301,12 @@
   <button class="optline" data-v="quad" title="Mirror into all four quadrants"><span data-icon="symQuad"></span>Quad</button>
 </div>
 <div id="optbar">
-  <button class="optline" id="btnReload" title="Reload the app — fetches the latest deployed version (cache-busting), for pinned home-screen installs"><span data-icon="reload"></span>Reload</button>
   <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
+  <span class="vsep" id="optSep1"></span>
   <button class="optline" id="btnCanvas" title="Resize the sheet — drag the right/bottom handles in 16px cells; cannot shrink below the contract's base cells"><span data-icon="frame"></span>Canvas</button>
+  <button class="optline" id="btnFlipH" title="Flip the whole canvas left ↔ right — every layer (undoable)"><span data-icon="flipH"></span>Flip H</button>
+  <button class="optline" id="btnFlipV" title="Flip the whole canvas top ↔ bottom — every layer (undoable)"><span data-icon="flipV"></span>Flip V</button>
+  <span class="vsep"></span>
   <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
   <button class="optline" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span>Export</button>
 </div>
@@ -5539,7 +5543,7 @@ function bgSetDims(w, h) {   // (re)allocate every layer at w×h, keeping existi
   bgScratch = null;
   bgSelectLayer(bgDoc.active, true);
   undoStack = []; redoStack = []; actionLog = []; redoLog = [];   // snapshots carry the old dims
-  $("bgLabel").textContent = "BACKGROUND \u00b7 " + w + " \u00d7 " + h;
+  $("bgLabel").textContent = "BG \u00b7 " + w + " \u00d7 " + h;
 }
 /* ---- invariant: members directly below their header, orphans freed ---- */
 function bgNormalize() {
@@ -6070,7 +6074,7 @@ function bgBoot() {
     document.querySelectorAll(sel).forEach((el) => { el.style.display = "none"; });
   $("bgLabel").style.display = "";
   { const b = $("btnResetArt"); if (b.lastChild && b.lastChild.nodeType === 3) b.lastChild.textContent = "Clear"; }   // keep the injected icon
-  $("btnResetArt").title = "Clear the selected layer to transparent (asks first; undoable)";
+  $("btnResetArt").style.display = "none"; $("optSep1").style.display = "none";   // v6.71.1: redundant here — the layer options popover has Clear
   $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
   $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
   $("btnLayers").style.display = "";
@@ -6098,7 +6102,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.70.1";
+const APP_VERSION = "6.71.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -6164,6 +6168,30 @@ $("btnOptions").addEventListener("click", () => {
   $("btnOptions").classList.add("on");
 });
 document.querySelectorAll("#optbar .optline").forEach((b) => b.addEventListener("click", () => closeOptMenu()));
+/* Flip canvas (v6.71): every layer at once. Background projects snapshot the
+   whole stack (one undo step across all layers); tilesets snapshot the sheet. */
+function flipCanvas(axis) {
+  if (float) floatFlatten();
+  selClear();
+  const flipOne = (c) => {
+    const t = document.createElement("canvas"); t.width = c.width; t.height = c.height;
+    const g = t.getContext("2d"); g.imageSmoothingEnabled = false;
+    if (axis === "h") { g.translate(c.width, 0); g.scale(-1, 1); } else { g.translate(0, c.height); g.scale(1, -1); }
+    g.drawImage(c, 0, 0);
+    const cg = c.getContext("2d"); cg.clearRect(0, 0, c.width, c.height); cg.drawImage(t, 0, 0);
+  };
+  if (APP_MODE === "bg") {
+    bgStructSnapshot();
+    bgLayers.forEach((L) => { if (L.canvas) { flipOne(L.canvas); L.png = null; } });
+    bgAfterStruct("Canvas flipped " + (axis === "h" ? "left \u2194 right" : "top \u2194 bottom") + " \u2014 every layer.");
+  } else {
+    snapshot(); flipOne(ed);
+    templateChanged(); persistPng(); refreshFileSwatches();
+    status("Sheet flipped " + (axis === "h" ? "left \u2194 right" : "top \u2194 bottom") + ".");
+  }
+}
+$("btnFlipH").addEventListener("click", () => flipCanvas("h"));
+$("btnFlipV").addEventListener("click", () => flipCanvas("v"));
 $("btnReload").addEventListener("click", () => {
   if (float) floatFlatten();
   persistPng();   // belt and suspenders — the sheet is already persisted per stroke
