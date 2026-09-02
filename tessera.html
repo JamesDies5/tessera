@@ -153,7 +153,7 @@
   #bgLabel { font-size: 11px; letter-spacing: 1px; color: #f0d47a; padding: 0 6px; white-space: nowrap; }
   /* Layers flyout (v6.63): Procreate-style list, top layer first, pinned
      right beside the color chip. Rows: thumb, name, lock, visibility. */
-  #layerMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; gap: 8px; width: 320px; max-width: 92vw; max-height: 72vh;
+  #layerMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; gap: 8px; width: 352px; max-width: 92vw; max-height: 72vh;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #layerMenu .lmHead { display: flex; align-items: center; gap: 8px; }
   #layerMenu .lmHead .lbl { flex: 1; }
@@ -168,6 +168,11 @@
   .lyRow.dragging { opacity: .92; z-index: 2; background: #444; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
   .lyRow.stacked { display: none; }   /* group members tucked under the grabbed row while it drags */
   .lyRow.stackTop { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 4px 0 -1px #505050, 0 8px 0 -2px #3e3e3e; }
+  .lyRow.member { padding-left: 24px; }
+  .lyRow.folder .lyName { color: #d8c98a; }
+  .lyRow.dropInto { box-shadow: inset 0 0 0 2px var(--accent); }
+  .lyDisc svg { transition: transform .15s ease; }
+  .lyDisc.closed svg { transform: rotate(-90deg); }
   .lyCount { flex: 0 0 auto; font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
   .lyGrip { width: 26px; height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: #6a6a6a; cursor: grab; touch-action: none; }
   .lyGrip svg { width: 18px; height: 18px; }
@@ -249,7 +254,7 @@
   <div id="layerMenu">
     <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyOpts" data-icon="chevron" title="Options for the selected layer (same menu as tapping it)"></button><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
     <div id="layerList"></div>
-    <div class="lmFoot">tap selected layer for options &middot; swipe right to multi-select &middot; drag grip to reorder</div>
+    <div class="lmFoot">tap selected row for options &middot; swipe right to multi-select &middot; drag grip to reorder or move into / out of a group</div>
   </div>
   <div id="layerOpts"></div></span>
   <span class="fly"><button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
@@ -2278,7 +2283,7 @@ function ghArtifactsFromRecord(rec, slug) {
       { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, type: "bg", app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
       { name: slug + ".png", b64: flat.split(",")[1] },
     ];
-    const layers = (doc && doc.layers) || [];
+    const layers = ((doc && doc.layers) || []).filter((L) => L.kind !== "folder");   // folders live in project.json only
     if (layers.length > 1) layers.forEach((L, i) => files.push({ name: slug + ".layer" + (i + 1) + ".png", b64: (L.png || BLANK_PNG).split(",")[1] }));
     return Promise.resolve(files);
   }
@@ -5168,17 +5173,32 @@ function persistPng() {
    tiled view, and symmetry build on this in later passes. */
 const BG_CT = { id: "bg", label: "Background", lsKey: BG_KEYS.flat, filename: "background.png" };
 let bgDoc = null;
-let bgLayers = [];   // parallel to bgDoc.layers, bottom -> top: { canvas, ctx, png (cached data URL or null) }
+let bgLayers = [];   // parallel to bgDoc.layers, bottom -> top: { canvas, ctx, png } for layers, { canvas: null } for folders
+let bgScratch = null;   // where `ed` points while a folder row is selected (nothing draws there — the guard blocks it)
+/* Stack entries (v6.65):
+     layer  { id, name, visible, locked, png, folder? }   folder = id of the folder it belongs to
+     folder { id, kind: "folder", name, visible, locked, collapsed }
+   Invariant (bgNormalize): a folder's members sit contiguously DIRECTLY
+   BELOW its header in the array, so the top-first list shows the header
+   with its members indented beneath it. One level only. */
+const isFolder = (L) => !!L && L.kind === "folder";
 function bgReadDoc() { try { const d = JSON.parse(localStorage.getItem(BG_KEYS.doc)); return d && d.tessera_bg === 1 && d.layers && d.layers.length ? d : null; } catch (e) { return null; } }
 function bgMakeCanvas(w, h) {
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   const g = c.getContext("2d", { willReadFrequently: true }); g.imageSmoothingEnabled = false;
   return { canvas: c, ctx: g, png: null };
 }
+function bgFolderOf(L) { return L && L.folder ? bgDoc.layers.find((F) => isFolder(F) && F.id === L.folder) : null; }
+function bgMembersOf(fid) { return bgDoc.layers.map((L, i) => i).filter((i) => !isFolder(bgDoc.layers[i]) && bgDoc.layers[i].folder === fid); }
+function bgEffVisible(i) { const L = bgDoc.layers[i]; if (!L.visible) return false; const F = bgFolderOf(L); return !F || F.visible; }
 function bgLayerEditable() {
   const L = bgDoc.layers[bgDoc.active];
+  if (isFolder(L)) { status("\u201c" + L.name + "\u201d is a group \u2014 select a layer inside it to draw."); return false; }
+  const F = bgFolderOf(L);
   if (L.locked) { status("\u201c" + L.name + "\u201d is locked \u2014 unlock it in the Layers panel to draw."); return false; }
+  if (F && F.locked) { status("Group \u201c" + F.name + "\u201d is locked \u2014 unlock it to draw inside."); return false; }
   if (!L.visible) { status("\u201c" + L.name + "\u201d is hidden \u2014 show it to draw on it."); return false; }
+  if (F && !F.visible) { status("Group \u201c" + F.name + "\u201d is hidden \u2014 show it to draw inside."); return false; }
   return true;
 }
 /* Composite of the visible layers, bottom to top, cached on edGen (every
@@ -5191,48 +5211,75 @@ function bgComposite() {
     bgComp.width = TW; bgComp.height = TH;
     const g = bgComp.getContext("2d"); g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, TW, TH);
-    bgDoc.layers.forEach((L, i) => { if (L.visible) g.drawImage(bgLayers[i].canvas, 0, 0); });
+    bgDoc.layers.forEach((L, i) => { if (!isFolder(L) && bgEffVisible(i)) g.drawImage(bgLayers[i].canvas, 0, 0); });
   }
   return bgComp;
+}
+function bgFolderComposite(fid, w, h) {   // members only, for thumbnails and group export
+  const c = document.createElement("canvas"); c.width = w || TW; c.height = h || TH;
+  const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+  for (const i of bgMembersOf(fid)) if (bgDoc.layers[i].visible) g.drawImage(bgLayers[i].canvas, 0, 0);
+  return c;
 }
 function bgPersist() {
   if (!bgDoc) return;
   try {
-    bgLayers[bgDoc.active].png = null;   // the stroke landed here; other layers keep their cached PNGs
-    bgDoc.layers.forEach((L, i) => { if (!bgLayers[i].png) bgLayers[i].png = bgLayers[i].canvas.toDataURL("image/png"); L.png = bgLayers[i].png; });
+    const A = bgLayers[bgDoc.active]; if (A && A.canvas) A.png = null;   // the stroke landed here; other layers keep their cached PNGs
+    bgDoc.layers.forEach((L, i) => { if (isFolder(L)) { delete L.png; return; } if (!bgLayers[i].png) bgLayers[i].png = bgLayers[i].canvas.toDataURL("image/png"); L.png = bgLayers[i].png; });
     bgDoc.w = TW; bgDoc.h = TH;
     localStorage.setItem(BG_KEYS.doc, JSON.stringify(bgDoc));
     localStorage.setItem(BG_KEYS.flat, bgComposite().toDataURL("image/png"));
   } catch (e) {}
 }
-function bgSelectLayer(i, quiet) {   // point the shared editor at layer i
+function bgSelectLayer(i, quiet) {   // point the shared editor at entry i (folders get the scratch canvas)
   i = Math.max(0, Math.min(bgDoc.layers.length - 1, i));
   bgDoc.active = i;
-  ed = bgLayers[i].canvas; edCtx = bgLayers[i].ctx;
+  if (isFolder(bgDoc.layers[i])) {
+    if (!bgScratch || bgScratch.canvas.width !== TW || bgScratch.canvas.height !== TH) bgScratch = bgMakeCanvas(TW, TH);
+    bgScratch.ctx.clearRect(0, 0, TW, TH);
+    ed = bgScratch.canvas; edCtx = bgScratch.ctx;
+  } else { ed = bgLayers[i].canvas; edCtx = bgLayers[i].ctx; }
   if (!quiet) { bgRenderLayerList(); refreshFileSwatches(); drawGrid(); }
 }
 function bgSetDims(w, h) {   // (re)allocate every layer at w×h, keeping existing art top-left
   bgLayers = bgDoc.layers.map((L, i) => {
+    if (isFolder(L)) return { canvas: null };
     const nl = bgMakeCanvas(w, h);
-    if (bgLayers[i]) nl.ctx.drawImage(bgLayers[i].canvas, 0, 0);
+    if (bgLayers[i] && bgLayers[i].canvas) nl.ctx.drawImage(bgLayers[i].canvas, 0, 0);
     return nl;
   });
   TW = w; TH = h; WORLD.ed.w = w; WORLD.ed.h = h;
+  bgScratch = null;
   bgSelectLayer(bgDoc.active, true);
   undoStack = []; redoStack = []; actionLog = []; redoLog = [];   // snapshots carry the old dims
   $("bgLabel").textContent = "BACKGROUND \u00b7 " + w + " \u00d7 " + h;
 }
-/* ---- structural undo: whole-stack snapshots around add/delete/move/merge ---- */
+/* ---- invariant: members directly below their header, orphans freed ---- */
+function bgNormalize() {
+  const activeId = bgDoc.layers[bgDoc.active] && bgDoc.layers[bgDoc.active].id;
+  const fids = new Set(bgDoc.layers.filter(isFolder).map((F) => F.id));
+  bgDoc.layers.forEach((L) => { if (!isFolder(L) && L.folder && !fids.has(L.folder)) delete L.folder; });
+  const outL = [], outC = [];
+  bgDoc.layers.forEach((L, i) => {
+    if (!isFolder(L) && L.folder) return;   // placed with its header
+    if (isFolder(L)) bgDoc.layers.forEach((M, k) => { if (!isFolder(M) && M.folder === L.id) { outL.push(M); outC.push(bgLayers[k]); } });
+    outL.push(L); outC.push(bgLayers[i]);
+  });
+  bgDoc.layers = outL; bgLayers = outC;
+  const ai = bgDoc.layers.findIndex((L) => L.id === activeId);
+  bgSelectLayer(ai < 0 ? 0 : ai, true);
+}
+/* ---- structural undo: whole-stack snapshots around add/delete/move/merge/group ---- */
 function bgStructState() {
   return { struct: true, w: TW, h: TH, active: bgDoc.active,
-    layers: bgDoc.layers.map((L, i) => ({ id: L.id, name: L.name, visible: L.visible, locked: L.locked, img: bgLayers[i].ctx.getImageData(0, 0, TW, TH) })) };
+    layers: bgDoc.layers.map((L, i) => Object.assign({}, L, { png: undefined, img: isFolder(L) ? null : bgLayers[i].ctx.getImageData(0, 0, TW, TH) })) };
 }
 function bgRestoreStruct(st) {
   if (float) floatFlatten();
   bgMulti.clear();
-  bgDoc.layers = st.layers.map((L) => ({ id: L.id, name: L.name, visible: L.visible, locked: L.locked, png: null }));
-  bgLayers = st.layers.map((L) => { const nl = bgMakeCanvas(st.w, st.h); nl.ctx.putImageData(L.img, 0, 0); return nl; });
-  TW = st.w; TH = st.h; WORLD.ed.w = TW; WORLD.ed.h = TH;
+  bgDoc.layers = st.layers.map((L) => { const o = Object.assign({}, L); delete o.img; delete o.png; if (!isFolder(o)) o.png = null; return o; });
+  bgLayers = st.layers.map((L) => { if (isFolder(L)) return { canvas: null }; const nl = bgMakeCanvas(st.w, st.h); nl.ctx.putImageData(L.img, 0, 0); return nl; });
+  TW = st.w; TH = st.h; WORLD.ed.w = TW; WORLD.ed.h = TH; bgScratch = null;
   bgDoc.active = st.active;
   bgSelectLayer(st.active, true);
 }
@@ -5248,124 +5295,184 @@ function bgUndoApply(from, to) {   // pop one entry from `from`, push its invers
   templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList();
 }
 function bgAfterStruct(msg) {
+  bgNormalize();
   const ids = new Set(bgDoc.layers.map((L) => L.id));
-  for (const id of [...bgMulti]) if (!ids.has(id)) bgMulti.delete(id);   // dropped layers leave the group
+  for (const id of [...bgMulti]) if (!ids.has(id)) bgMulti.delete(id);   // dropped entries leave the group
   templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList(); if (msg) status(msg);
 }
-function bgNewLayerId() { let n = 1; const ids = new Set(bgDoc.layers.map((L) => L.id)); while (ids.has("L" + n)) n++; return "L" + n; }
-function bgNextName() { let n = bgDoc.layers.length + 1; const names = new Set(bgDoc.layers.map((L) => L.name)); while (names.has("Layer " + n)) n++; return "Layer " + n; }
-function bgAddLayer(png, name) {   // above the selected layer; optional PNG art
+function bgNewId(prefix) { let n = 1; const ids = new Set(bgDoc.layers.map((L) => L.id)); while (ids.has(prefix + n)) n++; return prefix + n; }
+function bgNewLayerId() { return bgNewId("L"); }
+function bgNextName(prefix) { prefix = prefix || "Layer "; let n = 1; const names = new Set(bgDoc.layers.map((L) => L.name)); while (names.has(prefix + n)) n++; return prefix + n; }
+/* ---- stack operations ---- */
+function bgAddLayer(png, name) {   // above the selected entry; inside its folder if it is a member; optional PNG art
   if (float) floatFlatten();
   bgStructSnapshot();
+  const cur = bgDoc.layers[bgDoc.active];
   const at = bgDoc.active + 1;
-  bgDoc.layers.splice(at, 0, { id: bgNewLayerId(), name: name || bgNextName(), visible: true, locked: false, png: null });
+  const L = { id: bgNewLayerId(), name: name || bgNextName(), visible: true, locked: false, png: null };
+  if (cur && !isFolder(cur) && cur.folder) L.folder = cur.folder;
+  bgDoc.layers.splice(at, 0, L);
   bgLayers.splice(at, 0, bgMakeCanvas(TW, TH));
   bgSelectLayer(at, true);
-  if (png) { const img = new Image(); img.onload = () => { edCtx.drawImage(img, 0, 0); bgAfterStruct("Added \u201c" + bgDoc.layers[at].name + "\u201d."); }; img.src = png; }
-  else bgAfterStruct("Added \u201c" + bgDoc.layers[at].name + "\u201d.");
+  if (png) { const img = new Image(); img.onload = () => { edCtx.drawImage(img, 0, 0); bgAfterStruct("Added \u201c" + L.name + "\u201d."); }; img.src = png; }
+  else bgAfterStruct("Added \u201c" + L.name + "\u201d.");
 }
-function bgDeleteLayer() {
-  if (bgDoc.layers.length < 2) { status("A background needs at least one layer."); return; }
+function bgDeleteAt(idxs) {   // idxs ascending; folders take their members along
+  const kill = new Set(idxs);
+  for (const i of idxs) if (isFolder(bgDoc.layers[i])) for (const m of bgMembersOf(bgDoc.layers[i].id)) kill.add(m);
+  const keep = bgDoc.layers.map((_, i) => i).filter((i) => !kill.has(i));
+  if (!keep.some((i) => !isFolder(bgDoc.layers[i]))) { status("A background needs at least one layer."); return false; }
   if (float) floatFlatten();
-  const L = bgDoc.layers[bgDoc.active];
   bgStructSnapshot();
-  bgDoc.layers.splice(bgDoc.active, 1); bgLayers.splice(bgDoc.active, 1);
-  bgSelectLayer(Math.min(bgDoc.active, bgDoc.layers.length - 1), true);
-  bgAfterStruct("Deleted \u201c" + L.name + "\u201d \u2014 undo to restore.");
+  bgDoc.layers = keep.map((i) => bgDoc.layers[i]); bgLayers = keep.map((i) => bgLayers[i]);
+  bgMulti.clear();
+  bgSelectLayer(Math.min(idxs[0], bgDoc.layers.length - 1), true);
+  return true;
 }
+function bgDeleteLayer() { const L = bgDoc.layers[bgDoc.active]; if (bgDeleteAt([bgDoc.active])) bgAfterStruct("Deleted \u201c" + L.name + "\u201d \u2014 undo to restore."); }
+function bgDeleteSelected() { const idxs = bgGroupIdx(); if (idxs.length < 2) { bgDeleteLayer(); return; } if (bgDeleteAt(idxs)) bgAfterStruct("Deleted " + idxs.length + " entries \u2014 undo to restore."); }
 function bgDuplicateLayer() {
   if (float) floatFlatten();
   bgStructSnapshot();
-  const src = bgDoc.layers[bgDoc.active], at = bgDoc.active + 1;
-  bgDoc.layers.splice(at, 0, { id: bgNewLayerId(), name: src.name + " copy", visible: src.visible, locked: false, png: null });
+  const src = bgDoc.layers[bgDoc.active];
+  if (isFolder(src)) {   // folder + members, fresh ids, the copy sits directly above the original
+    const members = bgMembersOf(src.id), used = new Set(bgDoc.layers.map((L) => L.id));
+    const fresh = (prefix) => { let n = 1; while (used.has(prefix + n)) n++; used.add(prefix + n); return prefix + n; };
+    const F = Object.assign({}, src, { id: fresh("F"), name: src.name + " copy" });
+    const copies = members.map((m) => Object.assign({}, bgDoc.layers[m], { id: fresh("L"), folder: F.id, png: null }));
+    const canv = members.map((m) => { const nl = bgMakeCanvas(TW, TH); nl.ctx.drawImage(bgLayers[m].canvas, 0, 0); return nl; });
+    const at = bgDoc.active + 1;
+    bgDoc.layers.splice(at, 0, ...copies, F); bgLayers.splice(at, 0, ...canv, { canvas: null });
+    bgSelectLayer(at + copies.length, true);
+    bgAfterStruct("Duplicated group \u201c" + src.name + "\u201d.");
+    return;
+  }
+  const at = bgDoc.active + 1;
+  const L = Object.assign({}, src, { id: bgNewLayerId(), name: src.name + " copy", locked: false, png: null });
+  bgDoc.layers.splice(at, 0, L);
   const nl = bgMakeCanvas(TW, TH); nl.ctx.drawImage(bgLayers[bgDoc.active].canvas, 0, 0);
   bgLayers.splice(at, 0, nl);
   bgSelectLayer(at, true);
   bgAfterStruct("Duplicated \u201c" + src.name + "\u201d.");
 }
-function bgMoveLayer(dir) {   // +1 = up (toward the top of the stack), -1 = down
-  const i = bgDoc.active, j = i + dir;
-  if (j < 0 || j >= bgDoc.layers.length) { status(dir > 0 ? "Already the top layer." : "Already the bottom layer."); return; }
-  if (float) floatFlatten();
-  bgStructSnapshot();
-  [bgDoc.layers[i], bgDoc.layers[j]] = [bgDoc.layers[j], bgDoc.layers[i]];
-  [bgLayers[i], bgLayers[j]] = [bgLayers[j], bgLayers[i]];
-  bgSelectLayer(j, true);
-  bgAfterStruct();
+function bgFlattenFolder(i) {   // folder header at i -> one plain layer at the same spot (no snapshot; callers own that)
+  const F = bgDoc.layers[i], members = bgMembersOf(F.id);
+  const nl = bgMakeCanvas(TW, TH);
+  for (const m of members) if (bgDoc.layers[m].visible) nl.ctx.drawImage(bgLayers[m].canvas, 0, 0);
+  const L = { id: bgNewLayerId(), name: F.name, visible: F.visible, locked: F.locked, png: null };
+  const kill = new Set(members.concat([i]));
+  const keep = bgDoc.layers.map((_, k) => k).filter((k) => !kill.has(k));
+  const insertAt = keep.filter((k) => k < i).length;
+  bgDoc.layers = keep.map((k) => bgDoc.layers[k]); bgLayers = keep.map((k) => bgLayers[k]);
+  bgDoc.layers.splice(insertAt, 0, L); bgLayers.splice(insertAt, 0, nl);
+  return insertAt;
 }
 function bgMergeDown() {
-  const i = bgDoc.active;
+  const i = bgDoc.active, L = bgDoc.layers[i];
+  if (isFolder(L)) {   // Merge on a folder = flatten it back to a single layer
+    if (L.locked) { status("Unlock the group first."); return; }
+    if (float) floatFlatten();
+    bgStructSnapshot();
+    const at = bgFlattenFolder(i);
+    bgMulti.clear(); bgSelectLayer(at, true);
+    bgAfterStruct("Flattened group \u201c" + L.name + "\u201d into one layer.");
+    return;
+  }
   if (i === 0) { status("Nothing below to merge into."); return; }
-  if (bgDoc.layers[i - 1].locked) { status("The layer below is locked."); return; }
+  let below = i - 1;
+  if (isFolder(bgDoc.layers[below])) { status("Merging down into a group \u2014 flatten the group first, or drag this layer inside it."); return; }
+  if (bgDoc.layers[below].locked) { status("The layer below is locked."); return; }
   if (float) floatFlatten();
   bgStructSnapshot();
-  const below = bgLayers[i - 1];
-  if (bgDoc.layers[i].visible) below.ctx.drawImage(bgLayers[i].canvas, 0, 0);
-  below.png = null;
-  const name = bgDoc.layers[i].name;
+  const tgt = bgLayers[below];
+  if (L.visible) tgt.ctx.drawImage(bgLayers[i].canvas, 0, 0);
+  tgt.png = null;
   bgDoc.layers.splice(i, 1); bgLayers.splice(i, 1);
-  bgSelectLayer(i - 1, true);
-  bgAfterStruct("Merged \u201c" + name + "\u201d down.");
+  bgSelectLayer(below, true);
+  bgAfterStruct("Merged \u201c" + L.name + "\u201d down.");
 }
-function bgRenameLayer() {
-  const L = bgDoc.layers[bgDoc.active];
-  const name = (prompt("Layer name:", L.name) || "").trim();
-  if (!name || name === L.name) return;
-  L.name = name; persistPng(); bgRenderLayerList();
+function bgMergeSelected() {   // active + multi merge into the lowest plain layer of the group; folders in the set flatten first
+  const idxs = bgGroupIdx();
+  if (idxs.length < 2) { bgMergeDown(); return; }
+  if (idxs.some((i) => bgDoc.layers[i].locked)) { status("Unlock every entry in the group first."); return; }
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const ids = idxs.map((i) => bgDoc.layers[i].id);
+  for (const id of ids) { const k = bgDoc.layers.findIndex((L) => L.id === id); if (k >= 0 && isFolder(bgDoc.layers[k])) { const at = bgFlattenFolder(k); ids[ids.indexOf(id)] = bgDoc.layers[at].id; } }
+  const set = ids.map((id) => bgDoc.layers.findIndex((L) => L.id === id)).filter((k) => k >= 0).sort((a, b) => a - b);
+  const base = set[0], target = bgLayers[base];
+  for (let k = 1; k < set.length; k++) if (bgDoc.layers[set[k]].visible) target.ctx.drawImage(bgLayers[set[k]].canvas, 0, 0);
+  target.png = null;
+  for (let k = set.length - 1; k >= 1; k--) { bgDoc.layers.splice(set[k], 1); bgLayers.splice(set[k], 1); }
+  bgMulti.clear();
+  bgSelectLayer(base, true);
+  bgAfterStruct("Merged " + set.length + " layers into \u201c" + bgDoc.layers[base].name + "\u201d.");
 }
-function bgToggleVisible(i) { bgDoc.layers[i].visible = !bgDoc.layers[i].visible; templateChanged(); persistPng(); bgRenderLayerList(); }
-function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); }
-/* ---- the panel (v6.64) ----
-   Procreate-style: tall divided rows, grip-drag to reorder, tap the
-   selected row for its options, swipe right to add a row to a group.
-   The group (bgMulti, layer ids) is secondary to bgDoc.active and is
-   cleared by a plain tap on any row. */
-let bgMulti = new Set();
-function bgGroupIdx() {   // indices of active + multi, ascending
-  const out = new Set([bgDoc.active]);
-  bgDoc.layers.forEach((L, i) => { if (bgMulti.has(L.id)) out.add(i); });
-  return [...out].sort((a, b) => a - b);
+function bgGroupSelected() {   // new folder around the active + multi plain layers, placed where the highest of them was
+  const idxs = bgGroupIdx().filter((i) => !isFolder(bgDoc.layers[i]));
+  if (!idxs.length) { status("Select one or more layers to group."); return; }
+  if (idxs.some((i) => bgDoc.layers[i].folder)) { status("Move those layers out of their current group first."); return; }
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const F = { id: bgNewId("F"), kind: "folder", name: bgNextName("Group "), visible: true, locked: false, collapsed: false };
+  const top = idxs[idxs.length - 1];
+  idxs.forEach((i) => { bgDoc.layers[i].folder = F.id; });
+  bgDoc.layers.splice(top + 1, 0, F); bgLayers.splice(top + 1, 0, { canvas: null });
+  bgMulti.clear();
+  bgSelectLayer(top + 1, true);
+  bgAfterStruct("Grouped " + idxs.length + " layer" + (idxs.length > 1 ? "s" : "") + " into \u201c" + F.name + "\u201d.");
 }
-function bgMoveGroupTo(idxs, insertAt) {   // move the layers at idxs (ascending) so they start at insertAt in the remaining stack
+function bgUngroup() {   // folder header selected: release its members in place
+  const i = bgDoc.active, F = bgDoc.layers[i]; if (!isFolder(F)) return;
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const members = bgMembersOf(F.id);
+  members.forEach((m) => { delete bgDoc.layers[m].folder; });
+  bgDoc.layers.splice(i, 1); bgLayers.splice(i, 1);
+  bgMulti.clear();
+  bgSelectLayer(members.length ? members[members.length - 1] : Math.max(0, i - 1), true);
+  bgAfterStruct("Ungrouped \u201c" + F.name + "\u201d.");
+}
+function bgLeaveGroup() {   // member selected: step out to sit just above its folder header
+  const L = bgDoc.layers[bgDoc.active]; if (isFolder(L) || !L.folder) return;
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const fi = bgDoc.layers.findIndex((F) => F.id === L.folder);
+  const i = bgDoc.active;
+  bgDoc.layers.splice(i, 1); const C = bgLayers.splice(i, 1)[0];
+  const at = bgDoc.layers.findIndex((F) => F.id === L.folder) + 1;
+  delete L.folder;
+  bgDoc.layers.splice(at, 0, L); bgLayers.splice(at, 0, C);
+  bgSelectLayer(at, true);
+  bgAfterStruct("Moved \u201c" + L.name + "\u201d out of the group.");
+}
+function bgMoveGroupTo(idxs, insertAt, folderId) {   // move entries at idxs (ascending) so they start at insertAt in the remaining stack; plain layers adopt folderId
   if (float) floatFlatten();
   const moving = idxs.map((i) => ({ L: bgDoc.layers[i], C: bgLayers[i] }));
   const restL = bgDoc.layers.filter((_, i) => !idxs.includes(i)), restC = bgLayers.filter((_, i) => !idxs.includes(i));
   const activeId = bgDoc.layers[bgDoc.active].id;
   const at = Math.max(0, Math.min(restL.length, insertAt));
-  const same = moving.every((m, k) => bgDoc.layers[at + k] === m.L);
-  if (same) return false;
+  const movesFolder = moving.some((m) => isFolder(m.L));
+  const samePlace = moving.every((m, k) => bgDoc.layers[at + k] === m.L);
+  const sameFolder = movesFolder || moving.every((m) => (m.L.folder || null) === (folderId || null));
+  if (samePlace && sameFolder) return false;
   bgStructSnapshot();
+  if (!movesFolder) moving.forEach((m) => { if (folderId) m.L.folder = folderId; else delete m.L.folder; });
   bgDoc.layers = restL.slice(0, at).concat(moving.map((m) => m.L), restL.slice(at));
   bgLayers = restC.slice(0, at).concat(moving.map((m) => m.C), restC.slice(at));
   bgSelectLayer(bgDoc.layers.findIndex((L) => L.id === activeId), true);
   bgAfterStruct();
   return true;
 }
-function bgMergeSelected() {   // active + multi merge into the lowest of the group
-  const idxs = bgGroupIdx();
-  if (idxs.length < 2) { bgMergeDown(); return; }
-  if (idxs.some((i) => bgDoc.layers[i].locked)) { status("Unlock every layer in the group first."); return; }
-  if (float) floatFlatten();
-  bgStructSnapshot();
-  const base = idxs[0], target = bgLayers[base];
-  for (let k = 1; k < idxs.length; k++) if (bgDoc.layers[idxs[k]].visible) target.ctx.drawImage(bgLayers[idxs[k]].canvas, 0, 0);
-  target.png = null;
-  for (let k = idxs.length - 1; k >= 1; k--) { bgDoc.layers.splice(idxs[k], 1); bgLayers.splice(idxs[k], 1); }
-  bgMulti.clear();
-  bgSelectLayer(base, true);
-  bgAfterStruct("Merged " + idxs.length + " layers into \u201c" + bgDoc.layers[base].name + "\u201d.");
+function bgRenameLayer() {
+  const L = bgDoc.layers[bgDoc.active];
+  const name = (prompt(isFolder(L) ? "Group name:" : "Layer name:", L.name) || "").trim();
+  if (!name || name === L.name) return;
+  L.name = name; persistPng(); bgRenderLayerList();
 }
-function bgDeleteSelected() {
-  const idxs = bgGroupIdx();
-  if (idxs.length >= bgDoc.layers.length) { status("A background needs at least one layer."); return; }
-  if (idxs.length < 2) { bgDeleteLayer(); return; }
-  if (float) floatFlatten();
-  bgStructSnapshot();
-  for (let k = idxs.length - 1; k >= 0; k--) { bgDoc.layers.splice(idxs[k], 1); bgLayers.splice(idxs[k], 1); }
-  bgMulti.clear();
-  bgSelectLayer(Math.min(idxs[0], bgDoc.layers.length - 1), true);
-  bgAfterStruct("Deleted " + idxs.length + " layers \u2014 undo to restore.");
-}
+function bgToggleVisible(i) { bgDoc.layers[i].visible = !bgDoc.layers[i].visible; templateChanged(); persistPng(); bgRenderLayerList(); }
+function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); }
+function bgToggleCollapsed(i) { bgDoc.layers[i].collapsed = !bgDoc.layers[i].collapsed; persistPng(); bgRenderLayerList(); }
 function bgSelectLayerPixels() {   // marquee = the layer's opaque pixels
   if (float) floatFlatten();
   const d = edCtx.getImageData(0, 0, TW, TH).data, m = new Uint8Array(TW * TH);
@@ -5383,22 +5490,41 @@ function bgClearLayer() {
 function bgExportLayer() {
   if (float) floatFlatten();
   const L = bgDoc.layers[bgDoc.active];
-  sharePng(ed.toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + "." + L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png");
+  const src = isFolder(L) ? bgFolderComposite(L.id) : ed;
+  sharePng(src.toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + "." + L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png");
+}
+/* ---- the panel (v6.65) ----
+   Procreate-style: tall divided rows, grip-drag to reorder (into and out
+   of folders), tap the selected row for its options, swipe right to add a
+   row to a multi-selection. The multi-selection (bgMulti, entry ids) is
+   secondary to bgDoc.active and is cleared by a plain tap on any row. */
+let bgMulti = new Set();
+function bgGroupIdx() {   // indices of active + multi, ascending
+  const out = new Set([bgDoc.active]);
+  bgDoc.layers.forEach((L, i) => { if (bgMulti.has(L.id)) out.add(i); });
+  return [...out].sort((a, b) => a - b);
 }
 function closeLayerOpts() { $("layerOpts").style.display = "none"; }
 function openLayerOpts(row) {
-  const o = $("layerOpts"), multi = bgGroupIdx().length > 1;
+  const o = $("layerOpts"), multi = bgGroupIdx().length > 1, L = bgDoc.layers[bgDoc.active], folder = isFolder(L);
   o.innerHTML = "";
   const add = (label, fn, cls) => { const b = document.createElement("button"); b.textContent = label; if (cls) b.className = cls; b.addEventListener("click", () => { closeLayerOpts(); fn(); }); o.appendChild(b); };
   const rule = () => o.appendChild(document.createElement("hr"));
   add("Rename", bgRenameLayer);
-  add("Select", () => { if (bgSelectLayerPixels()) status("Selected the layer\u2019s pixels."); });
-  add("Copy", () => { if (bgSelectLayerPixels()) doCopy(); });
-  add("Clear", bgClearLayer);
+  if (!folder) {
+    add("Select", () => { if (bgSelectLayerPixels()) status("Selected the layer\u2019s pixels."); });
+    add("Copy", () => { if (bgSelectLayerPixels()) doCopy(); });
+    add("Clear", bgClearLayer);
+  }
   rule();
   add("Duplicate", bgDuplicateLayer);
-  add(multi ? "Merge Selected" : "Merge Down", bgMergeSelected);
-  add("Export Layer", bgExportLayer);
+  if (folder) { add("Merge", bgMergeDown); add("Ungroup", bgUngroup); }
+  else {
+    add(multi ? "Merge Selected" : "Merge Down", bgMergeSelected);
+    if (!L.folder || multi) add("Group", bgGroupSelected);
+    if (L.folder && !multi) add("Move Out of Group", bgLeaveGroup);
+  }
+  add(folder ? "Export Group" : "Export Layer", bgExportLayer);
   rule();
   add(multi ? "Delete Selected" : "Delete", bgDeleteSelected, "danger");
   o.style.display = "flex";
@@ -5406,27 +5532,38 @@ function openLayerOpts(row) {
   o.style.right = (window.innerWidth - pr.left + 8) + "px";
   o.style.top = Math.max(8, Math.min(window.innerHeight - o.offsetHeight - 8, rr.top)) + "px";
 }
-let lyDrag = null;   // { idxs, rows, lastTarget, lastPos }
+let lyDrag = null;
 function bgRenderLayerList() {
   const host = $("layerList"); if (!host || !bgDoc) return;
   host.innerHTML = "";
   const svg = (k) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS[k] + '</svg>';
-  for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
-    const L = bgDoc.layers[i];
-    const row = document.createElement("div");
-    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (bgMulti.has(L.id) ? " multi" : "") + (L.visible ? "" : " hidden");
-    row.dataset.idx = i;
-    const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = "Drag to reorder";
+  const thumbOf = (src) => {
     const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = 80; th.height = 45;
     const g = th.getContext("2d"); g.imageSmoothingEnabled = false;
     const sc = Math.min(80 / TW, 45 / TH), dw = Math.max(1, Math.round(TW * sc)), dh = Math.max(1, Math.round(TH * sc));
-    g.drawImage(bgLayers[i].canvas, Math.floor((80 - dw) / 2), Math.floor((45 - dh) / 2), dw, dh);
+    g.drawImage(src, Math.floor((80 - dw) / 2), Math.floor((45 - dh) / 2), dw, dh);
+    return th;
+  };
+  for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
+    const L = bgDoc.layers[i], folder = isFolder(L), F = folder ? null : bgFolderOf(L);
+    if (F && F.collapsed) continue;   // tucked away under its header
+    const row = document.createElement("div");
+    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (bgMulti.has(L.id) ? " multi" : "") + (L.visible ? "" : " hidden") + (folder ? " folder" : "") + (F ? " member" : "");
+    row.dataset.idx = i; if (folder) row.dataset.fid = L.id; if (F) row.dataset.folder = F.id;
+    const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = folder ? "Drag to move the whole group" : "Drag to reorder \u2014 into or out of a group";
+    const th = thumbOf(folder ? bgFolderComposite(L.id) : bgLayers[i].canvas);
     const nm = document.createElement("span"); nm.className = "lyName"; nm.textContent = L.name;
+    row.appendChild(grip); row.appendChild(th); row.appendChild(nm);
+    if (folder) {
+      const tg = document.createElement("button"); tg.className = "lyBtn lyDisc" + (L.collapsed ? " closed" : ""); tg.innerHTML = svg("chevron"); tg.title = L.collapsed ? "Expand group" : "Collapse group";
+      tg.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleCollapsed(i); });
+      row.appendChild(tg);
+    }
     const lk = document.createElement("button"); lk.className = "lyBtn" + (L.locked ? " on" : ""); lk.innerHTML = svg(L.locked ? "lock" : "unlock"); lk.title = L.locked ? "Locked \u2014 tap to unlock" : "Unlocked \u2014 tap to lock";
     lk.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleLocked(i); });
     const vs = document.createElement("button"); vs.className = "lyBtn" + (L.visible ? " on" : ""); vs.innerHTML = svg("eye"); vs.title = L.visible ? "Visible \u2014 tap to hide" : "Hidden \u2014 tap to show";
     vs.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleVisible(i); });
-    row.appendChild(grip); row.appendChild(th); row.appendChild(nm); row.appendChild(lk); row.appendChild(vs);
+    row.appendChild(lk); row.appendChild(vs);
     // tap / swipe on the row body
     let p0 = null, slid = 0;
     const SWIPE = 36, MAXX = 84;
@@ -5448,8 +5585,8 @@ function bgRenderLayerList() {
       const dx = e.clientX - p0.x, dy = e.clientY - p0.y, wasSlide = slid > 0; p0 = null;
       row.classList.remove("swiping"); row.style.transform = "";   // bounce back
       if (wasSlide) {
-        if (dx > SWIPE && Math.abs(dy) < 28) {   // right swipe: toggle membership in the group
-          if (i === bgDoc.active) status("The selected layer is always part of the group.");
+        if (dx > SWIPE && Math.abs(dy) < 28) {   // right swipe: toggle membership in the multi-selection
+          if (i === bgDoc.active) status("The selected entry is always part of the selection.");
           else { if (bgMulti.has(L.id)) bgMulti.delete(L.id); else bgMulti.add(L.id); closeLayerOpts(); setTimeout(bgRenderLayerList, 170); }
         }
         return;
@@ -5461,25 +5598,25 @@ function bgRenderLayerList() {
       bgSelectLayer(i);
     };
     row.addEventListener("pointerup", settle);
-    row.addEventListener("pointercancel", (e) => { p0 = null; slid = 0; row.classList.remove("swiping"); row.style.transform = ""; });
-    // grip drag: reorder the row (or the whole group, if it's in one)
+    row.addEventListener("pointercancel", () => { p0 = null; slid = 0; row.classList.remove("swiping"); row.style.transform = ""; });
+    // grip drag: one row, a multi-selection, or a folder with its members — always one band
     grip.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation(); closeLayerOpts();
-      const inGroup = bgGroupIdx().includes(i);
-      const idxs = inGroup ? bgGroupIdx() : [i];
-      // a group stacks under the grabbed row, so one band moves; it re-expands on drop
+      const inSel = bgGroupIdx().includes(i);
+      let idxs = inSel ? bgGroupIdx() : [i];
+      // folders in the set bring their members along (they hide under the band)
+      const hidden = new Set();
+      for (const k of idxs) if (isFolder(bgDoc.layers[k])) for (const m of bgMembersOf(bgDoc.layers[k].id)) hidden.add(m);
+      idxs = idxs.filter((k) => !hidden.has(k));
       const rows = [...host.querySelectorAll(".lyRow")];
-      const members = rows.filter((r) => idxs.includes(+r.dataset.idx) && r !== row);
+      const members = rows.filter((r) => r !== row && (idxs.includes(+r.dataset.idx) || hidden.has(+r.dataset.idx)));
       members.forEach((r) => r.classList.add("stacked"));
-      if (members.length) {
-        row.classList.add("stackTop");
-        const badge = document.createElement("span"); badge.className = "lyCount"; badge.textContent = "\u00d7" + (members.length + 1);
-        nm.after(badge);
-      }
-      const block = [row];
+      const count = 1 + members.length + (folder && L.collapsed ? bgMembersOf(L.id).length : 0);
+      if (count > 1) { row.classList.add("stackTop"); const badge = document.createElement("span"); badge.className = "lyCount"; badge.textContent = "\u00d7" + count; nm.after(badge); }
       const rects = rows.map((r) => r.getBoundingClientRect());
       const blockTop = rects[rows.indexOf(row)].top, blockH = rects[rows.indexOf(row)].height;
-      lyDrag = { idxs, rows, rects, block, members, blockTop, blockH, y0: e.clientY, dy: 0, target: null, pos: null };
+      const movesFolder = idxs.some((k) => isFolder(bgDoc.layers[k]));
+      lyDrag = { idxs, rows, rects, block: [row], members, blockTop, blockH, y0: e.clientY, dy: 0, target: null, pos: null, movesFolder };
       row.classList.add("dragging");
       grip.setPointerCapture(e.pointerId);
     });
@@ -5497,30 +5634,42 @@ function bgRenderLayerList() {
         if (before && center < rcC) shift = d.blockH;          // block passed upward over it -> it slides down
         else if (!before && center > rcC) shift = -d.blockH;   // block passed downward -> it slides up
         r.style.transform = shift ? "translateY(" + shift + "px)" : "";
+        r.classList.remove("dropInto");
       });
-      // the drop slot is the first non-block row the block center sits above, else below the last
+      // the drop slot is the first free row the band center sits above, else below the last;
+      // hovering a collapsed folder header with a plain layer means "into" it
       for (let k = 0; k < d.rows.length; k++) {
         const r = d.rows[k]; if (d.block.includes(r) || d.members.includes(r)) continue;
         const rc = d.rects[k];
+        if (!d.movesFolder && r.dataset.fid && bgDoc.layers[+r.dataset.idx].collapsed && center > rc.top + rc.height * 0.25 && center < rc.top + rc.height * 0.75) { target = r; pos = "into"; break; }
         if (center < rc.top + rc.height / 2) { target = r; pos = "above"; break; }
         target = r; pos = "below";
       }
+      if (pos === "into") target.classList.add("dropInto");
       d.target = target; d.pos = pos;
       const hb = host.getBoundingClientRect();   // keep the list scrolling near its edges
       if (e.clientY < hb.top + 24) host.scrollTop -= 6; else if (e.clientY > hb.bottom - 24) host.scrollTop += 6;
     });
     const endDrag = () => {
       const d = lyDrag; if (!d) return; lyDrag = null;
-      d.rows.forEach((r) => { r.classList.remove("dragging", "stacked", "stackTop"); r.style.transform = ""; });
+      d.rows.forEach((r) => { r.classList.remove("dragging", "stacked", "stackTop", "dropInto"); r.style.transform = ""; });
       let moved = false;
       if (d.target) {
-        // list is top-first; convert the drop slot into a stack index among the remaining layers
-        const t = +d.target.dataset.idx;
+        const t = +d.target.dataset.idx, T = bgDoc.layers[t];
         const remaining = bgDoc.layers.map((_, k) => k).filter((k) => !d.idxs.includes(k));
         const tpos = remaining.indexOf(t);
-        moved = bgMoveGroupTo(d.idxs, d.pos === "above" ? tpos + 1 : tpos);
+        let insertAt, fid = null;
+        if (d.pos === "into") { insertAt = tpos; fid = T.id; }                              // top of that folder's members (header stays above)
+        else {
+          insertAt = d.pos === "above" ? tpos + 1 : tpos;
+          if (!d.movesFolder) {
+            if (!isFolder(T) && T.folder) fid = T.folder;                                   // slot beside a member -> join its folder
+            else if (isFolder(T) && d.pos === "below") fid = T.id;                          // slot directly under a header -> its top member
+          }
+        }
+        moved = bgMoveGroupTo(d.idxs, insertAt, fid);
       }
-      if (!moved) bgRenderLayerList();   // nothing changed: re-expand the stack in the real order
+      if (!moved) bgRenderLayerList();   // nothing changed: re-expand the band in the real order
     };
     grip.addEventListener("pointerup", endDrag);
     grip.addEventListener("pointercancel", endDrag);
@@ -5579,6 +5728,7 @@ function bgBoot() {
   bgDoc = bgReadDoc() || bgNewDoc(480, 270, null);
   CT = BG_CT;
   bgSetDims(bgDoc.w || 480, bgDoc.h || 270);
+  bgNormalize();
   // UI: the tileset-only surface goes away; a size chip replaces the format select
   for (const sel of ['.tab', '#ctSelect', '.tool[data-tool="revise"]', '.tool[data-tool="vary"]', '#btnCoords', '#btnRoles'])
     document.querySelectorAll(sel).forEach((el) => { el.style.display = "none"; });
@@ -5595,7 +5745,7 @@ function bgBoot() {
   projGet(activeProjectId).then((rec) => { if (rec && rec.name) BG_CT.filename = projSlug(rec) + ".png"; }).catch(() => {});
   // decode every layer's PNG into its canvas, then show the stack
   let pending = 0;
-  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); status("Background \u2014 " + TW + " \u00d7 " + TH + " px, " + bgDoc.layers.length + " layer" + (bgDoc.layers.length > 1 ? "s" : "") + "."); };
+  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); const n = bgDoc.layers.filter((L) => L.kind !== "folder").length; status("Background \u2014 " + TW + " \u00d7 " + TH + " px, " + n + " layer" + (n > 1 ? "s" : "") + "."); };
   bgDoc.layers.forEach((L, i) => {
     if (!L.png) return;
     pending++;
@@ -5611,7 +5761,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.64.2";
+const APP_VERSION = "6.65.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
