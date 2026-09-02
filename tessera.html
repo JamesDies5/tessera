@@ -45,21 +45,20 @@
   .bgo[data-bg="black"] { background: #000; }
   .bgo[data-bg="light"] { background: conic-gradient(#fff 25%, #cbcbcb 0 50%, #fff 0 75%, #cbcbcb 0); background-size: 12px 12px; }
   .bgo[data-bg="ink"] { background: #191919; }
-  .bgo[data-bg="void"] { background: #141414; box-shadow: inset 0 0 0 2px #f0d47a55; }
-  .bgo[data-bg="coal"] { background: #0c0c0c; }
+  .bgo[data-bg="void"] { background: #0f0f0f; }
   #bgCurrent { margin-top: auto; }   /* pinned to the rail's bottom, clear of the tools */
   #bgMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 6px;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #colorCurrent { width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; padding: 0; flex: 0 0 auto; }
   #colorCurrent.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-  #colorMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; align-items: center; gap: 8px; width: 340px; max-width: 92vw;
+  #colorMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; align-items: center; gap: 8px; width: 380px; max-width: 92vw;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #colorMenu .cmRow { display: flex; gap: 6px; align-items: center; }
   #colorMenu .cmRow > .lbl { flex: 0 0 52px; }
   /* WebKit sizes wrap-enabled flex rows at min-content inside fixed-position
-     shrink-to-fit, tucking the last swatch under. Six stops never need to
+     shrink-to-fit, tucking the last swatch under. Seven stops never need to
      wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
   #stopSwatches { flex-wrap: nowrap; }
   #brushMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; align-items: center; gap: 8px; width: 300px; max-width: 92vw;
@@ -139,8 +138,8 @@
     background: rgba(0,0,0,.55); color: #ddd; border: 1px solid #555; pointer-events: none; }
   .ptype.bg { color: #f0d47a; border-color: #8a7a3a; }
   #projFilter { display: flex; gap: 6px; }
-  #projFilter button { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 11px; cursor: pointer; }
-  #projFilter button.on { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+  #projFilter .optline { color: var(--dim); }
+  #projFilter .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; box-shadow: 0 0 0 1px var(--accent) inset; }
   #newDlg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 90; display: none; flex-direction: column; gap: 10px;
     background: rgba(18,18,18,.98); border: 1px solid #454545; border-radius: 12px; padding: 12px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.5); width: 340px; max-width: 92vw; }
   #newDlg .row { display: flex; align-items: center; gap: 8px; }
@@ -152,6 +151,24 @@
   #newDlg .seg button.on { color: var(--accent); border-color: var(--accent); }
   #newDlg select { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; height: 34px; padding: 0 8px; font: inherit; }
   #bgLabel { font-size: 11px; letter-spacing: 1px; color: #f0d47a; padding: 0 6px; white-space: nowrap; }
+  /* Layers flyout (v6.63): Procreate-style list, top layer first, pinned
+     right beside the color chip. Rows: thumb, name, lock, visibility. */
+  #layerMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; gap: 8px; width: 320px; max-width: 92vw; max-height: 72vh;
+    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #layerMenu .lmHead { display: flex; align-items: center; gap: 8px; }
+  #layerMenu .lmHead .lbl { flex: 1; }
+  #layerList { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+  .lyRow { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+  .lyRow.on { background: #383838; border-color: var(--accent); }
+  .lyRow.hidden .lyName { color: var(--dim); }
+  .lyThumb { width: 56px; height: 32px; border-radius: 4px; border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
+    background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
+  .lyName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .lyBtn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--dim); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; flex: 0 0 auto; }
+  .lyBtn svg { width: 15px; height: 15px; }
+  .lyBtn.on { color: var(--accent); border-color: var(--accent); }
+  #layerMenu .lmActs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  #layerMenu .lmActs .optline { height: 30px; padding: 0 9px; }
   .syncbadge.fresh { background: #6f9e77; }
   .syncbadge.stale { background: #c9963f; }
   .syncbadge.fresh:active { background: #5c8664; }
@@ -212,6 +229,20 @@
       <button class="bshape" data-bshape="circle" title="Circle brush"><span class="bci"></span></button>
     </div>
   </div></span>
+  <span class="fly"><button class="ibtn" id="btnLayers" data-icon="layers" title="Layers — add, hide, lock, reorder, merge" style="display:none"></button>
+  <div id="layerMenu">
+    <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
+    <div id="layerList"></div>
+    <div class="lmActs">
+      <button class="optline" id="lyUp" title="Move the selected layer up">UP</button>
+      <button class="optline" id="lyDown" title="Move the selected layer down">DOWN</button>
+      <button class="optline" id="lyDup" title="Duplicate the selected layer">DUPLICATE</button>
+      <button class="optline" id="lyMerge" title="Merge the selected layer into the one below it">MERGE DOWN</button>
+      <button class="optline" id="lyRename" title="Rename the selected layer">RENAME</button>
+      <button class="optline" id="lyDel" title="Delete the selected layer (undoable)">DELETE</button>
+      <button class="optline" id="lyExport" title="Export just the selected layer as a PNG">EXPORT LAYER</button>
+    </div>
+  </div></span>
   <span class="fly"><button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
   <!-- Color flyout: display-mapped palette; template stays grayscale truth -->
   <div id="colorMenu">
@@ -266,13 +297,12 @@
 </div>
 
 <!-- BG flyout — opened by the swatch at the bottom of the rail; order per James:
-     light checkers, dark checkers, palette-darkest #191919, black -->
+     light checkers, dark checkers, palette-darkest #191919, game void, black -->
 <div id="bgMenu">
   <button class="bgo" data-bg="light" title="Classic light checkerboard"></button>
   <button class="bgo" data-bg="dark" title="Dark checkerboard"></button>
-  <button class="bgo" data-bg="void" title="Game void — the level's clear color, the zone's darkest key exactly (what a painted 20 renders as)"></button>
   <button class="bgo" data-bg="ink" title="Palette darkest — #191919"></button>
-  <button class="bgo" data-bg="coal" title="5% black — #0C0C0C"></button>
+  <button class="bgo" data-bg="void" title="Game void — the level's clear color, the zone's darkest key exactly (what a painted 20 renders as)"></button>
   <button class="bgo" data-bg="black" title="Solid black"></button>
 </div>
 
@@ -289,9 +319,9 @@
     <h2>Projects</h2>
     <span class="spacer"></span>
     <div id="projFilter">
-      <button class="on" data-pf="all">All</button>
-      <button data-pf="tiles">Tilesets</button>
-      <button data-pf="bg">Backgrounds</button>
+      <button class="optline on" data-pf="all">All</button>
+      <button class="optline" data-pf="tiles">Tilesets</button>
+      <button class="optline" data-pf="bg">Backgrounds</button>
     </div>
     <span class="spacer"></span>
     <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
@@ -1768,6 +1798,10 @@ window.addEventListener("error", (e) => { try { status("Error: " + (e.message ||
 window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + (e.reason && e.reason.message || e.reason || "unhandled rejection")); } catch (err) {} });
 
 const ICONS = {
+  layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   pencil: '<path d="M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z"/>',
   eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/>',
   bucket: '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/>',
@@ -2530,7 +2564,6 @@ const BG_STYLES = {
   light: makeChecker("#ffffff", "#cbcbcb"),
   void: "#191919",  // v6.62: the zone's darkest KEY exactly — what level.gd clears to and what a painted 20 renders as
   ink: "#191919",   // palette darkest (maps through the active palette as the game void)
-  coal: "#0c0c0c",  // 5% black — maps through the active palette like ink
 };
 let bgMode = "dark";
 /* The ink background IS the game's void: a #191919 surface under the zone
@@ -2540,9 +2573,9 @@ let bgMode = "dark";
 function bgFill() {
   const pal = palettes[palIdx];
   if (bgMode === "void" && pal.base) { const c = pal.base[0]; return "rgb(" + Math.round(c[0]*255) + "," + Math.round(c[1]*255) + "," + Math.round(c[2]*255) + ")"; }
-  if ((bgMode === "ink" || bgMode === "coal") && pal.base) {
+  if (bgMode === "ink" && pal.base) {
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
-    const i = (bgMode === "ink" ? 25 : 12) * 3;   // #191919 -> l=25, #0C0C0C -> l=12
+    const i = 25 * 3;   // #191919 -> l=25
     return "rgb(" + lut[i] + "," + lut[i + 1] + "," + lut[i + 2] + ")";
   }
   return BG_STYLES[bgMode];
@@ -2562,14 +2595,15 @@ const SMIN = 0.4, SMAX = 32;
 const edTint = document.createElement("canvas");
 let edTintKey = "", edGen = 0;
 function edDisplay() {
+  const src = APP_MODE === "bg" ? bgComposite() : ed;   // v6.63: backgrounds show the layer stack
   const pal = palettes[palIdx];
-  if (!pal.base) return ed;
+  if (!pal.base) return src;
   const key = palIdx + "|" + CT.id + "|" + edGen;
   if (edTintKey !== key) {
     edTintKey = key;
     edTint.width = TW; edTint.height = TH;
     const g = edTint.getContext("2d");
-    g.drawImage(ed, 0, 0);
+    g.drawImage(src, 0, 0);
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
     const img = g.getImageData(0, 0, TW, TH), d = img.data;
     for (let i = 0; i < d.length; i += 4) {
@@ -2832,7 +2866,7 @@ function syncGridButtons() {
    shader keys (no new palette key). Stops renumber 0..5. */
 const LANES = {   // v6.62: per project type (palette_canon.md "Layer lanes")
   tiles: [25, 52, 89, 139, 200, 255],
-  bg:    [20, 52, 89, 139],
+  bg:    [20, 25, 52, 89, 139, 200, 255],   // every stop — background projects double as a general sprite/pixel editor
 };
 const LANE_NOTES = { 20: "void-match — renders exactly as the game void", 25: "darkest — renders just above the void", 52: "dark", 89: "mid-dark", 139: "medium", 200: "light", 255: "white — reserved for characters" };
 let STOP_GRAYS = LANES[APP_MODE];
@@ -2884,7 +2918,7 @@ function refreshFileSwatches() {
 /* ---- undo ---- */
 let actionLog = [], redoLog = [], levelUndo = [], levelRedo = [];
 const UNDO_CAP = APP_MODE === "bg" ? 24 : 40;   // a 480×270 snapshot is ~0.5 MB; keep iPad memory sane
-function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undoStack.length > UNDO_CAP) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
+function snapshot() { const im = edCtx.getImageData(0, 0, TW, TH); if (APP_MODE === "bg") im.bgLayer = bgDoc.active; undoStack.push(im); if (undoStack.length > UNDO_CAP) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function levelStateJSON() { return JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows, doors: roomDoors, spawn: roomSpawn }); }
 function levelSnapshot() { levelUndo.push(levelStateJSON()); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function applyLevelState(s) {
@@ -3363,6 +3397,7 @@ function undo() {
     return;
   }
   if (!undoStack.length) return;
+  if (APP_MODE === "bg") { bgUndoApply(undoStack, redoStack); redoLog.push("ed"); return; }
   redoStack.push(edCtx.getImageData(0, 0, TW, TH));
   edCtx.putImageData(undoStack.pop(), 0, 0);
   templateChanged(); persistPng(); refreshFileSwatches();
@@ -3385,6 +3420,7 @@ function redo() {
     return;
   }
   if (!redoStack.length) return;
+  if (APP_MODE === "bg") { bgUndoApply(redoStack, undoStack); actionLog.push("ed"); return; }
   undoStack.push(edCtx.getImageData(0, 0, TW, TH));
   edCtx.putImageData(redoStack.pop(), 0, 0);
   templateChanged(); persistPng(); refreshFileSwatches();
@@ -3697,6 +3733,7 @@ function doCopy() {
 function doPaste() {
   if (!clip) { status("Clipboard is empty \u2014 copy a selection first."); return; }
   if (activeTab !== "ed") { status("Paste works on the Template tab for now."); return; }
+  if (APP_MODE === "bg" && !bgLayerEditable()) return;
   if (float) floatFlatten();   // chained pastes place the previous one first
   const prevSel = selMask;
   float = { cv: clip.cv, mask: clip.mask, w: clip.w, h: clip.h, x: clip.x, y: clip.y, origMask: prevSel, pasted: true };
@@ -4013,6 +4050,7 @@ function beginStroke(e) {
     }
     if (tool === "slopeF" || tool === "slopeC") { status("Slope tools draw in the LEVEL tab."); return; }
     if (tool === "pick") { pickAt(x, y); return; }
+    if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
     if (tool === "marquee") {
       stroke = { kind: "sel", x0: x, y0: y, x1: x, y1: y, pts: [[x, y]], downVp: vpPoint(e), drag: false };
       return;
@@ -4868,7 +4906,8 @@ $("btnRulesReset").addEventListener("click", () => {
 });
 $("btnResetArt").addEventListener("click", () => {
   if (APP_MODE === "bg") {
-    if (!confirm("Clear the whole canvas to transparent? (Undoable.)")) return;
+    if (!bgLayerEditable()) return;
+    if (!confirm("Clear \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d to transparent? (Undoable.)")) return;
     if (float) floatFlatten();
     snapshot(); edCtx.clearRect(0, 0, TW, TH); templateChanged(); persistPng(); refreshFileSwatches();
     status("Canvas cleared \u2014 undo to restore.");
@@ -5080,25 +5119,28 @@ $("fileTpl").addEventListener("change", (e) => {
    SYNCHRONOUSLY from the data URL so navigator.share still runs inside
    the user-activation window (WebKit requirement; async toBlob loses it).
    Elsewhere, the classic anchor download. */
-$("btnSave").addEventListener("click", () => {
-  const url = ed.toDataURL("image/png");
+function sharePng(url, filename) {   // v6.63: shared by sheet export, flat background export, and per-layer export
   try {
     if (navigator.share && navigator.canShare) {
       const b64 = url.split(",")[1], bin = atob(b64), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const file = new File([bytes], CT.filename, { type: "image/png" });
+      const file = new File([bytes], filename, { type: "image/png" });
       if (navigator.canShare({ files: [file] })) {
         navigator.share({ files: [file] })
-          .then(() => status(`Shared ${CT.filename}.`))
+          .then(() => status(`Shared ${filename}.`))
           .catch((err) => { if (err && err.name !== "AbortError") status("Share failed: " + err.message); });
         return;
       }
     }
   } catch (e) {}   // any share-path surprise falls through to the download
   const a = document.createElement("a");
-  a.href = url; a.download = CT.filename;
+  a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  status(`Saved ${CT.filename}.`);
+  status(`Saved ${filename}.`);
+}
+$("btnSave").addEventListener("click", () => {
+  if (APP_MODE === "bg") { if (float) floatFlatten(); sharePng(bgComposite().toDataURL("image/png"), CT.filename); return; }   // flattened stack
+  sharePng(ed.toDataURL("image/png"), CT.filename);
 });
 function persistPng() {
   if (APP_MODE === "bg") { bgPersist(); return; }
@@ -5116,26 +5158,196 @@ function persistPng() {
    tiled view, and symmetry build on this in later passes. */
 const BG_CT = { id: "bg", label: "Background", lsKey: BG_KEYS.flat, filename: "background.png" };
 let bgDoc = null;
+let bgLayers = [];   // parallel to bgDoc.layers, bottom -> top: { canvas, ctx, png (cached data URL or null) }
 function bgReadDoc() { try { const d = JSON.parse(localStorage.getItem(BG_KEYS.doc)); return d && d.tessera_bg === 1 && d.layers && d.layers.length ? d : null; } catch (e) { return null; } }
+function bgMakeCanvas(w, h) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.imageSmoothingEnabled = false;
+  return { canvas: c, ctx: g, png: null };
+}
+function bgLayerEditable() {
+  const L = bgDoc.layers[bgDoc.active];
+  if (L.locked) { status("\u201c" + L.name + "\u201d is locked \u2014 unlock it in the Layers panel to draw."); return false; }
+  if (!L.visible) { status("\u201c" + L.name + "\u201d is hidden \u2014 show it to draw on it."); return false; }
+  return true;
+}
+/* Composite of the visible layers, bottom to top, cached on edGen (every
+   pixel edit, visibility flip, or reorder bumps it via templateChanged). */
+const bgComp = document.createElement("canvas");
+let bgCompGen = -1;
+function bgComposite() {
+  if (bgCompGen !== edGen || bgComp.width !== TW || bgComp.height !== TH) {
+    bgCompGen = edGen;
+    bgComp.width = TW; bgComp.height = TH;
+    const g = bgComp.getContext("2d"); g.imageSmoothingEnabled = false;
+    g.clearRect(0, 0, TW, TH);
+    bgDoc.layers.forEach((L, i) => { if (L.visible) g.drawImage(bgLayers[i].canvas, 0, 0); });
+  }
+  return bgComp;
+}
 function bgPersist() {
   if (!bgDoc) return;
   try {
-    const url = ed.toDataURL("image/png");
-    bgDoc.layers[bgDoc.active].png = url;
+    bgLayers[bgDoc.active].png = null;   // the stroke landed here; other layers keep their cached PNGs
+    bgDoc.layers.forEach((L, i) => { if (!bgLayers[i].png) bgLayers[i].png = bgLayers[i].canvas.toDataURL("image/png"); L.png = bgLayers[i].png; });
     bgDoc.w = TW; bgDoc.h = TH;
     localStorage.setItem(BG_KEYS.doc, JSON.stringify(bgDoc));
-    localStorage.setItem(BG_KEYS.flat, url);   // single layer: flat == layer 1 (composite arrives with the layer panel)
+    localStorage.setItem(BG_KEYS.flat, bgComposite().toDataURL("image/png"));
   } catch (e) {}
 }
-function bgSetDims(w, h) {   // (re)allocate the artboard at w×h, keeping existing art top-left
-  const old = ed;
-  const c = document.createElement("canvas"); c.width = w; c.height = h;
-  const g = c.getContext("2d", { willReadFrequently: true }); g.imageSmoothingEnabled = false;
-  if (old) g.drawImage(old, 0, 0);
-  ed = c; edCtx = g; TW = w; TH = h; WORLD.ed.w = w; WORLD.ed.h = h;
+function bgSelectLayer(i, quiet) {   // point the shared editor at layer i
+  i = Math.max(0, Math.min(bgDoc.layers.length - 1, i));
+  bgDoc.active = i;
+  ed = bgLayers[i].canvas; edCtx = bgLayers[i].ctx;
+  if (!quiet) { bgRenderLayerList(); refreshFileSwatches(); drawGrid(); }
+}
+function bgSetDims(w, h) {   // (re)allocate every layer at w×h, keeping existing art top-left
+  bgLayers = bgDoc.layers.map((L, i) => {
+    const nl = bgMakeCanvas(w, h);
+    if (bgLayers[i]) nl.ctx.drawImage(bgLayers[i].canvas, 0, 0);
+    return nl;
+  });
+  TW = w; TH = h; WORLD.ed.w = w; WORLD.ed.h = h;
+  bgSelectLayer(bgDoc.active, true);
   undoStack = []; redoStack = []; actionLog = []; redoLog = [];   // snapshots carry the old dims
   $("bgLabel").textContent = "BACKGROUND \u00b7 " + w + " \u00d7 " + h;
 }
+/* ---- structural undo: whole-stack snapshots around add/delete/move/merge ---- */
+function bgStructState() {
+  return { struct: true, w: TW, h: TH, active: bgDoc.active,
+    layers: bgDoc.layers.map((L, i) => ({ id: L.id, name: L.name, visible: L.visible, locked: L.locked, img: bgLayers[i].ctx.getImageData(0, 0, TW, TH) })) };
+}
+function bgRestoreStruct(st) {
+  if (float) floatFlatten();
+  bgDoc.layers = st.layers.map((L) => ({ id: L.id, name: L.name, visible: L.visible, locked: L.locked, png: null }));
+  bgLayers = st.layers.map((L) => { const nl = bgMakeCanvas(st.w, st.h); nl.ctx.putImageData(L.img, 0, 0); return nl; });
+  TW = st.w; TH = st.h; WORLD.ed.w = TW; WORLD.ed.h = TH;
+  bgDoc.active = st.active;
+  bgSelectLayer(st.active, true);
+}
+function bgStructSnapshot() { undoStack.push(bgStructState()); if (undoStack.length > UNDO_CAP) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
+function bgUndoApply(from, to) {   // pop one entry from `from`, push its inverse onto `to`
+  const ent = from.pop();
+  if (ent.struct) { to.push(bgStructState()); bgRestoreStruct(ent); }
+  else {
+    if (ent.bgLayer !== undefined && ent.bgLayer !== bgDoc.active && bgDoc.layers[ent.bgLayer]) bgSelectLayer(ent.bgLayer, true);
+    const cur = edCtx.getImageData(0, 0, TW, TH); cur.bgLayer = bgDoc.active; to.push(cur);
+    edCtx.putImageData(ent, 0, 0);
+  }
+  templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList();
+}
+function bgAfterStruct(msg) { templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList(); if (msg) status(msg); }
+function bgNewLayerId() { let n = 1; const ids = new Set(bgDoc.layers.map((L) => L.id)); while (ids.has("L" + n)) n++; return "L" + n; }
+function bgNextName() { let n = bgDoc.layers.length + 1; const names = new Set(bgDoc.layers.map((L) => L.name)); while (names.has("Layer " + n)) n++; return "Layer " + n; }
+function bgAddLayer(png, name) {   // above the selected layer; optional PNG art
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const at = bgDoc.active + 1;
+  bgDoc.layers.splice(at, 0, { id: bgNewLayerId(), name: name || bgNextName(), visible: true, locked: false, png: null });
+  bgLayers.splice(at, 0, bgMakeCanvas(TW, TH));
+  bgSelectLayer(at, true);
+  if (png) { const img = new Image(); img.onload = () => { edCtx.drawImage(img, 0, 0); bgAfterStruct("Added \u201c" + bgDoc.layers[at].name + "\u201d."); }; img.src = png; }
+  else bgAfterStruct("Added \u201c" + bgDoc.layers[at].name + "\u201d.");
+}
+function bgDeleteLayer() {
+  if (bgDoc.layers.length < 2) { status("A background needs at least one layer."); return; }
+  if (float) floatFlatten();
+  const L = bgDoc.layers[bgDoc.active];
+  bgStructSnapshot();
+  bgDoc.layers.splice(bgDoc.active, 1); bgLayers.splice(bgDoc.active, 1);
+  bgSelectLayer(Math.min(bgDoc.active, bgDoc.layers.length - 1), true);
+  bgAfterStruct("Deleted \u201c" + L.name + "\u201d \u2014 undo to restore.");
+}
+function bgDuplicateLayer() {
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const src = bgDoc.layers[bgDoc.active], at = bgDoc.active + 1;
+  bgDoc.layers.splice(at, 0, { id: bgNewLayerId(), name: src.name + " copy", visible: src.visible, locked: false, png: null });
+  const nl = bgMakeCanvas(TW, TH); nl.ctx.drawImage(bgLayers[bgDoc.active].canvas, 0, 0);
+  bgLayers.splice(at, 0, nl);
+  bgSelectLayer(at, true);
+  bgAfterStruct("Duplicated \u201c" + src.name + "\u201d.");
+}
+function bgMoveLayer(dir) {   // +1 = up (toward the top of the stack), -1 = down
+  const i = bgDoc.active, j = i + dir;
+  if (j < 0 || j >= bgDoc.layers.length) { status(dir > 0 ? "Already the top layer." : "Already the bottom layer."); return; }
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  [bgDoc.layers[i], bgDoc.layers[j]] = [bgDoc.layers[j], bgDoc.layers[i]];
+  [bgLayers[i], bgLayers[j]] = [bgLayers[j], bgLayers[i]];
+  bgSelectLayer(j, true);
+  bgAfterStruct();
+}
+function bgMergeDown() {
+  const i = bgDoc.active;
+  if (i === 0) { status("Nothing below to merge into."); return; }
+  if (bgDoc.layers[i - 1].locked) { status("The layer below is locked."); return; }
+  if (float) floatFlatten();
+  bgStructSnapshot();
+  const below = bgLayers[i - 1];
+  if (bgDoc.layers[i].visible) below.ctx.drawImage(bgLayers[i].canvas, 0, 0);
+  below.png = null;
+  const name = bgDoc.layers[i].name;
+  bgDoc.layers.splice(i, 1); bgLayers.splice(i, 1);
+  bgSelectLayer(i - 1, true);
+  bgAfterStruct("Merged \u201c" + name + "\u201d down.");
+}
+function bgRenameLayer() {
+  const L = bgDoc.layers[bgDoc.active];
+  const name = (prompt("Layer name:", L.name) || "").trim();
+  if (!name || name === L.name) return;
+  L.name = name; persistPng(); bgRenderLayerList();
+}
+function bgToggleVisible(i) { bgDoc.layers[i].visible = !bgDoc.layers[i].visible; templateChanged(); persistPng(); bgRenderLayerList(); }
+function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); }
+/* ---- the panel ---- */
+function bgRenderLayerList() {
+  const host = $("layerList"); if (!host || !bgDoc) return;
+  host.innerHTML = "";
+  const svg = (k) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS[k] + '</svg>';
+  for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
+    const L = bgDoc.layers[i];
+    const row = document.createElement("div");
+    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (L.visible ? "" : " hidden");
+    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = 56; th.height = 32;
+    const g = th.getContext("2d"); g.imageSmoothingEnabled = false;
+    const sc = Math.min(56 / TW, 32 / TH), dw = Math.max(1, Math.round(TW * sc)), dh = Math.max(1, Math.round(TH * sc));
+    g.drawImage(bgLayers[i].canvas, Math.floor((56 - dw) / 2), Math.floor((32 - dh) / 2), dw, dh);
+    const nm = document.createElement("span"); nm.className = "lyName"; nm.textContent = L.name;
+    const lk = document.createElement("button"); lk.className = "lyBtn" + (L.locked ? " on" : ""); lk.innerHTML = svg(L.locked ? "lock" : "unlock"); lk.title = L.locked ? "Locked \u2014 tap to unlock" : "Unlocked \u2014 tap to lock";
+    lk.addEventListener("click", (e) => { e.stopPropagation(); bgToggleLocked(i); });
+    const vs = document.createElement("button"); vs.className = "lyBtn" + (L.visible ? " on" : ""); vs.innerHTML = svg("eye"); vs.title = L.visible ? "Visible \u2014 tap to hide" : "Hidden \u2014 tap to show";
+    vs.addEventListener("click", (e) => { e.stopPropagation(); bgToggleVisible(i); });
+    row.appendChild(th); row.appendChild(nm); row.appendChild(lk); row.appendChild(vs);
+    row.addEventListener("click", () => { if (i !== bgDoc.active) { if (float) floatFlatten(); bgSelectLayer(i); } });
+    row.addEventListener("dblclick", () => { bgSelectLayer(i, true); bgRenameLayer(); });
+    host.appendChild(row);
+  }
+}
+function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display = "none"; $("btnLayers").classList.remove("on"); } }
+$("btnLayers").addEventListener("click", () => {
+  const m = $("layerMenu");
+  if (m.style.display === "flex") { closeLayerMenu(); return; }
+  closeColorMenu(); closeBrushMenu(); closeOptMenu();
+  bgRenderLayerList();
+  m.style.top = ($("btnLayers").getBoundingClientRect().bottom + 8) + "px";
+  m.style.display = "flex";
+  $("btnLayers").classList.add("on");
+});
+document.addEventListener("pointerdown", (e) => {   // outside tap closes AND proceeds, like the color flyout
+  const m = $("layerMenu");
+  if (m.style.display !== "flex") return;
+  if (m.contains(e.target) || $("btnLayers").contains(e.target)) return;
+  closeLayerMenu();
+}, true);
+$("lyAdd").addEventListener("click", () => bgAddLayer(null));
+$("lyUp").addEventListener("click", () => bgMoveLayer(1));
+$("lyDown").addEventListener("click", () => bgMoveLayer(-1));
+$("lyDup").addEventListener("click", bgDuplicateLayer);
+$("lyMerge").addEventListener("click", bgMergeDown);
+$("lyRename").addEventListener("click", bgRenameLayer);
+$("lyDel").addEventListener("click", bgDeleteLayer);
+$("lyExport").addEventListener("click", () => { if (float) floatFlatten(); const L = bgDoc.layers[bgDoc.active]; sharePng(ed.toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + "." + L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png"); });
 function bgResize(w, h) {
   if (float) floatFlatten();
   selClear();
@@ -5143,17 +5355,19 @@ function bgResize(w, h) {
   bgPersist(); edGen++; fitView("ed"); refreshFileSwatches();
   status("Canvas is now " + w + " \u00d7 " + h + " px (art kept top-left).");
 }
-function bgImportPng(src, name) {   // base pass: replaces the single layer, adopting the image's size
+function bgImportPng(src, name) {   // v6.63: the PNG becomes a new layer above the selected one
   if (float) floatFlatten();
   const img = new Image();
   img.onload = () => {
     selClear();
-    if (img.width !== TW || img.height !== TH) bgSetDims(img.width, img.height);
-    else { undoStack = []; redoStack = []; actionLog = []; redoLog = []; }
-    edCtx.clearRect(0, 0, TW, TH);
-    edCtx.drawImage(img, 0, 0);
-    bgPersist(); edGen++; fitView("ed"); refreshFileSwatches();
-    status("Loaded " + name + " (" + img.width + " \u00d7 " + img.height + ").");
+    let grew = "";
+    if (img.width > TW || img.height > TH) {   // grow the canvas so nothing is clipped (never shrinks)
+      const w = Math.max(TW, img.width), h = Math.max(TH, img.height);
+      bgSetDims(w, h); grew = " Canvas grew to " + w + " \u00d7 " + h + ".";
+      fitView("ed");
+    }
+    bgAddLayer(src, (name || "Imported").replace(/\.png$/i, ""));
+    status("Loaded " + name + " as a new layer (" + img.width + " \u00d7 " + img.height + ")." + grew);
   };
   img.onerror = () => status("Couldn't decode that PNG.");
   img.src = src;
@@ -5167,25 +5381,34 @@ function bgBoot() {
     document.querySelectorAll(sel).forEach((el) => { el.style.display = "none"; });
   $("bgLabel").style.display = "";
   { const b = $("btnResetArt"); if (b.lastChild && b.lastChild.nodeType === 3) b.lastChild.textContent = "Clear"; }   // keep the injected icon
-  $("btnResetArt").title = "Clear the canvas to transparent (asks first; undoable)";
+  $("btnResetArt").title = "Clear the selected layer to transparent (asks first; undoable)";
   $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
-  $("btnLoad").title = "Import a PNG — replaces the canvas and adopts the image size (layer import arrives with the layer panel)";
+  $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
+  $("btnLayers").style.display = "";
   $("btnSave").title = "Export the flattened background PNG";
   $("btnProjects").title = "Projects — tilesets and backgrounds; opening this gallery or switching auto-saves the open one";
   $("btnCellGrid").title = "16px tile grid over the canvas";
   document.querySelector('.tool[data-tool="fill"]').title = "Fill — flood the contiguous region (G)";
   projGet(activeProjectId).then((rec) => { if (rec && rec.name) BG_CT.filename = projSlug(rec) + ".png"; }).catch(() => {});
-  const L = bgDoc.layers[bgDoc.active] || bgDoc.layers[0];
-  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); status("Background \u2014 " + TW + " \u00d7 " + TH + " px."); };
-  if (L && L.png) { const img = new Image(); img.onload = () => { edCtx.drawImage(img, 0, 0); finish(); }; img.onerror = finish; img.src = L.png; }
-  else finish();
+  // decode every layer's PNG into its canvas, then show the stack
+  let pending = 0;
+  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); status("Background \u2014 " + TW + " \u00d7 " + TH + " px, " + bgDoc.layers.length + " layer" + (bgDoc.layers.length > 1 ? "s" : "") + "."); };
+  bgDoc.layers.forEach((L, i) => {
+    if (!L.png) return;
+    pending++;
+    const img = new Image();
+    img.onload = () => { bgLayers[i].ctx.drawImage(img, 0, 0); bgLayers[i].png = L.png; if (--pending === 0) finish(); };
+    img.onerror = () => { if (--pending === 0) finish(); };
+    img.src = L.png;
+  });
+  if (!pending) finish();
   fitView("ed");
 }
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.62.0";
+const APP_VERSION = "6.63.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -5246,7 +5469,7 @@ function closeOptMenu() {
 $("btnOptions").addEventListener("click", () => {
   const b = $("optbar");
   if (b.style.display === "flex") { closeOptMenu(); return; }
-  closeColorMenu(); closeBrushMenu();
+  closeColorMenu(); closeBrushMenu(); closeLayerMenu();
   b.style.display = "flex"; sizeOverlay();
   $("btnOptions").classList.add("on");
 });
@@ -5279,7 +5502,7 @@ function closeBrushMenu() { $("brushMenu").style.display = "none"; $("btnBrush")
 $("btnBrush").addEventListener("click", () => {
   const m = $("brushMenu");
   if (m.style.display === "flex") { closeBrushMenu(); return; }
-  closeColorMenu(); closeOptMenu();
+  closeColorMenu(); closeOptMenu(); closeLayerMenu();
   $("brushSizeSlider").value = brushSize; $("brushSizeVal").textContent = brushSize;
   document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q.dataset.bshape === brushShape));
   m.style.top = ($("btnBrush").getBoundingClientRect().bottom + 8) + "px";   // vertical only — right edge is CSS-pinned to the screen margin
@@ -5311,7 +5534,7 @@ function closeColorMenu() { $("colorMenu").style.display = "none"; $("colorCurre
 $("colorCurrent").addEventListener("click", () => {
   const m = $("colorMenu");
   if (m.style.display === "flex") { closeColorMenu(); return; }
-  closeOptMenu(); closeBrushMenu();
+  closeOptMenu(); closeBrushMenu(); closeLayerMenu();
   refreshSwatches();   // file colors may have changed since last open
   m.style.top = ($("colorCurrent").getBoundingClientRect().bottom + 8) + "px";   // vertical only — right edge is CSS-pinned to the screen margin
   m.style.display = "flex";
