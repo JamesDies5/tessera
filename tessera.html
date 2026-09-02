@@ -45,6 +45,7 @@
   .bgo[data-bg="black"] { background: #000; }
   .bgo[data-bg="light"] { background: conic-gradient(#fff 25%, #cbcbcb 0 50%, #fff 0 75%, #cbcbcb 0); background-size: 12px 12px; }
   .bgo[data-bg="ink"] { background: #191919; }
+  .bgo[data-bg="void"] { background: #141414; box-shadow: inset 0 0 0 2px #f0d47a55; }
   .bgo[data-bg="coal"] { background: #0c0c0c; }
   #bgCurrent { margin-top: auto; }   /* pinned to the rail's bottom, clear of the tools */
   #bgMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 6px;
@@ -132,6 +133,25 @@
   .syncbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; color: #fff; padding: 0; }
   .syncbadge svg { width: 17px; height: 17px; }
+  /* Backgrounds (v6.62): project-type badge on cards, type filter pills, the
+     new-project dialog, and the header chip that replaces the format select. */
+  .ptype { position: absolute; left: 6px; top: 6px; font-size: 9px; letter-spacing: 1px; padding: 2px 6px; border-radius: 5px;
+    background: rgba(0,0,0,.55); color: #ddd; border: 1px solid #555; pointer-events: none; }
+  .ptype.bg { color: #f0d47a; border-color: #8a7a3a; }
+  #projFilter { display: flex; gap: 6px; }
+  #projFilter button { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 11px; cursor: pointer; }
+  #projFilter button.on { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+  #newDlg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 90; display: none; flex-direction: column; gap: 10px;
+    background: rgba(18,18,18,.98); border: 1px solid #454545; border-radius: 12px; padding: 12px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.5); width: 340px; max-width: 92vw; }
+  #newDlg .row { display: flex; align-items: center; gap: 8px; }
+  #newDlg .lbl { flex: 0 0 52px; }
+  #newDlg input[type=text], #newDlg input[type=number] { flex: 1; min-width: 0; background: #111; border: 1px solid #454545; border-radius: 8px; color: #eee; padding: 6px 8px; font: inherit; }
+  #newDlg input[type=number] { flex: 0 0 68px; text-align: center; }
+  #newDlg .seg { display: flex; gap: 6px; flex: 1; }
+  #newDlg .seg button { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--dim); border-radius: 8px; padding: 7px 6px; font: inherit; font-size: 11px; cursor: pointer; }
+  #newDlg .seg button.on { color: var(--accent); border-color: var(--accent); }
+  #newDlg select { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; height: 34px; padding: 0 8px; font: inherit; }
+  #bgLabel { font-size: 11px; letter-spacing: 1px; color: #f0d47a; padding: 0 6px; white-space: nowrap; }
   .syncbadge.fresh { background: #6f9e77; }
   .syncbadge.stale { background: #c9963f; }
   .syncbadge.fresh:active { background: #5c8664; }
@@ -173,6 +193,7 @@
     <option value="v3">5&times;5</option>
     <option value="v4">7&times;7</option>
   </select>
+  <span id="bgLabel" style="display:none" title="Background project — canvas size"></span>
   <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
@@ -195,7 +216,7 @@
   <!-- Color flyout: display-mapped palette; template stays grayscale truth -->
   <div id="colorMenu">
     <div class="cmRow"><span class="lbl">STOPS</span><span class="ctx" id="stopSwatches"></span></div>
-    <div class="cmRow" id="rowInFile"><span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span><button id="btnConvert" title="Snap every template pixel to its nearest stop gray (25, 52, 89, 139, 200, 255) — one undoable step; this row disappears once the file conforms">CONVERT</button></div>
+    <div class="cmRow" id="rowInFile"><span class="lbl">IN FILE</span><span class="ctx" id="fileSwatches"></span><button id="btnConvert" title="Snap every template pixel to its nearest lane gray — one undoable step; this row disappears once the file conforms">CONVERT</button></div>
     <div class="cmRow"><span class="lbl">PALETTE</span><select class="pal" id="palSelect" title="Zone palette — the same gradient map the game uses, shown app-wide; the template stays grayscale underneath"></select></div>
   </div></span>
   <input type="file" id="fileTpl" accept="image/png" hidden>
@@ -249,6 +270,7 @@
 <div id="bgMenu">
   <button class="bgo" data-bg="light" title="Classic light checkerboard"></button>
   <button class="bgo" data-bg="dark" title="Dark checkerboard"></button>
+  <button class="bgo" data-bg="void" title="Game void — the level's clear color, the zone's darkest key exactly (what a painted 20 renders as)"></button>
   <button class="bgo" data-bg="ink" title="Palette darkest — #191919"></button>
   <button class="bgo" data-bg="coal" title="5% black — #0C0C0C"></button>
   <button class="bgo" data-bg="black" title="Solid black"></button>
@@ -266,8 +288,16 @@
   <div id="projHead">
     <h2>Projects</h2>
     <span class="spacer"></span>
+    <div id="projFilter">
+      <button class="on" data-pf="all">All</button>
+      <button data-pf="tiles">Tilesets</button>
+      <button data-pf="bg">Backgrounds</button>
+    </div>
+    <span class="spacer"></span>
     <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
-    <button class="optline" id="btnProjNew" title="Create a new, blank project (name required)"><span data-icon="sqplus"></span>New</button>
+    <button class="optline" id="btnProjImport" title="Start a project from an existing PNG — you choose whether it becomes a tileset or a background"><span data-icon="sqplus"></span>Import PNG</button>
+    <button class="optline" id="btnProjNew" title="Create a new, blank project — tileset or background"><span data-icon="sqplus"></span>New</button>
+    <input type="file" id="fileProj" accept="image/png" hidden>
     <button class="optline" id="btnProjClose" title="Back to the open project"><span data-icon="sqx"></span>Close</button>
   </div>
   <!-- GitHub sync (v6.40): the token is stored ONLY in device localStorage
@@ -281,6 +311,27 @@
     <div id="ghRemoteList"></div>
   </div>
   <div id="projGrid"></div>
+  <!-- New / Import dialog (v6.62): name + type; backgrounds also pick a size -->
+  <div id="newDlg">
+    <div id="newDlgTitle" style="font-size:12px;color:#9a9a9a">New project</div>
+    <div class="row"><span class="lbl">NAME</span><input type="text" id="newName" autocomplete="off" placeholder="Project name"></div>
+    <div class="row"><span class="lbl">TYPE</span><div class="seg"><button data-nt="tiles" class="on">Tileset</button><button data-nt="bg">Background</button></div></div>
+    <div class="row" id="newSizeRow" style="display:none"><span class="lbl">SIZE</span>
+      <select id="newSizePreset">
+        <option value="480x270">480 × 270 — one screen</option>
+        <option value="240x270">240 × 270 — half width</option>
+        <option value="480x135">480 × 135 — half height</option>
+        <option value="240x135">240 × 135 — quarter</option>
+        <option value="custom">Custom…</option>
+      </select>
+    </div>
+    <div class="row" id="newCustomRow" style="display:none"><span class="lbl"></span><input type="number" id="newW" min="16" max="4096" value="480"><span class="lbl" style="flex:0 0 auto">×</span><input type="number" id="newH" min="16" max="4096" value="270"><span class="lbl" style="flex:0 0 auto">px</span></div>
+    <div id="newDlgNote" style="font-size:11px;color:#8fb996;display:none"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="ibtn" id="newCancel" style="font-size:12px;padding:0 10px;width:auto">Cancel</button>
+      <button class="ibtn" id="newCreate" style="font-size:12px;padding:0 10px;width:auto">Create</button>
+    </div>
+  </div>
 </div>
 
 <div id="stage">
@@ -1783,11 +1834,22 @@ const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tesser
    the current bundle out, loads the target bundle into the live keys,
    and reloads so every subsystem boots from them. Device preferences
    (pen, finger, bg, brush, palettes) never travel with a project. */
+/* Backgrounds (v6.62): a second project type. Its state lives in two keys —
+   the layered document and a flattened PNG (thumbnails, GitHub, export) —
+   plus tessera.projType, which tells boot which mode to come up in. All
+   three travel inside the same key bundle, so save/switch/push/pull need
+   no special cases beyond artifact building. */
+const BG_KEYS = { doc: "tessera.bg.doc", flat: "tessera.bg.flat" };
+const PROJ_TYPE_KEY = "tessera.projType";
 const PROJECT_KEYS = [
   LS.contract, LS.size, LS.fills, LS.slopes, LS.decor,
   "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars", "tessera.palsel",
   ...Object.keys(CONTRACTS).map((id) => CONTRACTS[id].lsKey),
+  PROJ_TYPE_KEY, BG_KEYS.doc, BG_KEYS.flat,
 ];
+const APP_MODE = (() => { try { return localStorage.getItem(PROJ_TYPE_KEY) === "bg" ? "bg" : "tiles"; } catch (e) { return "tiles"; } })();
+const projType = (rec) => (rec && (rec.type === "bg" || (rec.keys && rec.keys[PROJ_TYPE_KEY] === "bg"))) ? "bg" : "tiles";
+const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const PROJ_ACTIVE = "tessera.activeProject";
 
 function projDB() {
@@ -1839,6 +1901,7 @@ function projLoadKeys(rec) {
       else localStorage.removeItem(k);
     } catch (e) {}
   }
+  try { localStorage.setItem(PROJ_TYPE_KEY, projType(rec)); } catch (e) {}   // the record's type wins over a stale key
   try { localStorage.setItem(PROJ_ACTIVE, rec.id); } catch (e) {}
 }
 function projSwitch(rec) { saveActiveProject().then(() => { projLoadKeys(rec); location.reload(); }); }
@@ -1859,6 +1922,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("pagehide", () => { saveActiveProject(); });
 
 function projThumbSrc(rec) {
+  if (projType(rec) === "bg") return (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
   const cid = (rec.keys && rec.keys[LS.contract]) || "v1";
   const ct = CONTRACTS[cid] || CONTRACTS.v1;
   return (rec.keys && (rec.keys[ct.lsKey] || rec.keys["tessera.png"] || rec.keys["tessera.png4x4"] || rec.keys["tessera.png5x5"])) || DEFAULT_PNGS[cid] || DEFAULT_PNGS.v1;
@@ -1893,17 +1957,27 @@ function projTintThumb(img, rec) {
   };
   src.src = img.src;
 }
+let projFilter = "all";
+document.querySelectorAll("#projFilter button").forEach((b) => b.addEventListener("click", () => {
+  projFilter = b.dataset.pf;
+  document.querySelectorAll("#projFilter button").forEach((q) => q.classList.toggle("on", q === b));
+  projRenderGallery();
+}));
 function projRenderGallery() {
   projList().then((all) => {
     all.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
     const grid = $("projGrid"); grid.innerHTML = "";
     for (const rec of all) {
+      const ptype = projType(rec);
+      if (projFilter !== "all" && ptype !== projFilter) continue;
       const card = document.createElement("div");
       card.className = "projCard" + (rec.id === activeProjectId ? " active" : "");
       card.dataset.pid = rec.id;
       const th = document.createElement("div"); th.className = "thumb";
       const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
       projTintThumb(img, rec);
+      const tag = document.createElement("span"); tag.className = "ptype " + ptype;
+      tag.textContent = ptype === "bg" ? "BACKGROUND" : "TILESET"; th.appendChild(tag);
       const meta = document.createElement("div"); meta.className = "meta";
       const nm = document.createElement("div"); nm.className = "pname";
       nm.textContent = rec.name + (rec.id === activeProjectId ? "  \u2022  open" : "");
@@ -1955,10 +2029,84 @@ $("btnProjects").addEventListener("click", () => {
   saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); });
 });
 $("btnProjClose").addEventListener("click", () => $("projOverlay").classList.remove("show"));
-$("btnProjNew").addEventListener("click", () => {
-  const name = (prompt("New project name:") || "").trim();
+/* New / Import dialog (v6.62). Tileset records are created exactly as
+   before (empty key bundle → shipped sheet on boot). Background records
+   carry a fresh layered document at the chosen size. Import hands the
+   decoded PNG to whichever type is picked. */
+let newDlgImg = null;   // { dataURL, w, h, name } while importing
+function bgNewDoc(w, h, png) {
+  return { tessera_bg: 1, w, h, active: 0, layers: [{ id: "L1", name: "Layer 1", visible: true, locked: false, png: png || null }] };
+}
+function newDlgType() { return document.querySelector("#newDlg .seg button.on").dataset.nt; }
+function newDlgSyncRows() {
+  const isBg = newDlgType() === "bg", importing = !!newDlgImg;
+  $("newSizeRow").style.display = isBg && !importing ? "flex" : "none";
+  $("newCustomRow").style.display = isBg && !importing && $("newSizePreset").value === "custom" ? "flex" : "none";
+  const note = $("newDlgNote");
+  if (importing) {
+    const cid = tilesetContractForDims(newDlgImg.w, newDlgImg.h);
+    note.textContent = isBg
+      ? `Background canvas will be ${newDlgImg.w} × ${newDlgImg.h} px, the image as Layer 1.`
+      : (cid ? `Sheet matches the ${CONTRACTS[cid].label} format.` : `Sheet is ${newDlgImg.w} × ${newDlgImg.h} — no format matches; it opens as 3×3, drawn top-left.`);
+    note.style.display = "";
+  } else note.style.display = "none";
+}
+function tilesetContractForDims(w, h) {
+  const m = Object.values(CONTRACTS).filter((ct) => w === TILE * ct.TCOLS && h === TILE * ct.TROWS);
+  return m.length ? m[0].id : null;
+}
+function openNewDlg(img) {
+  newDlgImg = img || null;
+  $("newDlgTitle").textContent = img ? "Import PNG as…" : "New project";
+  $("newName").value = img ? (img.name || "").replace(/\.png$/i, "") : "";
+  $("newCreate").textContent = img ? "Import" : "Create";
+  newDlgSyncRows();
+  $("newDlg").style.display = "flex";
+  setTimeout(() => $("newName").focus(), 0);
+}
+function closeNewDlg() { $("newDlg").style.display = "none"; newDlgImg = null; }
+document.querySelectorAll("#newDlg .seg button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q === b));
+  newDlgSyncRows();
+}));
+$("newSizePreset").addEventListener("change", newDlgSyncRows);
+$("newCancel").addEventListener("click", closeNewDlg);
+$("btnProjNew").addEventListener("click", () => openNewDlg(null));
+$("btnProjImport").addEventListener("click", () => $("fileProj").click());
+$("fileProj").addEventListener("change", (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => openNewDlg({ dataURL: rd.result, w: im.width, h: im.height, name: f.name });
+    im.onerror = () => status("Couldn't decode that PNG.");
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+});
+$("newCreate").addEventListener("click", () => {
+  const name = ($("newName").value || "").trim();
   if (!name) { status("A project needs a name \u2014 nothing created."); return; }
+  const type = newDlgType(), img = newDlgImg;
   const rec = projNewRecord(name);
+  rec.type = type;
+  rec.keys[PROJ_TYPE_KEY] = type;
+  if (type === "bg") {
+    let w = 480, h = 270;
+    if (img) { w = img.w; h = img.h; }
+    else {
+      const pv2 = $("newSizePreset").value;
+      if (pv2 === "custom") { w = Math.max(16, Math.min(4096, parseInt($("newW").value, 10) || 480)); h = Math.max(16, Math.min(4096, parseInt($("newH").value, 10) || 270)); }
+      else { const [a, b] = pv2.split("x").map(Number); w = a; h = b; }
+    }
+    rec.keys[BG_KEYS.doc] = JSON.stringify(bgNewDoc(w, h, img ? img.dataURL : null));
+    if (img) rec.keys[BG_KEYS.flat] = img.dataURL;
+  } else if (img) {
+    const cid = tilesetContractForDims(img.w, img.h) || "v1";
+    rec.keys[LS.contract] = cid;
+    rec.keys[CONTRACTS[cid].lsKey] = img.dataURL;
+  }
+  closeNewDlg();
   saveActiveProject().then(() => projPut(rec)).then(() => { projLoadKeys(rec); location.reload(); })
     .catch(() => status("Couldn't create the project."));
 });
@@ -2079,6 +2227,17 @@ function ghRulesFromRecord(rec, cid, dims, hash) {
   };
 }
 function ghArtifactsFromRecord(rec, slug) {
+  if (projType(rec) === "bg") {   // v6.62: project.json + flat PNG (+ one PNG per layer once there are several); no rules file
+    const doc = ghRecJSON(rec, BG_KEYS.doc);
+    const flat = (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
+    const files = [
+      { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, type: "bg", app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
+      { name: slug + ".png", b64: flat.split(",")[1] },
+    ];
+    const layers = (doc && doc.layers) || [];
+    if (layers.length > 1) layers.forEach((L, i) => files.push({ name: slug + ".layer" + (i + 1) + ".png", b64: (L.png || BLANK_PNG).split(",")[1] }));
+    return Promise.resolve(files);
+  }
   const cid = ghRecContractId(rec);
   const dims = ghRecSheetDims(rec, cid);
   const png = ghRecPngDataURL(rec, cid);
@@ -2095,7 +2254,11 @@ function ghPushProject(rec) {
   /* Open project: refresh the record's canvas key from the live artboard so
      the pushed PNG (and its hash) is byte-exact with the screen. */
   if (rec.id === activeProjectId) {
-    try { rec.keys = rec.keys || {}; rec.keys[CT.lsKey] = ed.toDataURL("image/png"); } catch (e) {}
+    try {
+      rec.keys = rec.keys || {};
+      if (APP_MODE === "bg") { bgPersist(); rec.keys[BG_KEYS.doc] = localStorage.getItem(BG_KEYS.doc); rec.keys[BG_KEYS.flat] = localStorage.getItem(BG_KEYS.flat); }
+      else rec.keys[CT.lsKey] = ed.toDataURL("image/png");
+    } catch (e) {}
   }
   projPushUI(rec.id, 0.05, "Building artifacts…");
   ghArtifactsFromRecord(rec, slug)
@@ -2121,7 +2284,7 @@ function ghPushFiles(rec, base, files) {
       projPut(rec).catch(() => {});                 // persist slug + push fingerprint
       const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
       if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
-      projPushUI(rec.id, 1, "Pushed ✓ project + PNG + rules", "ok");
+      projPushUI(rec.id, 1, projType(rec) === "bg" ? "Pushed ✓ project + PNG" : "Pushed ✓ project + PNG + rules", "ok");
       status("Pushed “" + rec.name + "” to GitHub.");
     })
     .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
@@ -2137,6 +2300,7 @@ function ghPullProject(slug, legacy) {
       return projGet(data.id).then((local) => {
         if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
         const rec = { id: data.id, name: data.name || slug, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: slug };
+        rec.type = data.type === "bg" || (rec.keys[PROJ_TYPE_KEY] === "bg") ? "bg" : "tiles";
         return projPut(rec).then(() => rec);
       });
     })
@@ -2285,7 +2449,7 @@ function maskRemapFor(m) {
 let userSlopes = (() => { try { return JSON.parse(localStorage.getItem(LS.slopes)) || []; } catch (e) { return []; } })();
 function persistUserSlopes() { try { localStorage.setItem(LS.slopes, JSON.stringify(userSlopes)); } catch (e) {} }
 const cellName = (ax, ay) => String.fromCharCode(65 + ax) + (ay + 1);
-let color = { r: 25, g: 25, b: 25, a: 255 };   // stop 0 (tile lane); 20 is background-only per palette_canon.md
+let color = APP_MODE === "bg" ? { r: 52, g: 52, b: 52, a: 255 } : { r: 25, g: 25, b: 25, a: 255 };   // tile lane starts at 25; backgrounds open on their body tone (20 is the void-match)
 let fills = null, cells = null, resolved = null;
 let undoStack = [], redoStack = [];
 /* ---- built-in palettes ----
@@ -2364,6 +2528,7 @@ const BG_STYLES = {
   dark: makeChecker("#232323", "#2c2c2c"),
   black: "#000000",
   light: makeChecker("#ffffff", "#cbcbcb"),
+  void: "#191919",  // v6.62: the zone's darkest KEY exactly — what level.gd clears to and what a painted 20 renders as
   ink: "#191919",   // palette darkest (maps through the active palette as the game void)
   coal: "#0c0c0c",  // 5% black — maps through the active palette like ink
 };
@@ -2374,6 +2539,7 @@ let bgMode = "dark";
    gets — so tiles sit against the true zone void in realtime. */
 function bgFill() {
   const pal = palettes[palIdx];
+  if (bgMode === "void" && pal.base) { const c = pal.base[0]; return "rgb(" + Math.round(c[0]*255) + "," + Math.round(c[1]*255) + "," + Math.round(c[2]*255) + ")"; }
   if ((bgMode === "ink" || bgMode === "coal") && pal.base) {
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
     const i = (bgMode === "ink" ? 25 : 12) * 3;   // #191919 -> l=25, #0C0C0C -> l=12
@@ -2664,7 +2830,12 @@ function syncGridButtons() {
    v6.61 (2026-09-02): 89 (mid-dark, 35%) added per palette_canon.md — a
    background-lane tone the game interpolates from the existing five
    shader keys (no new palette key). Stops renumber 0..5. */
-const STOP_GRAYS = [25, 52, 89, 139, 200, 255];
+const LANES = {   // v6.62: per project type (palette_canon.md "Layer lanes")
+  tiles: [25, 52, 89, 139, 200, 255],
+  bg:    [20, 52, 89, 139],
+};
+const LANE_NOTES = { 20: "void-match — renders exactly as the game void", 25: "darkest — renders just above the void", 52: "dark", 89: "mid-dark", 139: "medium", 200: "light", 255: "white — reserved for characters" };
+let STOP_GRAYS = LANES[APP_MODE];
 function displayColor(rgba) {
   const pal = palettes[palIdx];
   if (!pal.base) return `rgb(${rgba.r},${rgba.g},${rgba.b})`;
@@ -2689,10 +2860,7 @@ function buildStopSwatches() {
   const host = $("stopSwatches"); host.innerHTML = "";
   for (let i = STOP_GRAYS.length - 1; i >= 0; i--) {   // light -> dark, per James
     const g = STOP_GRAYS[i];
-    const last = STOP_GRAYS.length - 1;
-    const t = (i === last ? `stop ${i} — reserved for characters in your value hierarchy`
-      : g === 89 ? `stop ${i} — mid-dark, background lane`
-      : `stop ${i} — tile range`) + ` (paints gray ${g})`;
+    const t = `stop ${i} — ${LANE_NOTES[g] || "lane gray"} (paints gray ${g})`;
     host.appendChild(swatchBtn({ r: g, g: g, b: g, a: 255 }, i, t));
   }
 }
@@ -2715,7 +2883,8 @@ function refreshFileSwatches() {
 
 /* ---- undo ---- */
 let actionLog = [], redoLog = [], levelUndo = [], levelRedo = [];
-function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undoStack.length > 40) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
+const UNDO_CAP = APP_MODE === "bg" ? 24 : 40;   // a 480×270 snapshot is ~0.5 MB; keep iPad memory sane
+function snapshot() { undoStack.push(edCtx.getImageData(0, 0, TW, TH)); if (undoStack.length > UNDO_CAP) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function levelStateJSON() { return JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows, doors: roomDoors, spawn: roomSpawn }); }
 function levelSnapshot() { levelUndo.push(levelStateJSON()); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function applyLevelState(s) {
@@ -3550,7 +3719,32 @@ function lineTo(x0, y0, x1, y1) {
     if (e2 < dx) { err += dx; y0 += sy; }
   }
 }
+/* Backgrounds (v6.62): the fill is bounded by the whole canvas (and the
+   selection), not the 16px cell — same scanline-free stack walk as cellFill. */
+function canvasFill(x, y) {
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+  if (selMask && !selMask[y * TW + x]) { status("Fill starts inside the selection."); return; }
+  const img = edCtx.getImageData(0, 0, TW, TH), d = img.data;
+  const si = (y * TW + x) * 4;
+  const t = [d[si], d[si+1], d[si+2], d[si+3]];
+  const nc = tool === "eraser" ? [0,0,0,0] : [color.r, color.g, color.b, color.a];
+  if (t[0]===nc[0] && t[1]===nc[1] && t[2]===nc[2] && t[3]===nc[3]) return;
+  const stack = [x + y * TW];
+  while (stack.length) {
+    const idx = stack.pop(), px = idx % TW, py = (idx - px) / TW;
+    if (selMask && !selMask[idx]) continue;
+    const i = idx * 4;
+    if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
+    d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3];
+    if (px + 1 < TW) stack.push(idx + 1);
+    if (px > 0) stack.push(idx - 1);
+    if (py + 1 < TH) stack.push(idx + TW);
+    if (py > 0) stack.push(idx - TW);
+  }
+  edCtx.putImageData(img, 0, 0);
+}
 function cellFill(x, y) {
+  if (APP_MODE === "bg") return canvasFill(x, y);
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (selMask && !selMask[y * TW + x]) { status("Fill starts inside the selection."); return; }
   const cx = Math.floor(x / TILE) * TILE, cy = Math.floor(y / TILE) * TILE;
@@ -4673,6 +4867,13 @@ $("btnRulesReset").addEventListener("click", () => {
   status("Overrides cleared — " + CT.label + " is showing the app's baked rule set.");
 });
 $("btnResetArt").addEventListener("click", () => {
+  if (APP_MODE === "bg") {
+    if (!confirm("Clear the whole canvas to transparent? (Undoable.)")) return;
+    if (float) floatFlatten();
+    snapshot(); edCtx.clearRect(0, 0, TW, TH); templateChanged(); persistPng(); refreshFileSwatches();
+    status("Canvas cleared \u2014 undo to restore.");
+    return;
+  }
   if (!confirm(`Reset the ${CT.label} sheet to the shipped original? Your current drawing will be replaced.`)) return;
   loadPngIntoEditor(DEFAULT_PNGS[CT.id], "Sheet reset to the shipped original.");
 });
@@ -4869,7 +5070,9 @@ function loadPngIntoEditor(src, note, noSwitch) {
 $("btnLoad").addEventListener("click", () => $("fileTpl").click());
 $("fileTpl").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return;
-  const rd = new FileReader(); rd.onload = () => loadPngIntoEditor(rd.result, `Loaded ${f.name}.`); rd.readAsDataURL(f);
+  const rd = new FileReader();
+  rd.onload = () => { if (APP_MODE === "bg") bgImportPng(rd.result, f.name); else loadPngIntoEditor(rd.result, `Loaded ${f.name}.`); };
+  rd.readAsDataURL(f);
   e.target.value = "";
 });
 /* Export: on share-capable devices (iPad/iPhone) the native share sheet
@@ -4897,12 +5100,92 @@ $("btnSave").addEventListener("click", () => {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status(`Saved ${CT.filename}.`);
 });
-function persistPng() { try { localStorage.setItem(CT.lsKey, ed.toDataURL("image/png")); } catch (e) {} }
+function persistPng() {
+  if (APP_MODE === "bg") { bgPersist(); return; }
+  try { localStorage.setItem(CT.lsKey, ed.toDataURL("image/png")); } catch (e) {}
+}
+
+/* ==== BACKGROUNDS MODE (v6.62) ======================================
+   The editor tab IS a pixel editor; this mode points it at a background
+   document instead of a contract sheet. CT becomes a stub with only the
+   fields the shared editor path reads (id, label, lsKey, filename); the
+   rules/level/zoo machinery is never entered (rebuild is not called, the
+   Level/Zoo tabs are hidden, renderPreview is a no-op off the pv tab).
+   Document: { w, h, active, layers:[{ id, name, visible, locked, png }] }.
+   Base pass = one layer, `ed` is that layer's canvas. The layer panel,
+   tiled view, and symmetry build on this in later passes. */
+const BG_CT = { id: "bg", label: "Background", lsKey: BG_KEYS.flat, filename: "background.png" };
+let bgDoc = null;
+function bgReadDoc() { try { const d = JSON.parse(localStorage.getItem(BG_KEYS.doc)); return d && d.tessera_bg === 1 && d.layers && d.layers.length ? d : null; } catch (e) { return null; } }
+function bgPersist() {
+  if (!bgDoc) return;
+  try {
+    const url = ed.toDataURL("image/png");
+    bgDoc.layers[bgDoc.active].png = url;
+    bgDoc.w = TW; bgDoc.h = TH;
+    localStorage.setItem(BG_KEYS.doc, JSON.stringify(bgDoc));
+    localStorage.setItem(BG_KEYS.flat, url);   // single layer: flat == layer 1 (composite arrives with the layer panel)
+  } catch (e) {}
+}
+function bgSetDims(w, h) {   // (re)allocate the artboard at w×h, keeping existing art top-left
+  const old = ed;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.imageSmoothingEnabled = false;
+  if (old) g.drawImage(old, 0, 0);
+  ed = c; edCtx = g; TW = w; TH = h; WORLD.ed.w = w; WORLD.ed.h = h;
+  undoStack = []; redoStack = []; actionLog = []; redoLog = [];   // snapshots carry the old dims
+  $("bgLabel").textContent = "BACKGROUND \u00b7 " + w + " \u00d7 " + h;
+}
+function bgResize(w, h) {
+  if (float) floatFlatten();
+  selClear();
+  bgSetDims(w, h);
+  bgPersist(); edGen++; fitView("ed"); refreshFileSwatches();
+  status("Canvas is now " + w + " \u00d7 " + h + " px (art kept top-left).");
+}
+function bgImportPng(src, name) {   // base pass: replaces the single layer, adopting the image's size
+  if (float) floatFlatten();
+  const img = new Image();
+  img.onload = () => {
+    selClear();
+    if (img.width !== TW || img.height !== TH) bgSetDims(img.width, img.height);
+    else { undoStack = []; redoStack = []; actionLog = []; redoLog = []; }
+    edCtx.clearRect(0, 0, TW, TH);
+    edCtx.drawImage(img, 0, 0);
+    bgPersist(); edGen++; fitView("ed"); refreshFileSwatches();
+    status("Loaded " + name + " (" + img.width + " \u00d7 " + img.height + ").");
+  };
+  img.onerror = () => status("Couldn't decode that PNG.");
+  img.src = src;
+}
+function bgBoot() {
+  bgDoc = bgReadDoc() || bgNewDoc(480, 270, null);
+  CT = BG_CT;
+  bgSetDims(bgDoc.w || 480, bgDoc.h || 270);
+  // UI: the tileset-only surface goes away; a size chip replaces the format select
+  for (const sel of ['.tab', '#ctSelect', '.tool[data-tool="revise"]', '.tool[data-tool="vary"]', '#btnCoords', '#btnRoles'])
+    document.querySelectorAll(sel).forEach((el) => { el.style.display = "none"; });
+  $("bgLabel").style.display = "";
+  { const b = $("btnResetArt"); if (b.lastChild && b.lastChild.nodeType === 3) b.lastChild.textContent = "Clear"; }   // keep the injected icon
+  $("btnResetArt").title = "Clear the canvas to transparent (asks first; undoable)";
+  $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
+  $("btnLoad").title = "Import a PNG — replaces the canvas and adopts the image size (layer import arrives with the layer panel)";
+  $("btnSave").title = "Export the flattened background PNG";
+  $("btnProjects").title = "Projects — tilesets and backgrounds; opening this gallery or switching auto-saves the open one";
+  $("btnCellGrid").title = "16px tile grid over the canvas";
+  document.querySelector('.tool[data-tool="fill"]').title = "Fill — flood the contiguous region (G)";
+  projGet(activeProjectId).then((rec) => { if (rec && rec.name) BG_CT.filename = projSlug(rec) + ".png"; }).catch(() => {});
+  const L = bgDoc.layers[bgDoc.active] || bgDoc.layers[0];
+  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); status("Background \u2014 " + TW + " \u00d7 " + TH + " px."); };
+  if (L && L.png) { const img = new Image(); img.onload = () => { edCtx.drawImage(img, 0, 0); finish(); }; img.onerror = finish; img.src = L.png; }
+  else finish();
+  fitView("ed");
+}
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.61.0";
+const APP_VERSION = "6.62.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -4974,6 +5257,16 @@ $("btnReload").addEventListener("click", () => {
   location.replace(location.pathname + "?u=" + Date.now());   // unique query defeats the HTTP cache
 });
 $("btnCanvas").addEventListener("click", () => {
+  if (APP_MODE === "bg") {
+    const ans = (prompt("Canvas size in px (width \u00d7 height):", TW + " \u00d7 " + TH) || "").trim();
+    const m = ans.match(/^\s*(\d+)\s*[x\u00d7X*,\s]\s*(\d+)\s*$/);
+    if (!m) { if (ans) status("Couldn't read that size \u2014 use the form 480 \u00d7 270."); return; }
+    const w = Math.max(16, Math.min(4096, +m[1])), h = Math.max(16, Math.min(4096, +m[2]));
+    if (w === TW && h === TH) { status("Canvas is already " + w + " \u00d7 " + h + "."); return; }
+    if ((w < TW || h < TH) && !confirm("Shrinking from " + TW + " \u00d7 " + TH + " to " + w + " \u00d7 " + h + " crops art outside the new bounds. Continue?")) return;
+    bgResize(w, h);
+    return;
+  }
   if (activeTab !== "ed") setTab("ed");   // the sheet lives on the Template tab
   canvasMode = true;
   drawGrid();
@@ -5110,6 +5403,7 @@ $("btnConvert").addEventListener("click", () => {
     }
     if (changed) persistRoleRemaps();
   } catch (e) {}
+  if (APP_MODE === "bg") { bgBoot(); sizeOverlay(); fitView("ed"); return; }   // v6.62: background project — never enters the contract path
   let choice = "v1";   // 3x3 (the production ATLAS contract) unless a prior session chose otherwise
   try { const c = localStorage.getItem(LS.contract); if (c && CONTRACTS[c]) choice = c; } catch (e) {}
   setContract(choice);
