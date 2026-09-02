@@ -174,7 +174,6 @@
   .lyRow.stackTop { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 4px 0 -1px #505050, 0 8px 0 -2px #3e3e3e; }
   .lyRow.member { padding-left: 24px; }
   .lyRow.folder .lyName { color: #d8c98a; }
-  .lyRow.dropInto { box-shadow: inset 0 0 0 2px var(--accent); }
   .lyDisc svg { transition: transform .15s ease; }
   .lyDisc.closed svg { transform: rotate(-90deg); }
   .lyCount { flex: 0 0 auto; font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
@@ -5638,7 +5637,7 @@ function bgRenderLayerList() {
     const row = document.createElement("div");
     row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (bgMulti.has(L.id) ? " multi" : "") + (L.visible ? "" : " hidden") + (folder ? " folder" : "") + (F ? " member" : "");
     row.dataset.idx = i; if (folder) row.dataset.fid = L.id; if (F) row.dataset.folder = F.id;
-    const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = folder ? "Drag to move the whole group" : "Drag to reorder \u2014 into or out of a group";
+    const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = folder ? "Drag to move the whole group" : "Drag to reorder \u2014 into or out of an expanded group";
     const th = thumbOf(folder ? bgFolderComposite(L.id) : bgLayers[i].canvas);
     const nm = document.createElement("span"); nm.className = "lyName"; nm.textContent = L.name;
     row.appendChild(grip); row.appendChild(th); row.appendChild(nm);
@@ -5739,38 +5738,35 @@ function bgRenderLayerList() {
         if (before && center < rcC) shift = d.blockH;          // block passed upward over it -> it slides down
         else if (!before && center > rcC) shift = -d.blockH;   // block passed downward -> it slides up
         r.style.transform = shift ? "translateY(" + shift + "px)" : "";
-        r.classList.remove("dropInto");
       });
-      // the drop slot is the first free row the band center sits above, else below the last;
-      // hovering a collapsed folder header with a plain layer means "into" it
+      // the drop slot is the first free row the band center sits above, else below the last
+      // (v6.67.2: a collapsed group is a single opaque row — you can only land above or below it,
+      // never inside; expand the group to drop into it)
       for (let k = 0; k < d.rows.length; k++) {
         const r = d.rows[k]; if (d.block.includes(r) || d.members.includes(r)) continue;
         const rc = d.rects[k];
-        if (!d.movesFolder && r.dataset.fid && bgDoc.layers[+r.dataset.idx].collapsed && center > rc.top + rc.height * 0.25 && center < rc.top + rc.height * 0.75) { target = r; pos = "into"; break; }
         if (center < rc.top + rc.height / 2) { target = r; pos = "above"; break; }
         target = r; pos = "below";
       }
-      if (pos === "into") target.classList.add("dropInto");
       d.target = target; d.pos = pos;
       const hb = host.getBoundingClientRect();   // keep the list scrolling near its edges
       if (e.clientY < hb.top + 24) host.scrollTop -= 6; else if (e.clientY > hb.bottom - 24) host.scrollTop += 6;
     });
     const endDrag = () => {
       const d = lyDrag; if (!d) return; lyDrag = null;
-      d.rows.forEach((r) => { r.classList.remove("dragging", "stacked", "stackTop", "dropInto"); r.style.transform = ""; });
+      d.rows.forEach((r) => { r.classList.remove("dragging", "stacked", "stackTop"); r.style.transform = ""; });
       let moved = false;
       if (d.target) {
         const t = +d.target.dataset.idx, T = bgDoc.layers[t];
         const remaining = bgDoc.layers.map((_, k) => k).filter((k) => !d.idxs.includes(k));
         const tpos = remaining.indexOf(t);
-        let insertAt, fid = null;
-        if (d.pos === "into") { insertAt = tpos; fid = T.id; }                              // top of that folder's members (header stays above)
-        else {
-          insertAt = d.pos === "above" ? tpos + 1 : tpos;
-          if (!d.movesFolder) {
-            if (!isFolder(T) && T.folder) fid = T.folder;                                   // slot beside a member -> join its folder
-            else if (isFolder(T) && d.pos === "below") fid = T.id;                          // slot directly under a header -> its top member
-          }
+        let insertAt = d.pos === "above" ? tpos + 1 : tpos, fid = null;
+        if (isFolder(T) && T.collapsed && d.pos === "below") {   // under a collapsed group = under its hidden members, outside
+          const mem = bgMembersOf(T.id).map((m) => remaining.indexOf(m)).filter((k) => k >= 0);
+          if (mem.length) insertAt = Math.min(...mem);
+        } else if (!d.movesFolder) {
+          if (!isFolder(T) && T.folder) fid = T.folder;                                     // slot beside a member -> join its folder
+          else if (isFolder(T) && d.pos === "below") fid = T.id;                            // slot directly under an EXPANDED header -> its top member
         }
         moved = bgMoveGroupTo(d.idxs, insertAt, fid);
       }
@@ -5902,7 +5898,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.67.1";
+const APP_VERSION = "6.67.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
