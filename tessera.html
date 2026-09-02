@@ -4028,21 +4028,22 @@ let fingerHold = null;   // pen mode: one finger is hold-pick only; two fingers 
 let gesture = null;  // { t0, moved, maxN, tapOk } — quick still 2-finger tap = undo, 3 = redo
 let penSeen = false, fingerDraws = true;
 function penActive() { return [...pointers.values()].some((p) => p.type === "pen"); }
-/* Palm rejection (v6.66.2). Once the Pencil has been seen, a touch is a palm if:
-     1. it lands within PALM_MS of any pen contact or hover — the hand settling
-        between strokes is the classic accidental-undo trigger;
-     2. its contact patch is big — fingertips report a small radius, palms don't;
-     3. for the tap gestures only: the fingers didn't land together. A real
-        two-finger tap arrives within ~100 ms; a palm rolls on one point at a time.
-   A rejected touch is ignored outright: it never becomes a pointer, so it can
-   neither draw, pan, nor count toward a tap. */
-const PALM_MS = 600, PALM_SIZE = 34, TAP_SYNC_MS = 120;
+/* Palm rejection (v6.66.3). WebKit already drops every touch while the Pencil
+   is on the glass (pen and touch are mutually exclusive in Safari/WKWebView),
+   so the only palm that ever reaches us is the hand settling BETWEEN strokes.
+   Once the Pencil has been seen, a touch is a palm if it lands within PALM_MS
+   of the last pen CONTACT (down, contact-move, or lift — hover deliberately
+   does not count, or a hover-capable Pencil held in the gesturing hand would
+   block every finger). Tap gestures additionally require the fingers to land
+   together (TAP_SYNC_MS); a palm rolls on one point at a time.
+   v6.66.2's contact-size test is gone: iPadOS reports fingertips generously
+   and there is no reliable threshold. A rejected touch never becomes a
+   pointer, so it can neither draw, pan, nor count toward a tap. */
+const PALM_MS = 450, TAP_SYNC_MS = 120;
 let penLastT = -1e9;
 function palmTouch(e) {
-  if (fingerDraws) return false;                                        // finger-drawing mode: no pen, no palm
-  if (performance.now() - penLastT < PALM_MS) return true;              // pen was just here
-  if ((e.width > PALM_SIZE || e.height > PALM_SIZE) && e.width > 1) return true;   // big contact patch
-  return false;
+  if (fingerDraws) return false;                              // finger-drawing mode: no pen, no palm
+  return performance.now() - penLastT < PALM_MS;              // pen was just on the glass
 }
 function setFingerDraws(v, auto) {
   fingerDraws = v;
@@ -4433,7 +4434,7 @@ viewport.addEventListener("pointerdown", (e) => {
   }
 });
 viewport.addEventListener("pointermove", (e) => {
-  if (e.pointerType === "pen") penLastT = performance.now();   // contact or hover — either means the hand is on the glass
+  if (e.pointerType === "pen" && (e.buttons & 1)) penLastT = performance.now();   // contact only — hover does not count
   if (!pointers.has(e.pointerId)) {
     if (e.pointerType === "touch") return;   // fingers have no hover
     const p = vpPoint(e), v = view[activeTab];
@@ -5905,7 +5906,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.66.2";
+const APP_VERSION = "6.66.3";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
