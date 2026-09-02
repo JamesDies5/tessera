@@ -2707,14 +2707,12 @@ function blit() {
   sctx.drawImage(activeTab === "ed" ? edDisplay() : pv, 0, 0);
   if (activeTab === "ed" && float) sctx.drawImage(floatDisplay(), float.x, float.y);
 }
-/* v6.71.3: view changes are coalesced to one repaint per animation frame.
-   Pinch/pan pointermoves can arrive at 120 Hz per finger; repainting the
-   full-resolution screen canvas on each one starved the frame budget. */
-let viewRaf = false;
+/* v6.71.4: synchronous repaint on every view change (as it was through
+   v6.71.2). The rAF coalescing tried in v6.71.3 caps repaints at Safari's
+   60 Hz rAF rate on a 120 Hz iPad, which read as less smooth than painting
+   on each touch event; the per-event repaint is a single GPU drawImage. */
 function applyView(tab) {
-  if (tab !== activeTab || viewRaf) return;
-  viewRaf = true;
-  requestAnimationFrame(() => { viewRaf = false; blit(); drawGrid(); });
+  if (tab === activeTab) { blit(); drawGrid(); }
 }
 function fitView(tab) {
   const r = viewport.getBoundingClientRect(), w = WORLD[tab];
@@ -6109,7 +6107,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.71.3";
+const APP_VERSION = "6.71.4";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
