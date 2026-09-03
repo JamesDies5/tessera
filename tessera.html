@@ -500,8 +500,9 @@
     <span class="vsep"></span>
     <button id="btnDeselect" title="Clear the selection (and any in-progress polygon)">DESELECT</button>
     <span class="vsep"></span>
-    <button id="btnCopy" title="Copy the selected pixels to the clipboard (Cmd/Ctrl+C)">COPY</button>
-    <button id="btnPaste" title="Paste in place as a floating selection, ready to move (Cmd/Ctrl+V)">PASTE</button>
+    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard (Cmd/Ctrl+C)">COPY</button>
+    <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none">COPY ALL</button>
+    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)">PASTE</button>
   </div>
   <div class="selrow" id="selrowMove" style="display:none">
     <button class="optItem" id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span><span class="olbl">Flip H</span></button>
@@ -3989,7 +3990,7 @@ function floatXform(kind) {   // fh | fv | rot (90 CW); pixel-exact loops
    so their flatten takes one (a placed paste = one pixel-undo step) and
    undoing an unplaced paste vanishes it without touching pixel history. */
 let clip = null;
-function doCopy() {
+function doCopy(all) {   // v6.72.1: all === true copies the merged, visible image within the selection (background projects)
   if (activeTab !== "ed") { status("Copy works on the Template tab for now."); return; }
   if (float) {   // copying a float duplicates it on the next paste
     clip = { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y };
@@ -4004,7 +4005,7 @@ function doCopy() {
   const w = x1 - x0 + 1, h = y1 - y0 + 1;
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const g = cv.getContext("2d");
-  const reg = edCtx.getImageData(x0, y0, w, h);
+  const reg = (all === true && APP_MODE === "bg" ? bgComposite().getContext("2d") : edCtx).getImageData(x0, y0, w, h);
   const out = g.createImageData(w, h);
   const fm = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -4015,7 +4016,7 @@ function doCopy() {
   }
   g.putImageData(out, 0, 0);
   clip = { cv, mask: fm, w, h, x: x0, y: y0 };
-  status("Copied " + w + "\u00d7" + h + " px.");
+  status("Copied " + w + "\u00d7" + h + " px" + (all === true && APP_MODE === "bg" ? " from all visible layers." : "."));
 }
 function doPaste() {
   if (!clip) { status("Clipboard is empty \u2014 copy a selection first."); return; }
@@ -4773,7 +4774,8 @@ document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click",
   document.querySelectorAll(".selmode").forEach((q) => q.classList.toggle("on", q === b));
 }));
 $("btnDeselect").addEventListener("click", () => { selClear(); status("Selection cleared."); });
-$("btnCopy").addEventListener("click", doCopy);
+$("btnCopy").addEventListener("click", () => doCopy(false));
+$("btnCopyAll").addEventListener("click", () => doCopy(true));
 $("btnPaste").addEventListener("click", doPaste);
 $("btnFlipH").addEventListener("click", () => floatXform("fh"));
 $("btnFlipV").addEventListener("click", () => floatXform("fv"));
@@ -6098,7 +6100,7 @@ function bgBoot() {
   $("btnResetArt").style.display = "none"; $("optSep1").style.display = "none";   // v6.71.1: redundant here — the layer options popover has Clear
   $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
   $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
-  $("btnLayers").style.display = "";
+  $("btnLayers").style.display = ""; $("btnCopyAll").style.display = "";
   $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
   $("btnSave").title = "Export the flattened background PNG";
   $("btnProjects").title = "Projects — tilesets and backgrounds; opening this gallery or switching auto-saves the open one";
@@ -6123,7 +6125,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.72.0";
+const APP_VERSION = "6.72.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
