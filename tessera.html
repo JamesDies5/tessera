@@ -141,6 +141,22 @@
 
   /* ---- Projects gallery (v6.39) ---- */
   #projOverlay { position: fixed; inset: 0; z-index: 80; display: none; flex-direction: column; background: #121212; }
+  /* v6.82: Rules tab — an HTML panel over the viewport (the tab has no canvas of its own) */
+  #rulesPanel { position: absolute; inset: 0; z-index: 5; display: none; flex-wrap: wrap; align-items: flex-start; align-content: flex-start;
+    gap: 18px; padding: 14px; overflow: auto; touch-action: auto; background: #121212; color: var(--text); font-size: 12px; }
+  #rulesPanel canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 6px; }
+  #rulesPanel .rulesChip canvas { border: none; border-radius: 3px; }
+  .rulesCol { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .rulesHead { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
+  .rulesHead span { text-transform: none; letter-spacing: 0; color: var(--accent); margin-left: 8px; }
+  .rulesRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .rulesLab { width: 52px; text-transform: capitalize; }
+  .rulesChip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--text); font: inherit; font-size: 12px; padding: 3px 8px 3px 4px; cursor: pointer; }
+  .rulesAdd { padding: 6px 10px; color: var(--dim); }
+  .rulesAdd.armed { color: var(--accent); border-color: var(--accent); }
+  .rulesCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  #rulesState { color: var(--dim); max-width: 420px; line-height: 1.4; }
   #projOverlay.show { display: flex; }
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
@@ -254,6 +270,7 @@
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
   <button class="tab" data-tab="zoo" data-icon="puzzle" title="Zoo — generated coverage: every blob mask + all twelve slope stamps"></button>
+  <button class="tab" data-tab="rules" data-icon="rules" title="Rules — this project's own tileset layout: inner rim straights and edge cadence; the sample block redraws as you edit"></button>
   <select class="pal" id="ctSelect" title="Terrain sheet format — 3&times;3 is the current production ATLAS/Godot contract; 4&times;4 adds parity edge pairs and depth bands (TESSERA-only until the ATLAS port)">
     <option value="v1">3&times;3</option>
     <option value="v2">4&times;4</option>
@@ -562,6 +579,26 @@
     <canvas id="screen"></canvas>
     <canvas id="gridOverlay"></canvas>
     <div id="statusChip"></div>
+    <!-- v6.82: Rules tab. Sheet to tap on the left, settings on the right, live sample block underneath. -->
+    <div id="rulesPanel">
+      <div class="rulesCol">
+        <div class="rulesHead">Sheet<span id="rulesHint"></span></div>
+        <canvas id="rulesSheet"></canvas>
+      </div>
+      <div class="rulesCol" style="flex:1 1 300px">
+        <div class="rulesHead">Inner rim straights</div>
+        <div id="rulesRim"></div>
+        <div class="rulesHead">Edge tiles</div>
+        <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count from each corner (B1, C1, D1 in order)</label>
+        <div class="rulesHead">Layout</div>
+        <div id="rulesState"></div>
+        <button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)" style="width:max-content">Reset to template</button>
+      </div>
+      <div class="rulesCol" style="flex-basis:100%">
+        <div class="rulesHead">Sample block</div>
+        <canvas id="rulesSample"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1930,6 +1967,7 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
+  rules: '<path d="M4 6h16"/><path d="M4 12h9"/><path d="M4 18h5"/><circle cx="16.5" cy="12" r="2"/><circle cx="12.5" cy="18" r="2"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   opacity: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" opacity=".6"/>',
   shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
@@ -2038,7 +2076,7 @@ const BG_KEYS = { doc: "tessera.bg.doc", flat: "tessera.bg.flat" };
 const PROJ_TYPE_KEY = "tessera.projType";
 const PROJECT_KEYS = [
   LS.contract, LS.size, LS.fills, LS.slopes, LS.decor,
-  "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars", "tessera.palsel",
+  "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars", "tessera.palsel", "tessera.ct",
   ...Object.keys(CONTRACTS).map((id) => CONTRACTS[id].lsKey),
   PROJ_TYPE_KEY, BG_KEYS.doc, BG_KEYS.flat,
 ];
@@ -2407,6 +2445,10 @@ function ghSheetHashFromDataURL(dataURL, cols, rows) {
     img.src = dataURL;
   });
 }
+function ghRecContract(rec, cid) {   // v6.82: the record's own layout copy when it has one, else the template
+  const o = ghRecJSON(rec, "tessera.ct")[cid];
+  return o ? healContract(o, cid) : CONTRACTS[cid];
+}
 function ghRulesFromRecord(rec, cid, dims, hash) {
   const mask = ghRecJSON(rec, "tessera.remaps");
   const role = ghRecJSON(rec, "tessera.roleremaps");
@@ -2415,7 +2457,7 @@ function ghRulesFromRecord(rec, cid, dims, hash) {
   return {
     tessera_rules: 1, contractId: cid, app: APP_VERSION, savedAt: new Date().toISOString(),
     sheet: { cols: dims.cols, rows: dims.rows }, sheetHash: hash,
-    contract: CONTRACTS[cid],
+    contract: ghRecContract(rec, cid),
     maskRules: { ...(DEFAULT_MASK_REMAPS[cid] || {}), ...(mask[cid] || {}) },
     roleRules: { ...(DEFAULT_ROLE_RULES[cid] || {}), ...(role[cid] || {}) },
     deepVariants: dv.map((p) => ({ ...p })),
@@ -2561,6 +2603,40 @@ function ctRemaps() { if (!maskRemaps[CT.id]) maskRemaps[CT.id] = {}; return mas
    discipline as taught rules: store wins, baked otherwise. */
 let deepVarOverrides = (() => { try { return JSON.parse(localStorage.getItem("tessera.deepvars")) || {}; } catch (e) { return {}; } })();
 function persistDeepVars() { try { localStorage.setItem("tessera.deepvars", JSON.stringify(deepVarOverrides)); } catch (e) {} }
+/* v6.82 — PER-PROJECT LAYOUT. The contract (cell layout: corners, rim
+   straights, edge cycles, slope slots, cadence) was one shared table per
+   format; every project of that format inherited it and nothing could be
+   changed for one tileset alone. Now a project may own a COPY. Rules:
+   — nothing is copied until the project edits the layout (or imports a
+     rules file whose layout differs from the template), so opening an old
+     project never rewrites anything;
+   — the copy is applied as stored, except that fields the template gained
+     AFTER the copy was made are filled in additively (never overwriting);
+   — CADENCE_ANCHOR is written as "run" or "origin" (never deleted), so an
+     explicit off survives the additive fill;
+   — export writes the project's layout onto the rules file; ATLAS resolves
+     from that block, so no ATLAS change is needed for the file to take effect;
+   — Reset drops the copy and the project is back on the template. */
+let ctOverrides = (() => { try { return JSON.parse(localStorage.getItem("tessera.ct")) || {}; } catch (e) { return {}; } })();
+function persistCtOverrides() { try { localStorage.setItem("tessera.ct", JSON.stringify(ctOverrides)); } catch (e) {} }
+function healContract(copy, id) {   // additive only
+  const t = CONTRACTS[id]; if (!copy || !t) return copy;
+  for (const k of Object.keys(t)) if (!(k in copy)) copy[k] = JSON.parse(JSON.stringify(t[k]));
+  return copy;
+}
+function projectContract(id) { const o = ctOverrides[id]; return o ? healContract(o, id) : CONTRACTS[id]; }
+function contractIsProject(id) { return !!ctOverrides[id]; }
+function materializeContract() {   // first edit copies the template into the project; the copy IS CT from then on
+  if (!ctOverrides[CT.id]) ctOverrides[CT.id] = JSON.parse(JSON.stringify(CONTRACTS[CT.id]));
+  CT = ctOverrides[CT.id];
+  return CT;
+}
+function resetContract() { delete ctOverrides[CT.id]; persistCtOverrides(); CT = CONTRACTS[CT.id]; }
+function canonJSON(v) {   // key-order-insensitive stringify, for "is this layout the template?"
+  if (Array.isArray(v)) return "[" + v.map(canonJSON).join(",") + "]";
+  if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonJSON(v[k])).join(",") + "}";
+  return JSON.stringify(v);
+}
 function effDeepVariants(ct) { const o = deepVarOverrides[ct.id]; return (o && o.length) ? o : ct.DEEP_VARIANTS; }
 function materializeDeepVars() { if (!deepVarOverrides[CT.id] || !deepVarOverrides[CT.id].length) deepVarOverrides[CT.id] = CT.DEEP_VARIANTS.map((p) => ({ ...p })); return deepVarOverrides[CT.id]; }
 
@@ -5245,8 +5321,143 @@ viewport.addEventListener("wheel", (e) => {
 document.addEventListener("gesturestart", (e) => e.preventDefault());
 document.addEventListener("gesturechange", (e) => e.preventDefault());
 
+/* ---- v6.82 Rules tab — section 1: inner rim straights + edge cadence ----
+   Layout: the sheet (tap a cell) | settings | a fixed sample block resolved
+   through the real resolver with this project's contract, remaps, and deep
+   pool. The sample is two solid blocks: a 13x9 (outer edges, the inner rim
+   ring, core) and an 8x7 offset by 16 cells so origin-anchored cadence
+   visibly drifts against the first. The panel swallows pointer/wheel events
+   so the viewport's stroke handler (which preventDefaults pointerdown, and
+   with it every click inside) never sees them. Future sections (edge sets,
+   variations, slope roles, physics) add rows to the same panel. */
+const RULES_CS = 24, RULES_SS = 2;
+const RIM_KEYS = ["top", "bottom", "left", "right"];
+const RIM_COLORS = { top: "#6fd3ff", bottom: "#ffb060", left: "#c9a6ff", right: "#9cf59c" };
+let rulesArmed = null;   // rim row waiting for a sheet tap
+function rulesOpen() {
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === "rules"));
+  $("ctxLevel").style.display = "none";
+  if (float) floatFlatten();
+  if (canvasMode) exitCanvasMode();
+  closeOptMenu(); closeIOBar(); syncCellbar(false); syncVarybar(); syncSelbar();
+  $("rulesPanel").style.display = "flex";
+  rulesRender();
+}
+function rulesClose() { rulesArmed = null; $("rulesPanel").style.display = "none"; }
+function rulesRender() {
+  if (!CT || APP_MODE === "bg" || $("rulesPanel").style.display !== "flex") return;
+  rulesDrawSheet(); rulesDrawChips();
+  $("rulesAnchor").checked = CT.CADENCE_ANCHOR === "run";
+  const own = contractIsProject(CT.id);
+  $("rulesState").textContent = own
+    ? "This project has its own layout, edited from the " + CONTRACTS[CT.id].label + " template. Other projects are unaffected."
+    : "Using the " + CT.label + " template layout. Editing anything here gives this project its own copy; other projects are unaffected.";
+  $("btnRulesLayoutReset").style.display = own ? "" : "none";
+  $("rulesHint").textContent = rulesArmed ? "tap a cell to add it to the " + rulesArmed + " rim" : "";
+  rulesDrawSample();
+}
+function rulesDrawSheet() {
+  const cv = $("rulesSheet"), cols = TW / TILE, rows = TH / TILE;
+  cv.width = cols * RULES_CS; cv.height = rows * RULES_CS;
+  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
+  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, cv.width, cv.height);
+  g.drawImage(ed, 0, 0, TW, TH, 0, 0, cv.width, cv.height);
+  g.strokeStyle = "rgba(255,255,255,0.12)"; g.lineWidth = 1;
+  for (let c = 0; c <= cols; c++) { g.beginPath(); g.moveTo(c * RULES_CS + 0.5, 0); g.lineTo(c * RULES_CS + 0.5, cv.height); g.stroke(); }
+  for (let r = 0; r <= rows; r++) { g.beginPath(); g.moveTo(0, r * RULES_CS + 0.5); g.lineTo(cv.width, r * RULES_CS + 0.5); g.stroke(); }
+  const T = CT.TRANSITION || {};
+  g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 1;
+  for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) g.strokeRect(T[k][0] * RULES_CS + 3.5, T[k][1] * RULES_CS + 3.5, RULES_CS - 7, RULES_CS - 7);
+  const rv = CT.RIM_VARIANTS || {};
+  g.lineWidth = 2;
+  for (const key of RIM_KEYS) for (const [x, y] of (rv[key] || [])) { g.strokeStyle = RIM_COLORS[key]; g.strokeRect(x * RULES_CS + 1.5, y * RULES_CS + 1.5, RULES_CS - 3, RULES_CS - 3); }
+  g.font = "9px system-ui, sans-serif"; g.fillStyle = "rgba(255,255,255,0.6)";
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) g.fillText(cellName(c, r), c * RULES_CS + 2, r * RULES_CS + 9);
+  cv.style.outline = rulesArmed ? "2px solid " + RIM_COLORS[rulesArmed] : "";
+}
+function rulesDrawChips() {
+  const host = $("rulesRim"); host.innerHTML = "";
+  const rv = CT.RIM_VARIANTS;
+  if (!rv) { host.textContent = "This format has no inner rim variants."; return; }
+  for (const key of RIM_KEYS) {
+    if (!rv[key]) continue;
+    const row = document.createElement("div"); row.className = "rulesRow";
+    const lab = document.createElement("span"); lab.className = "rulesLab"; lab.textContent = key; lab.style.color = RIM_COLORS[key]; row.appendChild(lab);
+    rv[key].forEach(([x, y], i) => {
+      const chip = document.createElement("button"); chip.className = "rulesChip"; chip.type = "button"; chip.dataset.rim = key; chip.dataset.cell = cellName(x, y);
+      chip.title = "Remove " + cellName(x, y) + " from the " + key + " rim";
+      const mini = document.createElement("canvas"); mini.width = 24; mini.height = 24;
+      const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.drawImage(ed, x * TILE, y * TILE, TILE, TILE, 0, 0, 24, 24);
+      chip.appendChild(mini); const t = document.createElement("span"); t.textContent = cellName(x, y); chip.appendChild(t);
+      chip.addEventListener("click", () => rulesRimRemove(key, i));
+      row.appendChild(chip);
+    });
+    const add = document.createElement("button"); add.type = "button"; add.className = "rulesChip rulesAdd" + (rulesArmed === key ? " armed" : ""); add.dataset.rimAdd = key;
+    add.textContent = rulesArmed === key ? "tap a cell\u2026" : "+ add";
+    add.title = "Add a straight to the " + key + " rim \u2014 tap this, then tap a cell on the sheet";
+    add.addEventListener("click", () => { rulesArmed = rulesArmed === key ? null : key; rulesRender(); });
+    row.appendChild(add);
+    host.appendChild(row);
+  }
+}
+function rulesRimAdd(key, x, y) {
+  materializeContract();
+  const list = CT.RIM_VARIANTS[key];
+  if (list.some(([a, b]) => a === x && b === y)) { rulesArmed = null; rulesRender(); status(cellName(x, y) + " is already in the " + key + " rim."); return; }
+  list.push([x, y]); rulesArmed = null;
+  rulesCommit(cellName(x, y) + " added to the " + key + " rim.");
+}
+function rulesRimRemove(key, i) {
+  if ((CT.RIM_VARIANTS[key] || []).length <= 1) { status("Keep at least one straight in the " + key + " rim."); return; }
+  materializeContract();
+  const [x, y] = CT.RIM_VARIANTS[key].splice(i, 1)[0];
+  rulesCommit(cellName(x, y) + " removed from the " + key + " rim.");
+}
+function rulesSetAnchor(on) {
+  materializeContract();
+  CT.CADENCE_ANCHOR = on ? "run" : "origin";   // never deleted: an explicit off must survive the additive template fill
+  rulesCommit(on ? "Edge tiles now count from each corner." : "Edge tiles now count from the room origin.");
+}
+function rulesCommit(msg) { persistCtOverrides(); rebuild(); rulesRender(); status(msg); }
+function rulesReset() { resetContract(); rulesArmed = null; rebuild(); rulesRender(); status("Layout reset to the " + CT.label + " template."); }
+function rulesSampleFills() {
+  const f = {}; const put = (c, r) => { f[c + "," + r] = { t: 1 }; };
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 13; c++) put(c, r);          // solid block: outer edges, inner rim ring, core
+  for (let r = 2; r < 9; r++) for (let c = 16; c < 24; c++) put(c, r);         // second block, offset so origin-anchored cadence visibly drifts
+  return f;
+}
+function rulesDrawSample() {
+  const cv = $("rulesSample"), cols = 24, rows = 9, S = TILE * RULES_SS;
+  cv.width = cols * S; cv.height = rows * S;
+  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
+  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, cv.width, cv.height);
+  const cs = buildCells(rulesSampleFills(), CT, []);
+  const res = resolveAll(cs, CT);
+  for (const k of Object.keys(cs)) { const [c, r] = k.split(",").map(Number); const e = maskRemapFor(maskAt(cs, c, r, CT)); if (e) res[k] = { ...e }; }
+  g.font = "10px system-ui, sans-serif";
+  for (const k of Object.keys(res)) {
+    const [c, r] = k.split(",").map(Number); const t = res[k];
+    g.save(); g.translate(c * S + S / 2, r * S + S / 2); g.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1); if (t.rot) g.rotate(Math.PI / 2 * t.rot);
+    g.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, -S / 2, -S / 2, S, S); g.restore();
+    g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(c * S + 1, r * S + 1, 22, 11);
+    g.fillStyle = "#9fd0ff"; g.fillText(cellName(t.ax, t.ay), c * S + 3, r * S + 10);
+  }
+}
+for (const t of ["pointerdown", "pointermove", "pointerup", "pointercancel", "wheel"]) $("rulesPanel").addEventListener(t, (e) => e.stopPropagation());
+$("rulesSheet").addEventListener("pointerdown", (e) => {
+  if (!rulesArmed) { status("Tap \u201c+ add\u201d on a rim row first, then tap a cell."); return; }
+  const r = e.currentTarget.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / RULES_CS), y = Math.floor((e.clientY - r.top) / RULES_CS);
+  if (x < 0 || y < 0 || x >= TW / TILE || y >= TH / TILE) return;
+  rulesRimAdd(rulesArmed, x, y);
+});
+$("rulesAnchor").addEventListener("change", (e) => rulesSetAnchor(e.target.checked));
+$("btnRulesLayoutReset").addEventListener("click", () => { if (confirm("Reset this project's layout to the " + CT.label + " template? Rim and edge settings go back to the defaults.")) rulesReset(); });
+
 /* ---- tabs ---- */
-function setTab(tab) {   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share the
+function setTab(tab) {
+  if (tab === "rules") { rulesOpen(); return; }   // v6.82: HTML panel, no canvas
+  rulesClose();   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share the
   // pv canvas/view; layoutMode picks the generator, and the tabs own it now.
   const wantMode = tab === "zoo" ? "zoo" : "field";
   const modeChanged = tab !== "ed" && layoutMode !== wantMode;
@@ -5672,7 +5883,7 @@ function rulesPayload() {
   return {
     tessera_rules: 1, contractId: CT.id, app: APP_VERSION, savedAt: new Date().toISOString(),
     sheet: { cols: TW / TILE, rows: TH / TILE }, sheetHash: sheetHash(),
-    contract: CONTRACTS[CT.id],
+    contract: projectContract(CT.id),   // v6.82
     maskRules: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) },
     roleRules: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) },
     deepVariants: effDeepVariants(CT).map((p) => ({ ...p })),
@@ -5721,6 +5932,12 @@ function importRules(data) {
     maskRemaps[id] = data.maskRules || {};
     roleRemaps[id] = data.roleRules || {};
     deepVarOverrides[id] = (data.deepVariants || []).map((p) => ({ ...p }));
+    if (data.contract && data.contract.id === id) {   // v6.82: a file carrying an edited layout brings it along; a template-identical one leaves the project on the template
+      const copy = healContract(JSON.parse(JSON.stringify(data.contract)), id);
+      if (canonJSON(copy) !== canonJSON(CONTRACTS[id])) ctOverrides[id] = copy; else delete ctOverrides[id];
+      persistCtOverrides();
+      if (CT && id === CT.id) CT = projectContract(id);
+    }
     touched.push(id);
     /* Sheet guard (v6.37): rules files record the sheet dims + pixel hash
        they were authored against. Grow the sheet if the rules need more
@@ -5869,7 +6086,7 @@ $("palSelect").addEventListener("change", (e) => {
 function setContract(id, opts) {
   if (CT && CT.id === id) return;
   if (CT) { boards[CT.id].undo = undoStack; boards[CT.id].redo = redoStack; }
-  CT = CONTRACTS[id];
+  CT = projectContract(id);   // v6.82: the project's own layout when it has one
   if (id === "v4") { v4SeedSheetSize(); v4PortStores(); }   // v6.45: 7x7 bootstrap (reads v3, never writes it)
   const _ext = sheetSize[id] || {};
   TW = TILE * Math.max(CT.TCOLS, Math.min(26, _ext.cols || CT.TCOLS));
@@ -5906,7 +6123,7 @@ function setContract(id, opts) {
     refreshFileSwatches(); blit(); drawGrid(); renderPreview();
   }
 }
-$("ctSelect").addEventListener("change", (e) => { if (float) floatFlatten(); setContract(e.target.value); selClear(); });
+$("ctSelect").addEventListener("change", (e) => { if (float) floatFlatten(); setContract(e.target.value); selClear(); if ($("rulesPanel").style.display === "flex") rulesRender(); });
 
 /* Empty cap/ceiling cells get placeholder art copied from their source
    stamps, so sheets predating those features show editable duplicates
@@ -6759,7 +6976,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.81.2";
+const APP_VERSION = "6.82.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
