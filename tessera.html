@@ -52,7 +52,9 @@
   #bgMenu { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 6px;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
-  #colorCurrent { width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; padding: 0; flex: 0 0 auto; }
+  #colorCurrent { width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; padding: 0; flex: 0 0 auto; touch-action: none; }
+  /* v6.76: the chip's drag ghost — drop it on the canvas to flood-fill with the current color */
+  #chipGhost { position: fixed; z-index: 95; width: 42px; height: 42px; border-radius: 10px; border: 2px solid #fff; box-shadow: 0 6px 18px rgba(0,0,0,.5); pointer-events: none; display: none; transform: translate(-50%, -50%) scale(1.15); }
   #colorCurrent.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   #colorMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; align-items: center; gap: 8px; width: 380px; max-width: 92vw;
     background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px;
@@ -318,6 +320,19 @@
   <button class="optline shpend" id="shapePlace" style="display:none" title="Place the shape (switching tools or tapping outside it also places it)"><span data-icon="check"></span>Place</button>
   <button class="optline shpend" id="shapeCancel" style="display:none" title="Discard the shape"><span data-icon="sqx"></span>Cancel</button>
 </div>
+<!-- Outline tray (v6.77): shown while the Outline tool is active; live preview on the canvas, Apply commits -->
+<div class="tray" id="outlinebar">
+  <span class="lbl">OUTLINE</span>
+  <button class="optline olplace" data-v="out" title="Outside — grow a border in the empty pixels around the art"><span data-icon="olOut"></span>Outside</button>
+  <button class="optline olplace" data-v="in" title="Inside — recolor the art's own edge pixels; the silhouette stays the same"><span data-icon="olIn"></span>Inside</button>
+  <span class="vsep"></span>
+  <button class="optline olmat ico" data-v="circle" title="Circle — orthogonal neighbours only: rounded corners"><span data-icon="olCircle"></span></button>
+  <button class="optline olmat ico" data-v="square" title="Square — all eight neighbours: sharp corners"><span data-icon="olSquare"></span></button>
+  <button class="optline olmat ico" data-v="h" title="Horizontal — left and right only"><span data-icon="olH"></span></button>
+  <button class="optline olmat ico" data-v="v" title="Vertical — up and down only"><span data-icon="olV"></span></button>
+  <span class="vsep"></span>
+  <button class="optline" id="outlineApply" title="Apply the outline to the selected layer (one undo step)"><span data-icon="check"></span>Apply</button>
+</div>
 <!-- Tiled / Symmetry trays (v6.67): background projects only, opened from the header like Options -->
 <div class="tray" id="tiledbar" data-set="tiled">
   <span class="lbl">TILED</span>
@@ -450,6 +465,7 @@
     <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
     <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
     <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes (U) — drag to place a pixel-exact rectangle, ellipse, or line; outline or filled, in the current color and brush width"></button>
+    <button class="ibtn tool" data-tool="outline" data-icon="outline" title="Outline — draw a border around (or just inside) everything on the selected layer, in the current color; options in the tray, Apply to commit"></button>
     <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
     <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform (V) — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
     <div class="fillPop" id="fillPop">
@@ -1890,6 +1906,13 @@ const ICONS = {
   chevron: '<path d="m6 9 6 6 6-6"/>',
   shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   shRect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+  outline: '<rect x="7" y="7" width="10" height="10" rx="1"/><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2.2"/>',
+  olCircle: '<path d="M12 4v4M12 16v4M4 12h4M16 12h4"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
+  olSquare: '<rect x="4" y="4" width="16" height="16" rx="1"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
+  olH: '<path d="M4 12h5M15 12h5"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
+  olV: '<path d="M12 4v5M12 15v5"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
+  olOut: '<rect x="8" y="8" width="8" height="8" fill="currentColor" stroke="none" opacity=".5"/><rect x="5" y="5" width="14" height="14" rx="1"/>',
+  olIn: '<rect x="5" y="5" width="14" height="14" rx="1" fill="currentColor" stroke="none" opacity=".35"/><rect x="5" y="5" width="14" height="14" rx="1"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
   shPoly: '<path d="M12 3 20 9l-3 10H7L4 9z"/>',
   shCurve: '<path d="M4 18c6 0 4-12 10-12s4 8 6 8"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="14" r="1.5" fill="currentColor"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
@@ -2795,10 +2818,10 @@ function drawGrid() {
     ovCtx.stroke();
   }
   if (APP_MODE === "bg" && activeTab === "ed" && bgDoc) {   // v6.66: outline the real canvas when tiled; faint yellow symmetry axes
-    if ((bgDoc.tiled || "off") !== "off") { ovCtx.strokeStyle = "rgba(255,255,255,0.55)"; ovCtx.lineWidth = 1; ovCtx.strokeRect(v.x + 0.5, v.y + 0.5, W * v.s, H * v.s); }
+    if ((bgDoc.tiled || "off") !== "off") { ovCtx.strokeStyle = "rgba(255,255,255,0.2)"; ovCtx.lineWidth = 1; ovCtx.strokeRect(v.x + 0.5, v.y + 0.5, W * v.s, H * v.s); }   // v6.77.1: faint, so seams read
     const sym = bgDoc.sym || "off";
     if (sym !== "off") {
-      ovCtx.strokeStyle = "rgba(255,220,80,0.45)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+      ovCtx.strokeStyle = "rgba(120,230,255,0.5)"; ovCtx.lineWidth = 1; ovCtx.beginPath();   // v6.77.1: light cyan
       if (sym === "h" || sym === "quad") { const x = Math.round(v.x + (W / 2) * v.s) + 0.5; ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); }
       if (sym === "v" || sym === "quad") { const y = Math.round(v.y + (H / 2) * v.s) + 0.5; ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); }
       ovCtx.stroke();
@@ -2935,6 +2958,14 @@ function drawGrid() {
       ovCtx.strokeStyle = "rgba(0,0,0,0.7)"; ovCtx.lineWidth = 3; ovCtx.strokeRect(hx - 1, hy - 1, hs + 2, hs + 2);
       ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
     }
+  }
+  if (activeTab === "ed" && tool === "outline" && !float) {   // v6.77: outline preview — the pixels Apply would paint, in the mapped color
+    const px = outlinePixels(), pal = palettes[palIdx], l = color.r;
+    if (shpPrev.width !== TW || shpPrev.height !== TH) { shpPrev.width = TW; shpPrev.height = TH; }
+    const pg = shpPrev.getContext("2d"); pg.clearRect(0, 0, TW, TH);
+    if (pal.base) { const lut = pal.lut || (pal.lut = buildPalLut(pal.base)); pg.fillStyle = `rgb(${lut[l*3]},${lut[l*3+1]},${lut[l*3+2]})`; } else pg.fillStyle = `rgb(${color.r},${color.g},${color.b})`;
+    for (let i = 0; i < px.length; i += 2) if (ditherOK(px[i], px[i + 1]) && (!selMask || selMask[px[i + 1] * TW + px[i]])) pg.fillRect(px[i], px[i + 1], 1, 1);
+    ovCtx.save(); ovCtx.imageSmoothingEnabled = false; ovCtx.globalAlpha = 0.9; ovCtx.drawImage(shpPrev, v.x, v.y, TW * v.s, TH * v.s); ovCtx.restore();
   }
   const shpView = (activeTab === "ed" && tool === "shape") ? (shp || (stroke && stroke.kind === "shape" && shpFromStroke(stroke))) : null;
   if (shpView) {   // shape preview: rasterized 1:1 into an offscreen canvas, then scaled with nearest-neighbour — no seams at any zoom
@@ -3777,6 +3808,51 @@ function selApply(shape) {
    width + symmetry), fill pixels through putPx (selection clipping). */
 let shapeKind = "rect", shapeFill = false;
 try { const sp = JSON.parse(localStorage.getItem("tessera.shape") || "null"); if (sp) { shapeKind = sp.kind || "rect"; shapeFill = !!sp.fill; } } catch (e) {}
+/* ==== Outline tool (v6.77) ====
+   Aseprite's Outline filter (src/filters/outline_filter.cpp) as a rail tool:
+   for each pixel, count the masked 3×3 neighbours; Outside paints a transparent
+   pixel that touches an opaque one, Inside paints an opaque pixel that touches
+   a transparent one. Masks: circle = 4 orthogonal, square = all 8,
+   horizontal = left/right, vertical = up/down. Selected layer only; the
+   current color and dither apply; selection and alpha lock apply through putPx. */
+let olPlace = "out", olMatrix = "circle";
+try { const o = JSON.parse(localStorage.getItem("tessera.outline") || "null"); if (o) { if (o.place === "in") olPlace = "in"; if (["circle", "square", "h", "v"].includes(o.matrix)) olMatrix = o.matrix; } } catch (e) {}
+const OL_MASKS = { circle: [[0, -1], [-1, 0], [1, 0], [0, 1]], square: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], h: [[-1, 0], [1, 0]], v: [[0, -1], [0, 1]] };
+function outlinePixels() {   // -> [x, y, ...] on the active layer
+  const d = edCtx.getImageData(0, 0, TW, TH).data, nb = OL_MASKS[olMatrix], out = [];
+  const opaque = (x, y) => x >= 0 && y >= 0 && x < TW && y < TH && d[(y * TW + x) * 4 + 3] !== 0;
+  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
+    const me = d[(y * TW + x) * 4 + 3] !== 0;
+    if (olPlace === "out" ? me : !me) continue;
+    let hit = false;
+    for (const q of nb) { const o = opaque(x + q[0], y + q[1]); if (olPlace === "out" ? o : !o) { hit = true; break; } }
+    if (hit) out.push(x, y);
+  }
+  return out;
+}
+function outlineSyncBar() {
+  document.querySelectorAll("#outlinebar .olplace").forEach((b) => b.classList.toggle("on", b.dataset.v === olPlace));
+  document.querySelectorAll("#outlinebar .olmat").forEach((b) => b.classList.toggle("on", b.dataset.v === olMatrix));
+  const want = activeTab === "ed" && tool === "outline" ? "flex" : "none";
+  if ($("outlinebar").style.display !== want) { $("outlinebar").style.display = want; sizeOverlay(); }
+  try { localStorage.setItem("tessera.outline", JSON.stringify({ place: olPlace, matrix: olMatrix })); } catch (e) {}
+}
+function outlineApply() {
+  if (tool !== "outline") return;
+  if (APP_MODE === "bg" && !bgLayerEditable()) return;
+  if (float) floatFlatten();
+  const px = outlinePixels();
+  if (!px.length) { status("Nothing to outline on this layer."); return; }
+  const savedTool = tool; tool = "pencil";   // putPx paints (never erases) for an outline
+  snapshot(); let n = 0;
+  for (let i = 0; i < px.length; i += 2) { putPx(px[i], px[i + 1]); n++; }
+  tool = savedTool;
+  templateChanged(); persistPng(); refreshFileSwatches(); drawGrid();
+  status((olPlace === "out" ? "Outside" : "Inside") + " outline applied \u2014 " + n + " px in gray " + color.r + ".");
+}
+document.querySelectorAll("#outlinebar .olplace").forEach((b) => b.addEventListener("click", () => { olPlace = b.dataset.v; outlineSyncBar(); drawGrid(); }));
+document.querySelectorAll("#outlinebar .olmat").forEach((b) => b.addEventListener("click", () => { olMatrix = b.dataset.v; outlineSyncBar(); drawGrid(); }));
+$("outlineApply").addEventListener("click", outlineApply);
 function shapeSyncBar() {
   document.querySelectorAll("#shapebar .shkind").forEach((b) => b.classList.toggle("on", b.dataset.v === shapeKind));
   document.querySelectorAll("#shapebar .shfill").forEach((b) => { b.classList.toggle("on", (b.dataset.v === "1") === shapeFill); b.disabled = shapeKind === "curve" || shapeKind === "line"; b.style.opacity = b.disabled ? ".4" : ""; });
@@ -4567,6 +4643,7 @@ function beginStroke(e) {
     if (tool === "slopeF" || tool === "slopeC") { status("Slope tools draw in the LEVEL tab."); return; }
     if (tool === "pick") { pickAt(x, y); return; }
     if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
+    if (tool === "outline") { status("Outline \u2014 choose Outside / Inside and a corner style in the tray, then Apply."); return; }
     if (tool === "shape") {
       if (shp) {   // editing the pending shape, or committing it and starting the next
         const hit = shpHit(vpPoint(e));
@@ -4986,7 +5063,7 @@ function setTool(t) {
   if (t !== "vary") { closeVaryPanel(); closeVaryConfirm(); }
   syncVarybar();
   drawGrid();   // vary outlines appear/disappear with the tool
-  syncSelbar(); shapeSyncBar();
+  syncSelbar(); shapeSyncBar(); outlineSyncBar();
 }
 document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => {
   if (shp && (shp.kind === "poly" || b.dataset.v === "poly")) shpCommit();   // polygons don't convert; place what's pending first
@@ -6412,7 +6489,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.75.1";
+const APP_VERSION = "6.77.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -6568,7 +6645,46 @@ document.addEventListener("pointerdown", (e) => {
    AND are swallowed, so dismissing over the canvas never draws. */
 function syncColorChip() { $("colorCurrent").style.background = displayColor(color); }
 function closeColorMenu() { $("colorMenu").style.display = "none"; $("colorCurrent").classList.remove("on"); }
+/* Drag the color chip onto the canvas to flood-fill there with the current color
+   (v6.76, Procreate's ColorDrop). Always contiguous, regardless of the bucket's mode;
+   dither, selection, symmetry, and alpha lock apply as they do for the bucket. */
+let chipDrag = null, chipSwallowClick = false;   // { id, x0, y0, moving }
+const chipGhost = document.createElement("div"); chipGhost.id = "chipGhost"; document.body.appendChild(chipGhost);
+$("colorCurrent").addEventListener("pointerdown", (e) => {
+  chipDrag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moving: false };
+  try { $("colorCurrent").setPointerCapture(e.pointerId); } catch (err) {}
+});
+$("colorCurrent").addEventListener("pointermove", (e) => {
+  if (!chipDrag || e.pointerId !== chipDrag.id) return;
+  if (!chipDrag.moving) {
+    if (Math.hypot(e.clientX - chipDrag.x0, e.clientY - chipDrag.y0) < 10) return;
+    chipDrag.moving = true; closeColorMenu();
+    chipGhost.style.background = displayColor(color); chipGhost.style.display = "block";
+  }
+  chipGhost.style.left = e.clientX + "px"; chipGhost.style.top = e.clientY + "px";
+});
+const chipDrop = (e) => {
+  if (!chipDrag || e.pointerId !== chipDrag.id) return;
+  const d = chipDrag; chipDrag = null; chipGhost.style.display = "none";
+  if (!d.moving) return;
+  chipSwallowClick = true; setTimeout(() => { chipSwallowClick = false; }, 300);   // the click that follows a drag is not a menu tap
+  if (e.type === "pointercancel") return;
+  const r = viewport.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) return;   // let go off-canvas: nothing
+  if (activeTab !== "ed") { status("Drop-fill works on the canvas."); return; }
+  if (APP_MODE === "bg" && !bgLayerEditable()) return;
+  const [x, y] = edPos(e);
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+  if (float) floatFlatten();
+  const savedTool = tool, savedMode = fillMode; tool = "fill"; fillMode = "contiguous";
+  snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches();
+  tool = savedTool; fillMode = savedMode;
+  status("Filled with gray " + color.r + ".");
+};
+$("colorCurrent").addEventListener("pointerup", chipDrop);
+$("colorCurrent").addEventListener("pointercancel", chipDrop);
 $("colorCurrent").addEventListener("click", () => {
+  if (chipSwallowClick) { chipSwallowClick = false; return; }
   const m = $("colorMenu");
   if (m.style.display === "flex") { closeColorMenu(); return; }
   closeOptMenu(); closeBrushMenu(); closeLayerMenu(); closeBgViewMenu();
