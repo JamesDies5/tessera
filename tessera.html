@@ -103,6 +103,8 @@
   .optline:active { background: var(--line); }
   .tray .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
   .tray .lbl { margin-right: 6px; }
+  .tray .optline.ico { padding: 0 9px; gap: 0; }
+  .tray .optline.ico svg { width: 18px; height: 18px; }
   .optItem { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 66px;
     padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
     cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 1px; color: var(--text); }
@@ -304,10 +306,11 @@
 <!-- Shapes tray (v6.70): shown while the Shapes tool is active -->
 <div class="tray" id="shapebar">
   <span class="lbl">SHAPE</span>
-  <button class="optline shkind" data-v="rect" title="Rectangle — drag corner to corner"><span data-icon="shRect"></span>Rectangle</button>
-  <button class="optline shkind" data-v="ellipse" title="Ellipse — drag the bounding box (Bresenham midpoint, pixel-exact)"><span data-icon="shEllipse"></span>Ellipse</button>
-  <button class="optline shkind" data-v="line" title="Line — drag from end to end"><span data-icon="shLine"></span>Line</button>
-  <button class="optline shkind" data-v="curve" title="Curve — drag the endpoints, then pull the two control handles (Aseprite's spline)"><span data-icon="shCurve"></span>Curve</button>
+  <button class="optline shkind ico" data-v="rect" title="Rectangle — drag corner to corner"><span data-icon="shRect"></span></button>
+  <button class="optline shkind ico" data-v="ellipse" title="Ellipse — drag the bounding box (Bresenham midpoint, pixel-exact)"><span data-icon="shEllipse"></span></button>
+  <button class="optline shkind ico" data-v="poly" title="Polygon — tap to place each point; tap the first point to close, then Place"><span data-icon="shPoly"></span></button>
+  <button class="optline shkind ico" data-v="line" title="Line — drag from end to end"><span data-icon="shLine"></span></button>
+  <button class="optline shkind ico" data-v="curve" title="Curve — drag the endpoints, then pull the two control handles (Aseprite's spline)"><span data-icon="shCurve"></span></button>
   <span class="vsep"></span>
   <button class="optline shfill" data-v="0" title="Outline — the edge only, in the current brush width"><span data-icon="shOutline"></span>Outline</button>
   <button class="optline shfill" data-v="1" title="Filled — solid interior plus the edge"><span data-icon="shFilled"></span>Filled</button>
@@ -1887,6 +1890,7 @@ const ICONS = {
   chevron: '<path d="m6 9 6 6 6-6"/>',
   shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   shRect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+  shPoly: '<path d="M12 3 20 9l-3 10H7L4 9z"/>',
   shCurve: '<path d="M4 18c6 0 4-12 10-12s4 8 6 8"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="14" r="1.5" fill="currentColor"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
   shEllipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
@@ -2933,33 +2937,40 @@ function drawGrid() {
     }
   }
   const shpView = (activeTab === "ed" && tool === "shape") ? (shp || (stroke && stroke.kind === "shape" && shpFromStroke(stroke))) : null;
-  if (shpView) {   // shape preview, pixel-exact, in the mapped color (in-progress drag or pending shape)
-    const px = shapePixels(shpView.kind, shpView.kind === "curve" ? false : shpView.fill, shpView.x0, shpView.y0, shpView.x1, shpView.y1, shpView.c1, shpView.c2);
+  if (shpView) {   // shape preview: rasterized 1:1 into an offscreen canvas, then scaled with nearest-neighbour — no seams at any zoom
+    let pts = shpView.pts;
+    if (shpView.kind === "poly" && stroke && stroke.kind === "polyTap" && !stroke.first) pts = pts.concat([[stroke.x, stroke.y]]);   // rubber-band the next edge
+    const px = shapePixels(shpView.kind, shpView.kind === "curve" ? false : shpView.fill, shpView.x0, shpView.y0, shpView.x1, shpView.y1, shpView.c1, shpView.c2, pts, shpView.closed);
     const pal = palettes[palIdx], l = color.r;
     let fill;
-    if (pal.base) { const lut = pal.lut || (pal.lut = buildPalLut(pal.base)); fill = `rgba(${lut[l*3]},${lut[l*3+1]},${lut[l*3+2]},0.85)`; }
-    else fill = `rgba(${color.r},${color.g},${color.b},0.85)`;
-    ovCtx.fillStyle = fill;
+    if (pal.base) { const lut = pal.lut || (pal.lut = buildPalLut(pal.base)); fill = `rgb(${lut[l*3]},${lut[l*3+1]},${lut[l*3+2]})`; }
+    else fill = `rgb(${color.r},${color.g},${color.b})`;
+    if (shpPrev.width !== TW || shpPrev.height !== TH) { shpPrev.width = TW; shpPrev.height = TH; }
+    const pg = shpPrev.getContext("2d"); pg.clearRect(0, 0, TW, TH); pg.fillStyle = fill;
     const off = brushOffsets();
-    for (let i = 0; i < px.inner.length; i += 2) if (ditherOK(px.inner[i], px.inner[i + 1])) ovCtx.fillRect(v.x + px.inner[i] * v.s, v.y + px.inner[i + 1] * v.s, v.s, v.s);
-    for (let i = 0; i < px.edge.length; i += 2) for (const o of off) { const ex = px.edge[i] + o[0], ey = px.edge[i + 1] + o[1]; if (ditherOK(ex, ey)) ovCtx.fillRect(v.x + ex * v.s, v.y + ey * v.s, v.s, v.s); }
-    if (shp) {   // pending: bounding box + handles (+ control lines for curves)
-      const b = shpBox(shp);
+    for (let i = 0; i < px.inner.length; i += 2) if (ditherOK(px.inner[i], px.inner[i + 1])) pg.fillRect(px.inner[i], px.inner[i + 1], 1, 1);
+    for (let i = 0; i < px.edge.length; i += 2) for (const o of off) { const ex = px.edge[i] + o[0], ey = px.edge[i + 1] + o[1]; if (ditherOK(ex, ey)) pg.fillRect(ex, ey, 1, 1); }
+    ovCtx.save(); ovCtx.imageSmoothingEnabled = false; ovCtx.globalAlpha = 0.85; ovCtx.drawImage(shpPrev, v.x, v.y, TW * v.s, TH * v.s); ovCtx.restore();
+    if (shp) {   // pending: handles; a bounding box only for rectangle / ellipse (+ control lines for curves)
+      const boxed = shp.kind === "rect" || shp.kind === "ellipse";
       ovCtx.setLineDash([]);
-      ovCtx.lineWidth = 3; ovCtx.strokeStyle = "rgba(0,0,0,0.55)"; ovCtx.strokeRect(v.x + b.x0 * v.s - 1, v.y + b.y0 * v.s - 1, (b.x1 - b.x0) * v.s + 2, (b.y1 - b.y0) * v.s + 2);
-      ovCtx.lineWidth = 1.5; ovCtx.strokeStyle = "rgba(255,255,255,0.95)"; ovCtx.strokeRect(v.x + b.x0 * v.s - 1, v.y + b.y0 * v.s - 1, (b.x1 - b.x0) * v.s + 2, (b.y1 - b.y0) * v.s + 2);
+      if (boxed) {
+        const b = shpBox(shp);
+        ovCtx.lineWidth = 3; ovCtx.strokeStyle = "rgba(0,0,0,0.55)"; ovCtx.strokeRect(v.x + b.x0 * v.s - 1, v.y + b.y0 * v.s - 1, (b.x1 - b.x0) * v.s + 2, (b.y1 - b.y0) * v.s + 2);
+        ovCtx.lineWidth = 1.5; ovCtx.strokeStyle = "rgba(255,255,255,0.95)"; ovCtx.strokeRect(v.x + b.x0 * v.s - 1, v.y + b.y0 * v.s - 1, (b.x1 - b.x0) * v.s + 2, (b.y1 - b.y0) * v.s + 2);
+      }
       if (shp.kind === "curve") { ovCtx.strokeStyle = "rgba(255,220,80,0.7)"; ovCtx.lineWidth = 1; ovCtx.setLineDash([4, 4]); ovCtx.beginPath();
         ovCtx.moveTo(v.x + (shp.x0 + .5) * v.s, v.y + (shp.y0 + .5) * v.s); ovCtx.lineTo(v.x + (shp.c1[0] + .5) * v.s, v.y + (shp.c1[1] + .5) * v.s);
         ovCtx.moveTo(v.x + (shp.x1 + .5) * v.s, v.y + (shp.y1 + .5) * v.s); ovCtx.lineTo(v.x + (shp.c2[0] + .5) * v.s, v.y + (shp.c2[1] + .5) * v.s); ovCtx.stroke(); ovCtx.setLineDash([]); }
       for (const h of shpHandles(shp)) {
-        const hx = v.x + h.x * v.s, hy = v.y + h.y * v.s, ctrl = h.id === "c1" || h.id === "c2";
-        ovCtx.fillStyle = ctrl ? "#ffd84f" : "#fff"; ovCtx.strokeStyle = "rgba(0,0,0,0.6)"; ovCtx.lineWidth = 1;
-        ovCtx.beginPath(); ovCtx.arc(hx, hy, ctrl ? 5 : 4.5, 0, Math.PI * 2); ovCtx.fill(); ovCtx.stroke();
+        const hx = v.x + h.x * v.s, hy = v.y + h.y * v.s, ctrl = h.id === "c1" || h.id === "c2", origin = shp.kind === "poly" && !shp.closed && h.id === "v0" && shp.pts.length > 2;
+        ovCtx.fillStyle = ctrl ? "#ffd84f" : origin ? "#8fd98f" : "#fff"; ovCtx.strokeStyle = "rgba(0,0,0,0.6)"; ovCtx.lineWidth = 1;
+        ovCtx.beginPath(); ovCtx.arc(hx, hy, ctrl || origin ? 5.5 : 4.5, 0, Math.PI * 2); ovCtx.fill(); ovCtx.stroke();
       }
-    } else {
+    } else if (shapeKind === "rect" || shapeKind === "ellipse") {
       ovCtx.strokeStyle = "rgba(255,255,255,0.5)"; ovCtx.lineWidth = 1;
       const lx = Math.min(stroke.x0, stroke.x1), ty = Math.min(stroke.y0, stroke.y1), w2 = Math.abs(stroke.x1 - stroke.x0) + 1, h2 = Math.abs(stroke.y1 - stroke.y0) + 1;
-      if (shapeKind !== "line" && shapeKind !== "curve") ovCtx.strokeRect(v.x + lx * v.s + 0.5, v.y + ty * v.s + 0.5, w2 * v.s, h2 * v.s);
+      ovCtx.strokeRect(v.x + lx * v.s + 0.5, v.y + ty * v.s + 0.5, w2 * v.s, h2 * v.s);
     }
   }
   if (activeTab === "ed" && (selEdges || float || selPoly || (stroke && stroke.kind === "sel"))) {
@@ -3561,7 +3572,7 @@ function genRoom(force) {
   return { fills: F, slopes: S, name, cols: CW, rows: CH, doors, spawn };
 }
 function undo() {
-  if (shp) { shpCancel(); return; }   // v6.75: undo on a pending shape discards it
+  if (shp) { if (shp.kind === "poly" && !shp.closed && shp.pts.length > 1) { shp.pts.pop(); drawGrid(); status("Point removed."); return; } shpCancel(); return; }   // undo on a pending shape: step back a vertex, or discard
   if (float) {
     if (floatHist.length) {   // step back one drag/flip/rotate, staying in Move mode
       floatRedoHist.push(floatSnapState());
@@ -3768,7 +3779,7 @@ let shapeKind = "rect", shapeFill = false;
 try { const sp = JSON.parse(localStorage.getItem("tessera.shape") || "null"); if (sp) { shapeKind = sp.kind || "rect"; shapeFill = !!sp.fill; } } catch (e) {}
 function shapeSyncBar() {
   document.querySelectorAll("#shapebar .shkind").forEach((b) => b.classList.toggle("on", b.dataset.v === shapeKind));
-  document.querySelectorAll("#shapebar .shfill").forEach((b) => { b.classList.toggle("on", (b.dataset.v === "1") === shapeFill); b.disabled = shapeKind === "curve"; b.style.opacity = shapeKind === "curve" ? ".4" : ""; });
+  document.querySelectorAll("#shapebar .shfill").forEach((b) => { b.classList.toggle("on", (b.dataset.v === "1") === shapeFill); b.disabled = shapeKind === "curve" || shapeKind === "line"; b.style.opacity = b.disabled ? ".4" : ""; });
   document.querySelectorAll("#shapebar .shpend").forEach((b) => { b.style.display = shp ? "" : "none"; });
   const want = activeTab === "ed" && tool === "shape" ? "flex" : "none";
   if ($("shapebar").style.display !== want) { $("shapebar").style.display = want; sizeOverlay(); }
@@ -3839,8 +3850,28 @@ function bresenhamInto(out, seen, x0, y0, x1, y1) {
     const e2 = 2 * err; if (e2 > -dy) { err -= dy; x0 += sx; } if (e2 < dx) { err += dx; y0 += sy; }
   }
 }
-function shapePixels(kind, fill, x0, y0, x1, y1, c1, c2) {   // -> { edge: [x,y,...], inner: [x,y,...] }
+function polyPixels(pts, closed, fill) {   // vertices in canvas px; edges Bresenham'd, interior even-odd on pixel centers
+  const edge = [], inner = [], seen = new Set();
+  for (let i = 0; i + 1 < pts.length; i++) bresenhamInto(edge, seen, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+  if (closed && pts.length > 2) bresenhamInto(edge, seen, pts[pts.length - 1][0], pts[pts.length - 1][1], pts[0][0], pts[0][1]);
+  if (fill && closed && pts.length > 2) {
+    let ty = Infinity, by = -Infinity; for (const q of pts) { ty = Math.min(ty, q[1]); by = Math.max(by, q[1]); }
+    for (let y = ty; y <= by; y++) {
+      const yc = y + 0.5, xs = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const ax = a[0] + 0.5, ay = a[1] + 0.5, bx = b[0] + 0.5, by2 = b[1] + 0.5;
+        if ((ay <= yc) !== (by2 <= yc)) xs.push(ax + (yc - ay) * (bx - ax) / (by2 - ay));
+      }
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) for (let x = Math.ceil(xs[k] - 0.5); x + 0.5 < xs[k + 1]; x++) { if (!seen.has(x + "," + y)) inner.push(x, y); }
+    }
+  }
+  return { edge, inner };
+}
+function shapePixels(kind, fill, x0, y0, x1, y1, c1, c2, pts, closed) {   // -> { edge: [x,y,...], inner: [x,y,...] }
   const edge = [], inner = [];
+  if (kind === "poly") return polyPixels(pts || [], !!closed, fill);
   if (kind === "curve") {
     const a = c1 || [x0, y0], b = c2 || [x1, y1], seen = new Set();
     for (const sg of splineSegs(x0, y0, a[0], a[1], b[0], b[1], x1, y1)) bresenhamInto(edge, seen, sg[0], sg[1], sg[2], sg[3]);
@@ -3858,9 +3889,9 @@ function shapePixels(kind, fill, x0, y0, x1, y1, c1, c2) {   // -> { edge: [x,y,
     if (fill) for (let y = ty + 1; y < by; y++) for (let x = lx + 1; x < rx; x++) inner.push(x, y);
     return { edge, inner };
   }
-  const pts = ellipseOutlinePts(lx, ty, rx, by);
+  const ep = ellipseOutlinePts(lx, ty, rx, by);
   const seen = new Set();
-  for (let i = 0; i < pts.length; i += 2) { const k = pts[i] + "," + pts[i + 1]; if (!seen.has(k)) { seen.add(k); edge.push(pts[i], pts[i + 1]); } }
+  for (let i = 0; i < ep.length; i += 2) { const k = ep[i] + "," + ep[i + 1]; if (!seen.has(k)) { seen.add(k); edge.push(ep[i], ep[i + 1]); } }
   if (fill) {
     const rowMin = new Map(), rowMax = new Map();
     for (let i = 0; i < edge.length; i += 2) { const x = edge[i], y = edge[i + 1]; rowMin.set(y, Math.min(rowMin.has(y) ? rowMin.get(y) : x, x)); rowMax.set(y, Math.max(rowMax.has(y) ? rowMax.get(y) : x, x)); }
@@ -3869,14 +3900,15 @@ function shapePixels(kind, fill, x0, y0, x1, y1, c1, c2) {   // -> { edge: [x,y,
   return { edge, inner };
 }
 function shapeCommit(s) {
-  const px = shapePixels(s.kind || shapeKind, s.kind === "curve" ? false : (s.fill !== undefined ? s.fill : shapeFill), s.x0, s.y0, s.x1, s.y1, s.c1, s.c2);
+  if (s.kind === "poly" && (!s.pts || s.pts.length < 2)) { status("A polygon needs at least two points."); return; }
+  const px = shapePixels(s.kind || shapeKind, s.kind === "curve" ? false : (s.fill !== undefined ? s.fill : shapeFill), s.x0, s.y0, s.x1, s.y1, s.c1, s.c2, s.pts, s.closed);
   snapshot();
   for (let i = 0; i < px.inner.length; i += 2) { putPx(px.inner[i], px.inner[i + 1]); const m = symOf(px.inner[i], px.inner[i + 1]); if (m) for (const q of m) putPx(q[0], q[1]); }
   for (let i = 0; i < px.edge.length; i += 2) stampEd(px.edge[i], px.edge[i + 1]);   // v6.74.1: outlines dither like everything else
   templateChanged(); persistPng(); refreshFileSwatches();
   const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
   const k = s.kind || shapeKind, f = k === "curve" ? false : (s.fill !== undefined ? s.fill : shapeFill);
-  status((f ? "Filled " : "") + (k === "line" ? "line" : k === "curve" ? "curve" : k === "rect" ? "rectangle" : "ellipse") + (k === "line" || k === "curve" ? "" : " " + w + " \u00d7 " + h) + " placed.");
+  status((f ? "Filled " : "") + (k === "line" ? "line" : k === "curve" ? "curve" : k === "poly" ? "polygon" : k === "rect" ? "rectangle" : "ellipse") + (k === "line" || k === "curve" || k === "poly" ? "" : " " + w + " \u00d7 " + h) + " placed.");
 }
 /* ==== Pending shape (v6.75) ====
    A drawn shape is not committed on release; it stays live with a bounding
@@ -3885,7 +3917,8 @@ function shapeCommit(s) {
    (curve). Place with the tray button, by switching tools, or by starting a
    new shape outside it; Cancel discards. Rasterization always re-runs from
    the parameters, so every edit keeps the pixel-exact shape rules. */
-let shp = null;   // { kind, fill, x0, y0, x1, y1, c1, c2 }
+let shp = null;   // { kind, fill, x0, y0, x1, y1, c1, c2 } or { kind: "poly", fill, pts, closed }
+const shpPrev = document.createElement("canvas");   // 1:1 preview raster
 function shpFromStroke(st) {
   const o = { kind: shapeKind, fill: shapeFill, x0: st.x0, y0: st.y0, x1: st.x1, y1: st.y1 };
   if (o.kind === "curve") shpInitControls(o);
@@ -3896,12 +3929,13 @@ function shpInitControls(o) {   // controls at thirds along the chord: the curve
   o.c2 = [Math.round(o.x0 + (o.x1 - o.x0) * 2 / 3), Math.round(o.y0 + (o.y1 - o.y0) * 2 / 3)];
 }
 function shpBox(o) {   // canvas-space bounds incl. brush footprint, for hit tests
-  const xs = [o.x0, o.x1], ys = [o.y0, o.y1];
+  const xs = o.kind === "poly" ? o.pts.map((q) => q[0]) : [o.x0, o.x1], ys = o.kind === "poly" ? o.pts.map((q) => q[1]) : [o.y0, o.y1];
   if (o.kind === "curve") { xs.push(o.c1[0], o.c2[0]); ys.push(o.c1[1], o.c2[1]); }
   const off = brushOffsets(); let bx0 = 0, bx1 = 0, by0 = 0, by1 = 0; for (const q of off) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
   return { x0: Math.min(...xs) + bx0, y0: Math.min(...ys) + by0, x1: Math.max(...xs) + bx1 + 1, y1: Math.max(...ys) + by1 + 1 };
 }
 function shpHandles(o) {   // [{ id, x, y }] in canvas coords (pixel centers)
+  if (o.kind === "poly") return o.pts.map((q, i) => ({ id: "v" + i, x: q[0] + 0.5, y: q[1] + 0.5 }));
   if (o.kind === "line") return [{ id: "p0", x: o.x0 + 0.5, y: o.y0 + 0.5 }, { id: "p1", x: o.x1 + 0.5, y: o.y1 + 0.5 }];
   if (o.kind === "curve") return [{ id: "p0", x: o.x0 + 0.5, y: o.y0 + 0.5 }, { id: "p1", x: o.x1 + 0.5, y: o.y1 + 0.5 }, { id: "c1", x: o.c1[0] + 0.5, y: o.c1[1] + 0.5 }, { id: "c2", x: o.c2[0] + 0.5, y: o.c2[1] + 0.5 }];
   const lx = Math.min(o.x0, o.x1), rx = Math.max(o.x0, o.x1) + 1, ty = Math.min(o.y0, o.y1), by = Math.max(o.y0, o.y1) + 1, mx = (lx + rx) / 2, my = (ty + by) / 2;
@@ -3911,6 +3945,7 @@ function shpHit(vp) {   // vp = viewport point; -> { id } handle, "move", or nul
   if (!shp) return null;
   const v = view.ed, R = 16;
   for (const h of shpHandles(shp)) if (Math.hypot(v.x + h.x * v.s - vp.x, v.y + h.y * v.s - vp.y) <= R) return { id: h.id };
+  if (shp.kind === "poly" && !shp.closed) return null;   // an open polygon: anywhere else is the next vertex
   const b = shpBox(shp), wx = (vp.x - v.x) / v.s, wy = (vp.y - v.y) / v.s;
   if (wx >= b.x0 - 4 / v.s && wx < b.x1 + 4 / v.s && wy >= b.y0 - 4 / v.s && wy < b.y1 + 4 / v.s) return { id: "move" };
   return null;
@@ -3918,7 +3953,8 @@ function shpHit(vp) {   // vp = viewport point; -> { id } handle, "move", or nul
 function shpApplyDrag(st, x, y) {   // st = { id, o: original shp copy, ax, ay }
   const o = st.o, dx = x - st.ax, dy = y - st.ay, n = shp;
   const norm = (a, b) => [Math.min(a, b), Math.max(a, b)];
-  if (st.id === "move") { n.x0 = o.x0 + dx; n.y0 = o.y0 + dy; n.x1 = o.x1 + dx; n.y1 = o.y1 + dy; if (o.c1) { n.c1 = [o.c1[0] + dx, o.c1[1] + dy]; n.c2 = [o.c2[0] + dx, o.c2[1] + dy]; } return; }
+  if (st.id === "move") { n.x0 = o.x0 + dx; n.y0 = o.y0 + dy; n.x1 = o.x1 + dx; n.y1 = o.y1 + dy; if (o.c1) { n.c1 = [o.c1[0] + dx, o.c1[1] + dy]; n.c2 = [o.c2[0] + dx, o.c2[1] + dy]; } if (o.pts) n.pts = o.pts.map((q) => [q[0] + dx, q[1] + dy]); return; }
+  if (st.id[0] === "v" && o.pts) { const k = +st.id.slice(1); n.pts = o.pts.map((q, i) => i === k ? [q[0] + dx, q[1] + dy] : q); return; }
   if (st.id === "p0") { n.x0 = o.x0 + dx; n.y0 = o.y0 + dy; return; }
   if (st.id === "p1") { n.x1 = o.x1 + dx; n.y1 = o.y1 + dy; return; }
   if (st.id === "c1") { n.c1 = [o.c1[0] + dx, o.c1[1] + dy]; return; }
@@ -4534,9 +4570,14 @@ function beginStroke(e) {
     if (tool === "shape") {
       if (shp) {   // editing the pending shape, or committing it and starting the next
         const hit = shpHit(vpPoint(e));
-        if (hit) { stroke = { kind: "shpEdit", id: hit.id, o: JSON.parse(JSON.stringify(shp)), ax: x, ay: y }; return; }
+        if (hit) {
+          if (shp.kind === "poly" && !shp.closed && hit.id === "v0" && shp.pts.length > 2) { stroke = { kind: "polyClose" }; return; }   // tap the origin to close
+          stroke = { kind: "shpEdit", id: hit.id, o: JSON.parse(JSON.stringify(shp)), ax: x, ay: y }; return;
+        }
+        if (shp.kind === "poly" && !shp.closed) { stroke = { kind: "polyTap", x, y }; drawGrid(); return; }   // next vertex
         shpCommit();
       }
+      if (shapeKind === "poly") { shp = { kind: "poly", fill: shapeFill, pts: [[x, y]], closed: false }; shapeSyncBar(); stroke = { kind: "polyTap", x, y, first: true }; drawGrid(); return; }
       stroke = { kind: "shape", x0: x, y0: y, x1: x, y1: y }; drawGrid(); return;
     }
     if (tool === "marquee") {
@@ -4617,6 +4658,7 @@ function moveStroke(e) {
   }
   if (stroke.kind === "shape") { const [x, y] = edPos(e); if (x !== stroke.x1 || y !== stroke.y1) { stroke.x1 = x; stroke.y1 = y; drawGrid(); } return; }
   if (stroke.kind === "shpEdit") { const [x, y] = edPos(e); shpApplyDrag(stroke, x, y); drawGrid(); return; }
+  if (stroke.kind === "polyTap") { const [x, y] = edPos(e); if (x !== stroke.x || y !== stroke.y) { stroke.x = x; stroke.y = y; drawGrid(); } return; }
   if (stroke.kind === "sel") {
     const [x, y] = edPos(e);
     if (!stroke.drag) {
@@ -4703,6 +4745,12 @@ function endStroke() {
   }
   if (stroke && stroke.kind === "shape") { const s = stroke; stroke = null; shp = shpFromStroke(s); shapeSyncBar(); drawGrid(); status("Drag to move, handles to adjust; Place when it's right."); return; }
   if (stroke && stroke.kind === "shpEdit") { stroke = null; drawGrid(); return; }
+  if (stroke && stroke.kind === "polyTap") {   // the vertex lands where the finger lifted
+    const st = stroke; stroke = null;
+    if (shp && shp.kind === "poly") { if (!st.first) shp.pts.push([st.x, st.y]); else shp.pts[0] = [st.x, st.y]; status(shp.pts.length < 3 ? "Tap to add points." : "Tap the first point to close, or keep adding points."); }
+    drawGrid(); return;
+  }
+  if (stroke && stroke.kind === "polyClose") { stroke = null; if (shp && shp.kind === "poly") { shp.closed = true; status("Polygon closed \u2014 drag points to adjust, Place when it's right."); } drawGrid(); return; }
   if (stroke && stroke.kind === "sel") {
     const s = stroke; stroke = null;
     if (selShape === "rect") { selApply(shapeRect(s.x0, s.y0, s.x1, s.y1)); return; }
@@ -4941,6 +4989,7 @@ function setTool(t) {
   syncSelbar(); shapeSyncBar();
 }
 document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => {
+  if (shp && (shp.kind === "poly" || b.dataset.v === "poly")) shpCommit();   // polygons don't convert; place what's pending first
   shapeKind = b.dataset.v;
   if (shp) { shp.kind = shapeKind; if (shapeKind === "curve" && !shp.c1) shpInitControls(shp); drawGrid(); }   // a pending shape follows the choice
   shapeSyncBar();
@@ -6363,7 +6412,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.75.0";
+const APP_VERSION = "6.75.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
