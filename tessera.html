@@ -2711,8 +2711,26 @@ function blit() {
    v6.71.2). The rAF coalescing tried in v6.71.3 caps repaints at Safari's
    60 Hz rAF rate on a 120 Hz iPad, which read as less smooth than painting
    on each touch event; the per-event repaint is a single GPU drawImage. */
+/* Gesture timing readout (v6.71.5, diagnostic — remove once the smoothness
+   question is settled): every repaint driven by a pinch/pan is timed, split
+   into canvas blit and overlay draw; the status line reports the gesture's
+   numbers when it ends. */
+let gtime = null;   // { n, blit, blitMax, ov, ovMax, t0 }
 function applyView(tab) {
-  if (tab === activeTab) { blit(); drawGrid(); }
+  if (tab !== activeTab) return;
+  if (pinch) {
+    if (!gtime) gtime = { n: 0, blit: 0, blitMax: 0, ov: 0, ovMax: 0, t0: performance.now() };
+    const a = performance.now(); blit(); const b = performance.now(); drawGrid(); const c = performance.now();
+    gtime.n++; gtime.blit += b - a; gtime.blitMax = Math.max(gtime.blitMax, b - a); gtime.ov += c - b; gtime.ovMax = Math.max(gtime.ovMax, c - b);
+    return;
+  }
+  blit(); drawGrid();
+}
+function gtimeReport() {
+  if (!gtime || gtime.n < 5) { gtime = null; return; }
+  const g = gtime; gtime = null;
+  const span = performance.now() - g.t0;
+  status("pinch: " + g.n + " repaints in " + Math.round(span) + " ms (" + Math.round(g.n / span * 1000) + "/s) \u00b7 blit " + (g.blit / g.n).toFixed(1) + " avg / " + g.blitMax.toFixed(1) + " max \u00b7 overlay " + (g.ov / g.n).toFixed(1) + " / " + g.ovMax.toFixed(1) + " ms");
 }
 function fitView(tab) {
   const r = viewport.getBoundingClientRect(), w = WORLD[tab];
@@ -4656,7 +4674,7 @@ const vpUp = (e) => {
     if (gesture && !gesture.moved && performance.now() - gesture.t0 < 300) {
       if (gesture.maxN === 2) { undo(); status("Undo"); }
       else if (gesture.maxN === 3) { redo(); status("Redo"); }
-    }
+    } else gtimeReport();
     gesture = null;
     return;
   }
@@ -6107,7 +6125,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.71.4";
+const APP_VERSION = "6.71.5";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
