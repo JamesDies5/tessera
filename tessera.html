@@ -63,18 +63,27 @@
      shrink-to-fit, tucking the last swatch under. Seven stops never need to
      wrap, so forbid it; IN FILE keeps wrapping for its variable count. */
   #stopSwatches { flex-wrap: nowrap; }
-  #brushMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; align-items: center; gap: 8px; width: 300px; max-width: 92vw;
-    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 10px;
+  /* Brush panel (v6.73): size with steppers + live footprint preview, then
+     segmented rows for shape, stroke mode (pixel-perfect), and dither. */
+  #brushMenu { position: fixed; right: 12px; z-index: 70; display: none; flex-direction: column; gap: 10px; width: 380px; max-width: 92vw;
+    background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 12px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   #brushMenu .cmRow { display: flex; gap: 8px; align-items: center; }
-  #brushMenu .cmRow > .lbl { flex: 0 0 52px; }
-  #brushMenu input[type="range"] { width: 150px; accent-color: var(--accent); }
-  #brushSizeVal { flex: 0 0 24px; text-align: right; font-size: 12px; color: var(--text); }
-  .bshape { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 38px; height: 38px;
-    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-  .bshape.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .bshape .bsq { width: 16px; height: 16px; background: var(--accent); }
-  .bshape .bci { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
+  #brushMenu .cmRow > .lbl { flex: 0 0 60px; }
+  #brushMenu input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  #brushSizeVal { flex: 0 0 30px; text-align: center; font-size: 15px; color: var(--text); font-weight: 600; }
+  #brushMenu .step { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 16px; cursor: pointer; flex: 0 0 auto; }
+  #brushMenu .step:active { background: var(--line); }
+  #brushPreview { width: 64px; height: 64px; border-radius: 8px; border: 1px solid var(--line); image-rendering: pixelated; flex: 0 0 auto;
+    background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
+  #brushMenu .seg { display: flex; gap: 5px; flex: 1; }
+  #brushMenu .seg button { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--dim); border-radius: 8px; padding: 8px 4px; font: inherit; font-size: 10px; letter-spacing: .5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  #brushMenu .seg button.on { color: var(--accent); border-color: var(--accent); }
+  #brushMenu .seg button svg { width: 14px; height: 14px; }
+  #brushMenu .seg button .bsq { width: 12px; height: 12px; background: currentColor; }
+  #brushMenu .seg button .bci { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+  #brushMenu .seg button .bdit { width: 14px; height: 14px; image-rendering: pixelated; }
+  #brushMenu .cmNote { font-size: 10px; color: var(--dim); letter-spacing: .5px; }
   #selbar { display: none; flex-direction: column; gap: 6px; align-items: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); }
   .selrow { display: flex; gap: 6px; align-items: center; }
@@ -103,9 +112,9 @@
   #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
     border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
     display: none; pointer-events: none; transform: translate(-50%, -115%); }
-  #btnConvert, #btnDeselect, #btnCopy, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+  #btnConvert, #btnDeselect, #btnCopy, #btnCopyAll, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto; }
-  #btnConvert:active, #btnDeselect:active, #btnCopy:active, #btnPaste:active { background: var(--line); }
+  #btnConvert:active, #btnDeselect:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
@@ -250,11 +259,25 @@
   <span class="fly"><button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size and shape, shared by pencil and eraser"></button>
   <!-- Brush flyout: pixel size + stamp shape, shared by pencil and eraser -->
   <div id="brushMenu">
-    <div class="cmRow"><span class="lbl">SIZE</span><input type="range" id="brushSizeSlider" min="1" max="16" step="1" value="1"><span id="brushSizeVal">1</span></div>
-    <div class="cmRow"><span class="lbl">SHAPE</span>
-      <button class="bshape on" data-bshape="square" title="Square brush"><span class="bsq"></span></button>
-      <button class="bshape" data-bshape="circle" title="Circle brush"><span class="bci"></span></button>
+    <div class="cmRow"><span class="lbl">SIZE</span>
+      <button class="step" id="brushMinus" title="Smaller (−)">&minus;</button>
+      <input type="range" id="brushSizeSlider" min="1" max="16" step="1" value="1">
+      <button class="step" id="brushPlus" title="Larger (+)">+</button>
+      <span id="brushSizeVal">1</span>
+      <canvas id="brushPreview" width="18" height="18" title="The brush footprint as it will stamp, with dither applied"></canvas>
     </div>
+    <div class="cmRow"><span class="lbl">SHAPE</span><div class="seg" id="brushShapeSeg">
+      <button data-v="square" title="Square brush"><span class="bsq"></span>Square</button>
+      <button data-v="circle" title="Circle brush"><span class="bci"></span>Circle</button></div></div>
+    <div class="cmRow"><span class="lbl">STROKE</span><div class="seg" id="brushPPSeg">
+      <button data-v="0" title="Normal freehand — every pixel the pointer crosses">Normal</button>
+      <button data-v="1" title="Pixel perfect — the corner pixel of every L-shaped step is dropped so diagonals stay one pixel wide (Aseprite's algorithm)">Pixel perfect</button></div></div>
+    <div class="cmRow"><span class="lbl">DITHER</span><div class="seg" id="brushDitherSeg">
+      <button data-v="0" title="Solid">Off</button>
+      <button data-v="1" title="25% — one pixel in four"><canvas class="bdit" width="4" height="4" data-d="1"></canvas>25%</button>
+      <button data-v="2" title="50% — checkerboard"><canvas class="bdit" width="4" height="4" data-d="2"></canvas>50%</button>
+      <button data-v="3" title="75% — three pixels in four"><canvas class="bdit" width="4" height="4" data-d="3"></canvas>75%</button></div></div>
+    <div class="cmNote">Dither is locked to canvas pixels, so strokes, fills, and shapes never double over each other. Outlines of shapes stay solid.</div>
   </div></span>
   <span class="fly"><button class="ibtn" id="btnLayers" data-icon="layers" title="Layers — add, hide, lock, reorder, merge" style="display:none"></button>
   <div id="layerMenu">
@@ -3562,9 +3585,10 @@ function redo() {
 function abortStroke() { if (!undoStack.length) return; edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); }
 
 /* ---- drawing ops (template coordinates) ---- */
-function putPx(x, y) {
+function putPx(x, y, solid) {
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (selMask && !selMask[y * TW + x]) return;   // active selection isolates painting
+  if (!solid && !ditherOK(x, y)) return;         // v6.73: dither, anchored to canvas coordinates
   if (tool === "eraser") edCtx.clearRect(x, y, 1, 1);
   else { edCtx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a / 255})`; edCtx.clearRect(x, y, 1, 1); edCtx.fillRect(x, y, 1, 1); }
 }
@@ -3574,6 +3598,10 @@ function putPx(x, y) {
    Circle uses the classic pixel-disc test (r = N/2 - 1/4): plus at 3,
    rounded square at 4, true discs from 5 up. */
 let brushSize = 1, brushShape = "square";
+let brushPP = false;   // pixel-perfect freehand (pencil + eraser)
+let brushDither = 0;   // 0 solid, 1 = 25%, 2 = 50%, 3 = 75% — Bayer 2×2 anchored to canvas coordinates
+const BAYER2 = [0, 2, 3, 1];   // [y&1][x&1] thresholds
+function ditherOK(x, y) { return brushDither === 0 || BAYER2[((y & 1) << 1) | (x & 1)] < brushDither; }
 let brushCache = null, brushCacheKey = "";
 function brushOffsets() {
   const key = brushSize + "|" + brushShape;
@@ -3601,15 +3629,15 @@ function symOf(px, py) {
   if (sym === "quad") out.push([TW - 1 - px, TH - 1 - py]);
   return out;
 }
-function stampEd(x, y) {
+function stampEd(x, y, solid) {
   for (const o of brushOffsets()) {
     const px = x + o[0], py = y + o[1];
-    putPx(px, py);
-    const m = symOf(px, py); if (m) for (const q of m) putPx(q[0], q[1]);
+    putPx(px, py, solid);
+    const m = symOf(px, py); if (m) for (const q of m) putPx(q[0], q[1], solid);
   }
 }
 function stampPv(x, y) { for (const o of brushOffsets()) { const m = levelToTemplate(x + o[0], y + o[1]); if (m) putPx(m.tx, m.ty); } }
-function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ size: brushSize, shape: brushShape })); } catch (e) {} }
+function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ size: brushSize, shape: brushShape, pp: brushPP, dither: brushDither })); } catch (e) {} }
 /* ==== marquee selection (Phase 1) ====
    selMask is a TW*TH byte mask (1 = selected). All shapes rasterize
    mathematically against pixel centers — no canvas fills, so masks are
@@ -3773,7 +3801,7 @@ function shapeCommit(s) {
   const px = shapePixels(shapeKind, shapeFill, s.x0, s.y0, s.x1, s.y1);
   snapshot();
   for (let i = 0; i < px.inner.length; i += 2) { putPx(px.inner[i], px.inner[i + 1]); const m = symOf(px.inner[i], px.inner[i + 1]); if (m) for (const q of m) putPx(q[0], q[1]); }
-  for (let i = 0; i < px.edge.length; i += 2) stampEd(px.edge[i], px.edge[i + 1]);
+  for (let i = 0; i < px.edge.length; i += 2) stampEd(px.edge[i], px.edge[i + 1], true);   // outlines stay solid
   templateChanged(); persistPng(); refreshFileSwatches();
   const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
   status((shapeFill ? "Filled " : "") + (shapeKind === "line" ? "line" : shapeKind === "rect" ? "rectangle" : "ellipse") + (shapeKind === "line" ? "" : " " + w + " \u00d7 " + h) + " placed.");
@@ -4033,6 +4061,33 @@ function doPaste() {
   blit(); drawGrid();
   status(APP_MODE === "bg" ? "Pasted onto \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d \u2014 drag, flip, or rotate; switching tools places it." : "Pasted \u2014 drag, flip, or rotate; switching tools places it.");
 }
+/* Pixel-perfect freehand (v6.73) — Aseprite's rule (IntertwineAsPixelPerfect,
+   src/app/tools/intertwiners.h): as the path grows, a pixel that sits in the
+   corner of an L — sharing a row or column with each neighbour while the two
+   neighbours are diagonal to each other — is dropped. The stroke is then
+   repainted from the thinned path over the pre-stroke pixels, so removed
+   corners restore what was underneath. Works on the stamp path, so larger
+   brushes benefit too. Straight-line snap keeps its own (already clean) path. */
+function ppExtend(x1, y1) {
+  const path = stroke.path, last = path[path.length - 1];
+  let x0 = last[0], y0 = last[1];
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  const from = Math.max(1, path.length - 2);   // re-examine the tail: new points can complete an L with the old ones
+  while (true) {
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+    path.push([x0, y0]);
+  }
+  for (let c = from; c + 1 < path.length; c++) {
+    const a = path[c - 1], b = path[c], d = path[c + 1];
+    if ((a[0] === b[0] || a[1] === b[1]) && (d[0] === b[0] || d[1] === b[1]) && a[0] !== d[0] && a[1] !== d[1]) { path.splice(c, 1); c--; }
+  }
+  edCtx.putImageData(stroke.orig, 0, 0);
+  for (const pt of path) stampEd(pt[0], pt[1]);
+}
 function lineTo(x0, y0, x1, y1) {
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
@@ -4054,17 +4109,17 @@ function canvasFill(x, y) {
   const t = [d[si], d[si+1], d[si+2], d[si+3]];
   const nc = tool === "eraser" ? [0,0,0,0] : [color.r, color.g, color.b, color.a];
   if (t[0]===nc[0] && t[1]===nc[1] && t[2]===nc[2] && t[3]===nc[3]) return;
-  const stack = [x + y * TW];
+  const stack = [x + y * TW], seen = new Uint8Array(TW * TH); seen[stack[0]] = 1;
   while (stack.length) {
     const idx = stack.pop(), px = idx % TW, py = (idx - px) / TW;
     if (selMask && !selMask[idx]) continue;
     const i = idx * 4;
     if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
-    d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3];
-    if (px + 1 < TW) stack.push(idx + 1);
-    if (px > 0) stack.push(idx - 1);
-    if (py + 1 < TH) stack.push(idx + TW);
-    if (py > 0) stack.push(idx - TW);
+    if (ditherOK(px, py)) { d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3]; }   // v6.73: dithered fill — skipped pixels keep the old color but the flood still passes through them
+    if (px + 1 < TW && !seen[idx + 1]) { seen[idx + 1] = 1; stack.push(idx + 1); }
+    if (px > 0 && !seen[idx - 1]) { seen[idx - 1] = 1; stack.push(idx - 1); }
+    if (py + 1 < TH && !seen[idx + TW]) { seen[idx + TW] = 1; stack.push(idx + TW); }
+    if (py > 0 && !seen[idx - TW]) { seen[idx - TW] = 1; stack.push(idx - TW); }
   }
   edCtx.putImageData(img, 0, 0);
 }
@@ -4078,15 +4133,17 @@ function cellFill(x, y) {
   const t = [d[si], d[si+1], d[si+2], d[si+3]];
   const nc = tool === "eraser" ? [0,0,0,0] : [color.r, color.g, color.b, color.a];
   if (t[0]===nc[0] && t[1]===nc[1] && t[2]===nc[2] && t[3]===nc[3]) return;
-  const stack = [[lx, ly]];
+  const stack = [[lx, ly]], seen = new Uint8Array(TILE * TILE); seen[ly * TILE + lx] = 1;
   while (stack.length) {
     const [px, py] = stack.pop();
-    if (px < 0 || py < 0 || px >= TILE || py >= TILE) continue;
     if (selMask && !selMask[(cy + py) * TW + (cx + px)]) continue;   // selection edge is a wall
     const i = (py * TILE + px) * 4;
     if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
-    d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3];
-    stack.push([px+1,py],[px-1,py],[px,py+1],[px,py-1]);
+    if (ditherOK(cx + px, cy + py)) { d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3]; }   // v6.73: dithered fill
+    for (const [qx, qy] of [[px+1,py],[px-1,py],[px,py+1],[px,py-1]]) {
+      if (qx < 0 || qy < 0 || qx >= TILE || qy >= TILE) continue;
+      const k = qy * TILE + qx; if (!seen[k]) { seen[k] = 1; stack.push([qx, qy]); }
+    }
   }
   edCtx.putImageData(img, cx, cy);
 }
@@ -4372,6 +4429,7 @@ function beginStroke(e) {
     if (tool === "fill") { snapshot(); cellFill(x, y); templateChanged(); persistPng(); refreshFileSwatches(); return; }
     snapshot(); stampEd(x, y); templateChanged();
     stroke = { kind: "ed", last: [x, y], qOrigin: [x, y], snap: true };
+    if (brushPP && (tool === "pencil" || tool === "eraser")) { stroke.pp = true; stroke.path = [[x, y]]; stroke.orig = undoStack[undoStack.length - 1]; }
     armHold(e);
     return;
   }
@@ -4446,7 +4504,8 @@ function moveStroke(e) {
       return;
     }
     if (pos[0] !== stroke.last[0] || pos[1] !== stroke.last[1]) {
-      (stroke.kind === "ed" ? lineTo : pvLine)(stroke.last[0], stroke.last[1], pos[0], pos[1]);
+      if (stroke.pp) ppExtend(pos[0], pos[1]);
+      else (stroke.kind === "ed" ? lineTo : pvLine)(stroke.last[0], stroke.last[1], pos[0], pos[1]);
       stroke.last = [pos[0], pos[1]]; templateChanged();
     }
     qlineArm(e);
@@ -6125,7 +6184,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.72.1";
+const APP_VERSION = "6.73.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -6240,26 +6299,35 @@ $("btnCanvas").addEventListener("click", () => {
 /* Brush flyout: slider + shape pair; settings persist and apply to both
    pencil and eraser immediately. */
 function closeBrushMenu() { $("brushMenu").style.display = "none"; $("btnBrush").classList.remove("on"); }
+function brushSync() {   // v6.73: every control reflects the model; the preview is the real footprint with dither
+  $("brushSizeSlider").value = brushSize; $("brushSizeVal").textContent = brushSize;
+  document.querySelectorAll("#brushShapeSeg button").forEach((q) => q.classList.toggle("on", q.dataset.v === brushShape));
+  document.querySelectorAll("#brushPPSeg button").forEach((q) => q.classList.toggle("on", (q.dataset.v === "1") === brushPP));
+  document.querySelectorAll("#brushDitherSeg button").forEach((q) => q.classList.toggle("on", +q.dataset.v === brushDither));
+  const pv = $("brushPreview"), g = pv.getContext("2d"); g.clearRect(0, 0, 18, 18);
+  g.fillStyle = "#e8e8e8";
+  for (const o of brushOffsets()) { const x = 8 + o[0], y = 8 + o[1]; if (x >= 0 && y >= 0 && x < 18 && y < 18 && (brushDither === 0 || BAYER2[((y & 1) << 1) | (x & 1)] < brushDither)) g.fillRect(x, y, 1, 1); }
+  persistBrush();
+}
+document.querySelectorAll("#brushDitherSeg .bdit").forEach((c) => {   // the tiny density swatches on the dither buttons
+  const g = c.getContext("2d"), d = +c.dataset.d; g.fillStyle = "#cfcfcf";
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if (BAYER2[((y & 1) << 1) | (x & 1)] < d) g.fillRect(x, y, 1, 1);
+});
 $("btnBrush").addEventListener("click", () => {
   const m = $("brushMenu");
   if (m.style.display === "flex") { closeBrushMenu(); return; }
   closeColorMenu(); closeOptMenu(); closeLayerMenu(); closeBgViewMenu();
-  $("brushSizeSlider").value = brushSize; $("brushSizeVal").textContent = brushSize;
-  document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q.dataset.bshape === brushShape));
+  brushSync();
   m.style.top = ($("btnBrush").getBoundingClientRect().bottom + 8) + "px";   // vertical only — right edge is CSS-pinned to the screen margin
   m.style.display = "flex";
   $("btnBrush").classList.add("on");
 });
-$("brushSizeSlider").addEventListener("input", (e) => {
-  brushSize = Math.max(1, Math.min(16, parseInt(e.target.value, 10) || 1));
-  $("brushSizeVal").textContent = brushSize;
-  persistBrush();
-});
-document.querySelectorAll(".bshape").forEach((b) => b.addEventListener("click", () => {
-  brushShape = b.dataset.bshape;
-  document.querySelectorAll(".bshape").forEach((q) => q.classList.toggle("on", q === b));
-  persistBrush();
-}));
+$("brushSizeSlider").addEventListener("input", (e) => { brushSize = Math.max(1, Math.min(16, parseInt(e.target.value, 10) || 1)); brushSync(); });
+$("brushMinus").addEventListener("click", () => { brushSize = Math.max(1, brushSize - 1); brushSync(); });
+$("brushPlus").addEventListener("click", () => { brushSize = Math.min(16, brushSize + 1); brushSync(); });
+document.querySelectorAll("#brushShapeSeg button").forEach((b) => b.addEventListener("click", () => { brushShape = b.dataset.v; brushSync(); }));
+document.querySelectorAll("#brushPPSeg button").forEach((b) => b.addEventListener("click", () => { brushPP = b.dataset.v === "1"; brushSync(); }));
+document.querySelectorAll("#brushDitherSeg button").forEach((b) => b.addEventListener("click", () => { brushDither = +b.dataset.v; brushSync(); }));
 document.addEventListener("pointerdown", (e) => {
   const m = $("brushMenu");
   if (m.style.display !== "flex") return;
@@ -6319,6 +6387,7 @@ $("btnConvert").addEventListener("click", () => {
     if (br) {
       brushSize = Math.max(1, Math.min(16, br.size | 0)) || 1;
       if (br.shape === "circle" || br.shape === "square") brushShape = br.shape;
+      brushPP = !!br.pp; brushDither = [0, 1, 2, 3].includes(br.dither) ? br.dither : 0;
     }
   } catch (e) {}
   syncBgCurrent();
