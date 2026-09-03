@@ -3091,8 +3091,8 @@ function drawGrid() {
       if (hp && cw * dpr * ch * dpr <= HATCH_CACHE_MAX) {   // zoomed-out: one cached hatch canvas, free per frame
         const key = [cw, ch, dpr].join("|");
         const inGesture = !!pinch;   // two-finger pan/zoom in progress: stretch the cached hatch, rebuild crisp on release
-        if (selHatchMask !== selMask || (selHatchKey !== key && !(inGesture && selHatchMask === selMask))) {
-          selHatchMask = selMask; selHatchKey = key;
+        if (selHatchMask !== selGen || (selHatchKey !== key && !inGesture)) {
+          selHatchMask = selGen; selHatchKey = key;
           selHatch.width = Math.max(1, Math.round(cw * dpr)); selHatch.height = Math.max(1, Math.round(ch * dpr));
           const hg = selHatch.getContext("2d");
           hg.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -3699,6 +3699,7 @@ function undo() {
     return;
   }
   if (!undoStack.length) return;
+  if (undoStack[undoStack.length - 1].sel) { selRestore(undoStack.pop(), redoStack); redoLog.push("ed"); return; }
   if (APP_MODE === "bg") { bgUndoApply(undoStack, redoStack); redoLog.push("ed"); return; }
   redoStack.push(edCtx.getImageData(0, 0, TW, TH));
   edCtx.putImageData(undoStack.pop(), 0, 0);
@@ -3722,13 +3723,14 @@ function redo() {
     return;
   }
   if (!redoStack.length) return;
+  if (redoStack[redoStack.length - 1].sel) { selRestore(redoStack.pop(), undoStack); actionLog.push("ed"); return; }
   if (APP_MODE === "bg") { bgUndoApply(redoStack, undoStack); actionLog.push("ed"); return; }
   undoStack.push(edCtx.getImageData(0, 0, TW, TH));
   edCtx.putImageData(redoStack.pop(), 0, 0);
   templateChanged(); persistPng(); refreshFileSwatches();
   actionLog.push("ed");
 }
-function abortStroke() { if (!undoStack.length) return; edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); }
+function abortStroke() { if (!undoStack.length || undoStack[undoStack.length - 1].sel || undoStack[undoStack.length - 1].struct) return; edCtx.putImageData(undoStack.pop(), 0, 0); templateChanged(); }
 
 /* ---- drawing ops (template coordinates) ---- */
 function putPx(x, y, solid) {
@@ -3814,16 +3816,33 @@ function selHatchPattern() {
 const selMaskCv = document.createElement("canvas");
 let selMaskCvKey = null;
 function selMaskCanvas() {   // opaque where selected, transparent elsewhere
-  if (selMaskCvKey === selMask && selMaskCv.width === TW && selMaskCv.height === TH) return selMaskCv;
+  if (selMaskCvKey === selGen && selMaskCv.width === TW && selMaskCv.height === TH) return selMaskCv;
   selMaskCv.width = TW; selMaskCv.height = TH;
   const g = selMaskCv.getContext("2d"), img = g.createImageData(TW, TH);
   for (let i = 0; i < selMask.length; i++) if (selMask[i]) img.data[i * 4 + 3] = 255;
   g.putImageData(img, 0, 0);
-  selMaskCvKey = selMask;
+  selMaskCvKey = selGen;
   return selMaskCv;
 }
-function selClear() { selMask = null; selEdges = null; selPoly = null; drawGrid(); }
-function selRebuildEdges() {   // boundary segments in template px, for the ants
+/* Selection undo (v6.81.1): every explicit selection edit — a shape, wand,
+   invert, or deselect — pushes the PREVIOUS mask as a { sel } entry on the
+   same undo stack the pixels use, so undo/redo walk back through selection
+   changes in order with everything else. */
+function selSnapshot() {
+  undoStack.push({ sel: true, mask: selMask ? new Uint8Array(selMask) : null });
+  if (undoStack.length > UNDO_CAP) undoStack.shift();
+  redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = [];
+}
+function selRestore(ent, to) {   // apply a { sel } entry, pushing the inverse onto `to`
+  to.push({ sel: true, mask: selMask ? new Uint8Array(selMask) : null });
+  selMask = ent.mask ? new Uint8Array(ent.mask) : null; selPoly = null;
+  selRebuildEdges(); drawGrid();
+  status(selMask ? "Selection restored." : "Selection cleared.");
+}
+function selClear(record) { if (record && (selMask || selPoly)) selSnapshot(); selMask = null; selEdges = null; selPoly = null; drawGrid(); }
+let selGen = 0;   // v6.81.2: bumps on every selection change — the hatch caches key on it, not on object identity
+function selRebuildEdges() {   // boundary segments in template px (also the "has selection" flag)
+  selGen++;
   if (!selMask) { selEdges = null; return; }
   const E = []; let any = false;
   for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
@@ -3861,9 +3880,11 @@ function wandSelect(x, y) {
     if (py > 0 && !seen[idx - TW]) { seen[idx - TW] = 1; stack.push(idx - TW); }
   }
   selApply(shape);
-  status((selMode === "add" ? "Selected " : "Removed ") + n + " px" + (t3 ? " of gray " + t0 : " of transparent") + ".");
+  status("Automatic (wand): " + (selMode === "add" ? "selected " : "removed ") + n + (t3 ? " px of gray " + t0 : " transparent px") + " \u2014 switch to \u25a1 / \u25cb / lasso to draw a marquee.");
 }
 function selApply(shape) {
+  if (selMode === "sub" && !selMask) { status("Remove mode with nothing selected \u2014 tap + to add to a selection."); drawGrid(); return; }
+  selSnapshot();
   if (!selMask) selMask = new Uint8Array(TW * TH);
   if (selMode === "add") { for (let i = 0; i < shape.length; i++) if (shape[i]) selMask[i] = 1; }
   else { for (let i = 0; i < shape.length; i++) if (shape[i]) selMask[i] = 0; }
@@ -5338,14 +5359,14 @@ $("btnSelInvert").addEventListener("click", () => {   // v6.69.1
   if (selPoly) selPoly = null;
   const m = new Uint8Array(TW * TH);
   if (selMask) { for (let i = 0; i < m.length; i++) m[i] = selMask[i] ? 0 : 1; } else m.fill(1);
-  selMask = m; selRebuildEdges();
+  selSnapshot(); selMask = m; selRebuildEdges();
   if (!selMask) status("Selection empty."); else { drawGrid(); status("Selection inverted."); }
 });
 document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click", () => {
   selMode = b.dataset.selmode;
   document.querySelectorAll(".selmode").forEach((q) => q.classList.toggle("on", q === b));
 }));
-$("btnDeselect").addEventListener("click", () => { selClear(); status("Selection cleared."); });
+$("btnDeselect").addEventListener("click", () => { selClear(true); status("Selection cleared."); });
 $("btnCopy").addEventListener("click", () => doCopy(false));
 $("btnCopyAll").addEventListener("click", () => doCopy(true));
 $("btnPaste").addEventListener("click", doPaste);
@@ -6738,7 +6759,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.81.0";
+const APP_VERSION = "6.81.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
