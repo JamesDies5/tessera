@@ -142,21 +142,27 @@
   /* ---- Projects gallery (v6.39) ---- */
   #projOverlay { position: fixed; inset: 0; z-index: 80; display: none; flex-direction: column; background: #121212; }
   /* v6.82: Rules tab — an HTML panel over the viewport (the tab has no canvas of its own) */
-  #rulesPanel { position: absolute; inset: 0; z-index: 5; display: none; flex-wrap: wrap; align-items: flex-start; align-content: flex-start;
-    gap: 18px; padding: 14px; overflow: auto; touch-action: auto; background: #121212; color: var(--text); font-size: 12px; }
+  #rulesPanel { position: absolute; inset: 0; z-index: 5; display: none; padding: 14px; gap: 14px 24px; align-content: start; align-items: start;
+    grid-template-columns: max-content max-content minmax(240px, 1fr); grid-template-areas: "sheet sample band";
+    overflow: auto; touch-action: auto; background: #121212; color: var(--text); font-size: 12px; }
+  #rulesPanel.two { grid-template-columns: max-content minmax(240px, 1fr); grid-template-areas: "sheet band" "sample band"; }
+  #rulesSheetCol { grid-area: sheet; } #rulesBandCol { grid-area: band; } #rulesSampleCol { grid-area: sample; }
+  #rulesBand { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  #rulesBand .rulesRow { gap: 6px; }
   #rulesPanel canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 6px; }
-  #rulesPanel .rulesChip canvas { border: none; border-radius: 3px; }
+  #rulesPanel .rulesChip canvas { border: 1px solid var(--line); border-radius: 4px; }
   .rulesCol { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .rulesHead { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
   .rulesHead span { text-transform: none; letter-spacing: 0; color: var(--accent); margin-left: 8px; }
-  .rulesRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .rulesLab { width: 52px; text-transform: capitalize; }
-  .rulesChip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    color: var(--text); font: inherit; font-size: 12px; padding: 3px 8px 3px 4px; cursor: pointer; }
-  .rulesAdd { padding: 6px 10px; color: var(--dim); }
+  .rulesRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rulesLab { text-transform: capitalize; margin-right: 2px; }
+  .rulesChip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font: inherit; font-size: 13px; padding: 4px 6px 4px 4px; cursor: pointer; }
+  .rulesChip .rulesX { color: var(--dim); font-size: 15px; line-height: 1; padding: 0 4px; }
+  .rulesAdd { padding: 10px 12px; color: var(--dim); }
   .rulesAdd.armed { color: var(--accent); border-color: var(--accent); }
-  .rulesCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  #rulesState { color: var(--dim); max-width: 420px; line-height: 1.4; }
+  .rulesCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+  #rulesState { color: var(--dim); max-width: 300px; line-height: 1.4; }
   #projOverlay.show { display: flex; }
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
@@ -581,21 +587,21 @@
     <div id="statusChip"></div>
     <!-- v6.82: Rules tab. Sheet to tap on the left, settings on the right, live sample block underneath. -->
     <div id="rulesPanel">
-      <div class="rulesCol">
+      <div class="rulesCol" id="rulesBandCol">
+        <div class="rulesHead">Rules</div>
+        <div id="rulesBand">
+          <div id="rulesRim" style="display:contents"></div>
+          <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count edge tiles from each corner</label>
+          <button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)" style="width:max-content">Reset to template</button>
+        </div>
+        <div id="rulesState"></div>
+      </div>
+      <div class="rulesCol" id="rulesSheetCol">
         <div class="rulesHead">Sheet<span id="rulesHint"></span></div>
         <canvas id="rulesSheet"></canvas>
       </div>
-      <div class="rulesCol" style="flex:1 1 300px">
-        <div class="rulesHead">Inner rim straights</div>
-        <div id="rulesRim"></div>
-        <div class="rulesHead">Edge tiles</div>
-        <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count from each corner (B1, C1, D1 in order)</label>
-        <div class="rulesHead">Layout</div>
-        <div id="rulesState"></div>
-        <button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)" style="width:max-content">Reset to template</button>
-      </div>
-      <div class="rulesCol" style="flex-basis:100%">
-        <div class="rulesHead">Sample block</div>
+      <div class="rulesCol" id="rulesSampleCol">
+        <div class="rulesHead">Sample</div>
         <canvas id="rulesSample"></canvas>
       </div>
     </div>
@@ -2901,7 +2907,8 @@ function sizeOverlay() {
 }
 /* Per-tab grid visibility: template defaults to cell lines on, level starts
    clean. The two rail buttons always act on the active tab's state. */
-const gridOn = { ed: { cell: true, px: false }, pv: { cell: false, px: false } };
+const gridOn = { ed: { cell: true, px: false }, pv: { cell: false, px: false }, rules: { cell: true, px: false } };   // v6.82: the Rules tab has its own grid state
+const gridTab = () => ($("rulesPanel").style.display === "grid" ? "rules" : activeTab);
 let hover = null;   // { x, y } world px under a hovering pen/mouse tip
 function drawGrid() {
   const r = viewport.getBoundingClientRect();
@@ -3222,8 +3229,8 @@ function drawGrid() {
 let ovRaf = false;
 function scheduleOverlay() { if (ovRaf) return; ovRaf = true; requestAnimationFrame(() => { ovRaf = false; drawGrid(); }); }
 function syncGridButtons() {
-  $("btnCellGrid").classList.toggle("on", gridOn[activeTab].cell);
-  $("btnPxGrid").classList.toggle("on", gridOn[activeTab].px);
+  $("btnCellGrid").classList.toggle("on", gridOn[gridTab()].cell);
+  $("btnPxGrid").classList.toggle("on", gridOn[gridTab()].px);
 }
 
 /* ---- swatches: displayed through the active palette's gradient map for
@@ -5326,26 +5333,63 @@ document.addEventListener("gesturechange", (e) => e.preventDefault());
    through the real resolver with this project's contract, remaps, and deep
    pool. The sample is two solid blocks: a 13x9 (outer edges, the inner rim
    ring, core) and an 8x7 offset by 16 cells so origin-anchored cadence
-   visibly drifts against the first. The panel swallows pointer/wheel events
-   so the viewport's stroke handler (which preventDefaults pointerdown, and
-   with it every click inside) never sees them. Future sections (edge sets,
-   variations, slope roles, physics) add rows to the same panel. */
-const RULES_CS = 24, RULES_SS = 2;
+   visibly drifts against the first. Both canvases size themselves to the
+   panel (whole-pixel scales, device-pixel-ratio aware) and re-fit on resize.
+   The rail's cell-grid and A1 toggles apply here (gridOn.rules / btnCoords),
+   drawn in the Template tab's own label style. The panel swallows pointer and
+   wheel events so the viewport's stroke handler (which preventDefaults
+   pointerdown, and with it every click inside) never sees them. */
+const SAMPLE = { cols: 13, rows: 9 };   // one solid block at x=0: origin-anchored cadence reads C1 D1 B1 (the reported symptom); run-anchored reads B1 C1 D1
+function rulesSheetRows() {   // rows shown: down to the last row with art, plus two spare rows (all still tappable)
+  const cols = TW / TILE, rows = TH / TILE, d = edCtx.getImageData(0, 0, TW, TH).data;
+  let last = -1;
+  for (let y = TH - 1; y >= 0 && last < 0; y--) for (let x = 0; x < TW; x++) if (d[(y * TW + x) * 4 + 3]) { last = Math.floor(y / TILE); break; }
+  return Math.max(4, Math.min(rows, last + 3));
+}
 const RIM_KEYS = ["top", "bottom", "left", "right"];
 const RIM_COLORS = { top: "#6fd3ff", bottom: "#ffb060", left: "#c9a6ff", right: "#9cf59c" };
 let rulesArmed = null;   // rim row waiting for a sheet tap
+let rulesSheetCS = 24;   // current sheet cell size in CSS px (set by rulesFit)
 function rulesOpen() {
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === "rules"));
   $("ctxLevel").style.display = "none";
   if (float) floatFlatten();
   if (canvasMode) exitCanvasMode();
   closeOptMenu(); closeIOBar(); syncCellbar(false); syncVarybar(); syncSelbar();
-  $("rulesPanel").style.display = "flex";
+  $("rulesPanel").style.display = "grid";
+  syncGridButtons();
   rulesRender();
 }
-function rulesClose() { rulesArmed = null; $("rulesPanel").style.display = "none"; }
+function rulesClose() { rulesArmed = null; $("rulesPanel").style.display = "none"; syncGridButtons(); }
+function rulesIsOpen() { return $("rulesPanel").style.display === "grid"; }
+let rulesRows = 0;   // sheet rows currently shown
+function rulesFit() {   // settings always stack on the right. "three": sheet | sample | settings when the width allows; else "two": sheet over sample, settings right
+  const P = $("rulesPanel"), cols = TW / TILE;
+  rulesRows = rulesSheetRows();
+  const W = Math.max(320, P.clientWidth - 28), H = Math.max(400, P.clientHeight - 28);
+  const BAND = 300, GAP = 24, HEAD = 40;
+  let sampleS = 0;
+  for (const S of [3, 2]) {   // three columns: the largest sample scale that still leaves the sheet >= 28px cells
+    const cs = Math.floor(Math.min(48, (H - HEAD) / rulesRows, (W - S * SAMPLE.cols * TILE - BAND - 2 * GAP) / cols));
+    if (cs >= 28) { sampleS = S; rulesSheetCS = cs; break; }
+  }
+  const three = sampleS > 0;
+  if (!three) {   // two columns: sample scale first, sheet takes the room left, step the sample down if the sheet gets cramped
+    const availW = Math.max(240, W - BAND - GAP);
+    sampleS = Math.max(1, Math.min(3, Math.floor(availW / (SAMPLE.cols * TILE))));
+    for (;;) {
+      rulesSheetCS = Math.floor(Math.min(48, availW / cols, (H - 2 * HEAD - sampleS * TILE * SAMPLE.rows) / rulesRows));
+      if (rulesSheetCS >= 28 || sampleS <= 1) break;
+      sampleS--;
+    }
+    rulesSheetCS = Math.max(14, rulesSheetCS);
+  }
+  P.classList.toggle("two", !three);
+  return { sampleS };
+}
 function rulesRender() {
-  if (!CT || APP_MODE === "bg" || $("rulesPanel").style.display !== "flex") return;
+  if (!CT || APP_MODE === "bg" || !rulesIsOpen()) return;
+  const fit = rulesFit();
   rulesDrawSheet(); rulesDrawChips();
   $("rulesAnchor").checked = CT.CADENCE_ANCHOR === "run";
   const own = contractIsProject(CT.id);
@@ -5354,31 +5398,44 @@ function rulesRender() {
     : "Using the " + CT.label + " template layout. Editing anything here gives this project its own copy; other projects are unaffected.";
   $("btnRulesLayoutReset").style.display = own ? "" : "none";
   $("rulesHint").textContent = rulesArmed ? "tap a cell to add it to the " + rulesArmed + " rim" : "";
-  rulesDrawSample();
+  rulesDrawSample(fit.sampleS);
+}
+function rulesCanvas(cv, cssW, cssH) {   // DPR-aware sizing; returns a context already scaled to CSS px
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.imageSmoothingEnabled = false;
+  return g;
+}
+function rulesLabel(g, nm, x, y, s) {   // the Template tab's coordinate badge
+  g.font = "600 " + Math.max(8, Math.min(11, s * 0.28)) + "px ui-monospace, monospace"; g.textBaseline = "top";
+  g.fillStyle = "rgba(0,0,0,0.65)"; g.fillRect(x + 1, y + 1, g.measureText(nm).width + 3, 11);
+  g.fillStyle = "#8ecbff"; g.fillText(nm, x + 2, y + 2);
 }
 function rulesDrawSheet() {
-  const cv = $("rulesSheet"), cols = TW / TILE, rows = TH / TILE;
-  cv.width = cols * RULES_CS; cv.height = rows * RULES_CS;
-  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
-  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, cv.width, cv.height);
-  g.drawImage(ed, 0, 0, TW, TH, 0, 0, cv.width, cv.height);
-  g.strokeStyle = "rgba(255,255,255,0.12)"; g.lineWidth = 1;
-  for (let c = 0; c <= cols; c++) { g.beginPath(); g.moveTo(c * RULES_CS + 0.5, 0); g.lineTo(c * RULES_CS + 0.5, cv.height); g.stroke(); }
-  for (let r = 0; r <= rows; r++) { g.beginPath(); g.moveTo(0, r * RULES_CS + 0.5); g.lineTo(cv.width, r * RULES_CS + 0.5); g.stroke(); }
+  const cv = $("rulesSheet"), cols = TW / TILE, rows = rulesRows, S = rulesSheetCS;
+  const g = rulesCanvas(cv, cols * S, rows * S);
+  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, cols * S, rows * S);
+  g.drawImage(edDisplay(), 0, 0, TW, rows * TILE, 0, 0, cols * S, rows * S);
+  if (gridOn.rules.cell) {
+    g.strokeStyle = "rgba(255,255,255,0.14)"; g.lineWidth = 1;
+    for (let c = 0; c <= cols; c++) { g.beginPath(); g.moveTo(c * S + 0.5, 0); g.lineTo(c * S + 0.5, rows * S); g.stroke(); }
+    for (let r = 0; r <= rows; r++) { g.beginPath(); g.moveTo(0, r * S + 0.5); g.lineTo(cols * S, r * S + 0.5); g.stroke(); }
+  }
   const T = CT.TRANSITION || {};
   g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 1;
-  for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) g.strokeRect(T[k][0] * RULES_CS + 3.5, T[k][1] * RULES_CS + 3.5, RULES_CS - 7, RULES_CS - 7);
+  for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) g.strokeRect(T[k][0] * S + 3.5, T[k][1] * S + 3.5, S - 7, S - 7);
   const rv = CT.RIM_VARIANTS || {};
   g.lineWidth = 2;
-  for (const key of RIM_KEYS) for (const [x, y] of (rv[key] || [])) { g.strokeStyle = RIM_COLORS[key]; g.strokeRect(x * RULES_CS + 1.5, y * RULES_CS + 1.5, RULES_CS - 3, RULES_CS - 3); }
-  g.font = "9px system-ui, sans-serif"; g.fillStyle = "rgba(255,255,255,0.6)";
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) g.fillText(cellName(c, r), c * RULES_CS + 2, r * RULES_CS + 9);
+  for (const key of RIM_KEYS) for (const [x, y] of (rv[key] || [])) { g.strokeStyle = RIM_COLORS[key]; g.strokeRect(x * S + 1.5, y * S + 1.5, S - 3, S - 3); }
+  if ($("btnCoords").classList.contains("on")) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) rulesLabel(g, cellName(c, r), c * S, r * S, S);
   cv.style.outline = rulesArmed ? "2px solid " + RIM_COLORS[rulesArmed] : "";
 }
 function rulesDrawChips() {
   const host = $("rulesRim"); host.innerHTML = "";
   const rv = CT.RIM_VARIANTS;
   if (!rv) { host.textContent = "This format has no inner rim variants."; return; }
+  const src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 36;
   for (const key of RIM_KEYS) {
     if (!rv[key]) continue;
     const row = document.createElement("div"); row.className = "rulesRow";
@@ -5386,15 +5443,18 @@ function rulesDrawChips() {
     rv[key].forEach(([x, y], i) => {
       const chip = document.createElement("button"); chip.className = "rulesChip"; chip.type = "button"; chip.dataset.rim = key; chip.dataset.cell = cellName(x, y);
       chip.title = "Remove " + cellName(x, y) + " from the " + key + " rim";
-      const mini = document.createElement("canvas"); mini.width = 24; mini.height = 24;
-      const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.drawImage(ed, x * TILE, y * TILE, TILE, TILE, 0, 0, 24, 24);
-      chip.appendChild(mini); const t = document.createElement("span"); t.textContent = cellName(x, y); chip.appendChild(t);
+      const mini = document.createElement("canvas"); mini.width = TS * dpr; mini.height = TS * dpr; mini.style.width = TS + "px"; mini.style.height = TS + "px";
+      const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.fillStyle = "#1a1a1a"; mg.fillRect(0, 0, mini.width, mini.height);
+      mg.drawImage(src, x * TILE, y * TILE, TILE, TILE, 0, 0, mini.width, mini.height);
+      chip.appendChild(mini);
+      const t = document.createElement("span"); t.textContent = cellName(x, y); chip.appendChild(t);
+      const xx = document.createElement("span"); xx.className = "rulesX"; xx.textContent = "×"; xx.setAttribute("aria-hidden", "true"); chip.appendChild(xx);
       chip.addEventListener("click", () => rulesRimRemove(key, i));
       row.appendChild(chip);
     });
     const add = document.createElement("button"); add.type = "button"; add.className = "rulesChip rulesAdd" + (rulesArmed === key ? " armed" : ""); add.dataset.rimAdd = key;
-    add.textContent = rulesArmed === key ? "tap a cell\u2026" : "+ add";
-    add.title = "Add a straight to the " + key + " rim \u2014 tap this, then tap a cell on the sheet";
+    add.textContent = rulesArmed === key ? "tap a cell…" : "+ add";
+    add.title = "Add a straight to the " + key + " rim — tap this, then tap a cell on the sheet";
     add.addEventListener("click", () => { rulesArmed = rulesArmed === key ? null : key; rulesRender(); });
     row.appendChild(add);
     host.appendChild(row);
@@ -5421,38 +5481,41 @@ function rulesSetAnchor(on) {
 function rulesCommit(msg) { persistCtOverrides(); rebuild(); rulesRender(); status(msg); }
 function rulesReset() { resetContract(); rulesArmed = null; rebuild(); rulesRender(); status("Layout reset to the " + CT.label + " template."); }
 function rulesSampleFills() {
-  const f = {}; const put = (c, r) => { f[c + "," + r] = { t: 1 }; };
-  for (let r = 0; r < 9; r++) for (let c = 0; c < 13; c++) put(c, r);          // solid block: outer edges, inner rim ring, core
-  for (let r = 2; r < 9; r++) for (let c = 16; c < 24; c++) put(c, r);         // second block, offset so origin-anchored cadence visibly drifts
+  const f = {}; for (let r = 0; r < SAMPLE.rows; r++) for (let c = 0; c < SAMPLE.cols; c++) f[c + "," + r] = { t: 1 };   // outer edges, inner rim ring, core
   return f;
 }
-function rulesDrawSample() {
-  const cv = $("rulesSample"), cols = 24, rows = 9, S = TILE * RULES_SS;
-  cv.width = cols * S; cv.height = rows * S;
-  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
-  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, cv.width, cv.height);
+function rulesDrawSample(scale) {
+  const cv = $("rulesSample"), S = TILE * scale, cols = SAMPLE.cols, rows = SAMPLE.rows;
+  const g = rulesCanvas(cv, cols * S, rows * S);
+  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, cols * S, rows * S);
   const cs = buildCells(rulesSampleFills(), CT, []);
   const res = resolveAll(cs, CT);
   for (const k of Object.keys(cs)) { const [c, r] = k.split(",").map(Number); const e = maskRemapFor(maskAt(cs, c, r, CT)); if (e) res[k] = { ...e }; }
-  g.font = "10px system-ui, sans-serif";
+  const src = edDisplay(), labels = $("btnCoords").classList.contains("on");
   for (const k of Object.keys(res)) {
     const [c, r] = k.split(",").map(Number); const t = res[k];
     g.save(); g.translate(c * S + S / 2, r * S + S / 2); g.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1); if (t.rot) g.rotate(Math.PI / 2 * t.rot);
-    g.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, -S / 2, -S / 2, S, S); g.restore();
-    g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(c * S + 1, r * S + 1, 22, 11);
-    g.fillStyle = "#9fd0ff"; g.fillText(cellName(t.ax, t.ay), c * S + 3, r * S + 10);
+    g.drawImage(src, t.ax * TILE, t.ay * TILE, TILE, TILE, -S / 2, -S / 2, S, S); g.restore();
   }
+  if (gridOn.rules.cell) {
+    g.strokeStyle = "rgba(255,255,255,0.10)"; g.lineWidth = 1;
+    for (let c = 0; c <= cols; c++) { g.beginPath(); g.moveTo(c * S + 0.5, 0); g.lineTo(c * S + 0.5, rows * S); g.stroke(); }
+    for (let r = 0; r <= rows; r++) { g.beginPath(); g.moveTo(0, r * S + 0.5); g.lineTo(cols * S, r * S + 0.5); g.stroke(); }
+  }
+  if (labels) for (const k of Object.keys(res)) { const [c, r] = k.split(",").map(Number); const t = res[k]; rulesLabel(g, cellName(t.ax, t.ay), c * S, r * S, S); }
 }
 for (const t of ["pointerdown", "pointermove", "pointerup", "pointercancel", "wheel"]) $("rulesPanel").addEventListener(t, (e) => e.stopPropagation());
 $("rulesSheet").addEventListener("pointerdown", (e) => {
-  if (!rulesArmed) { status("Tap \u201c+ add\u201d on a rim row first, then tap a cell."); return; }
+  if (!rulesArmed) { status("Tap “+ add” on a rim row first, then tap a cell."); return; }
   const r = e.currentTarget.getBoundingClientRect();
-  const x = Math.floor((e.clientX - r.left) / RULES_CS), y = Math.floor((e.clientY - r.top) / RULES_CS);
-  if (x < 0 || y < 0 || x >= TW / TILE || y >= TH / TILE) return;
+  const x = Math.floor((e.clientX - r.left) / rulesSheetCS), y = Math.floor((e.clientY - r.top) / rulesSheetCS);
+  if (x < 0 || y < 0 || x >= TW / TILE || y >= rulesRows) return;
   rulesRimAdd(rulesArmed, x, y);
 });
 $("rulesAnchor").addEventListener("change", (e) => rulesSetAnchor(e.target.checked));
 $("btnRulesLayoutReset").addEventListener("click", () => { if (confirm("Reset this project's layout to the " + CT.label + " template? Rim and edge settings go back to the defaults.")) rulesReset(); });
+{ let raf = 0; const refit = () => { if (!rulesIsOpen()) return; cancelAnimationFrame(raf); raf = requestAnimationFrame(rulesRender); };
+  window.addEventListener("resize", refit); if (window.ResizeObserver) new ResizeObserver(refit).observe($("rulesPanel")); }
 
 /* ---- tabs ---- */
 function setTab(tab) {
@@ -5600,10 +5663,10 @@ document.querySelectorAll(".pvmode").forEach((b) => b.addEventListener("click", 
 /* v6.8: Playfield/Zoo toggle retired — setTab owns layoutMode. */
 $("btnUndo").addEventListener("click", undo);
 $("btnRedo").addEventListener("click", redo);
-$("btnCellGrid").addEventListener("click", () => { gridOn[activeTab].cell = !gridOn[activeTab].cell; syncGridButtons(); drawGrid(); });
-$("btnPxGrid").addEventListener("click", () => { gridOn[activeTab].px = !gridOn[activeTab].px; syncGridButtons(); drawGrid(); });
+$("btnCellGrid").addEventListener("click", () => { const t = gridTab(); gridOn[t].cell = !gridOn[t].cell; syncGridButtons(); drawGrid(); rulesRender(); });
+$("btnPxGrid").addEventListener("click", () => { const t = gridTab(); gridOn[t].px = !gridOn[t].px; syncGridButtons(); drawGrid(); });
 $("btnRoles").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
-$("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });   // drawGrid covers both tabs
+$("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); rulesRender(); });   // drawGrid covers both tabs
 $("btnFit").addEventListener("click", () => fitView(activeTab));
 function openRevPanel(k) {
   revKey = k;
@@ -6123,7 +6186,7 @@ function setContract(id, opts) {
     refreshFileSwatches(); blit(); drawGrid(); renderPreview();
   }
 }
-$("ctSelect").addEventListener("change", (e) => { if (float) floatFlatten(); setContract(e.target.value); selClear(); if ($("rulesPanel").style.display === "flex") rulesRender(); });
+$("ctSelect").addEventListener("change", (e) => { if (float) floatFlatten(); setContract(e.target.value); selClear(); rulesRender(); });
 
 /* Empty cap/ceiling cells get placeholder art copied from their source
    stamps, so sheets predating those features show editable duplicates
@@ -6976,7 +7039,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.82.0";
+const APP_VERSION = "6.82.4";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
