@@ -304,8 +304,8 @@
   <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
   <span class="vsep" id="optSep1"></span>
   <button class="optline" id="btnCanvas" title="Resize the sheet — drag the right/bottom handles in 16px cells; cannot shrink below the contract's base cells"><span data-icon="frame"></span>Canvas</button>
-  <button class="optline" id="btnFlipH" title="Flip the whole canvas left ↔ right — every layer (undoable)"><span data-icon="flipH"></span>Flip H</button>
-  <button class="optline" id="btnFlipV" title="Flip the whole canvas top ↔ bottom — every layer (undoable)"><span data-icon="flipV"></span>Flip V</button>
+  <button class="optline" id="btnCanvasFlipH" title="Flip the whole canvas left ↔ right — every layer (undoable)"><span data-icon="flipH"></span>Flip H</button>
+  <button class="optline" id="btnCanvasFlipV" title="Flip the whole canvas top ↔ bottom — every layer (undoable)"><span data-icon="flipV"></span>Flip V</button>
   <span class="vsep"></span>
   <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
   <button class="optline" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span>Export</button>
@@ -4020,8 +4020,8 @@ function doCopy() {
 function doPaste() {
   if (!clip) { status("Clipboard is empty \u2014 copy a selection first."); return; }
   if (activeTab !== "ed") { status("Paste works on the Template tab for now."); return; }
-  if (APP_MODE === "bg" && !bgLayerEditable()) return;
   if (float) floatFlatten();   // chained pastes place the previous one first
+  if (APP_MODE === "bg") { selClear(); bgAddLayer(null, bgNextName("Pasted ")); }   // v6.72: paste onto a fresh layer above the selected one; the source stays intact
   const prevSel = selMask;
   float = { cv: clip.cv, mask: clip.mask, w: clip.w, h: clip.h, x: clip.x, y: clip.y, origMask: prevSel, pasted: true };
   selMask = null; selEdges = null; selPoly = null;
@@ -4030,7 +4030,7 @@ function doPaste() {
   floatRebuildEdges();
   setTool("selmove");
   blit(); drawGrid();
-  status("Pasted \u2014 drag, flip, or rotate; switching tools places it.");
+  status(APP_MODE === "bg" ? "Pasted onto \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d \u2014 drag, flip, or rotate; switching tools places it." : "Pasted \u2014 drag, flip, or rotate; switching tools places it.");
 }
 function lineTo(x0, y0, x1, y1) {
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
@@ -6123,7 +6123,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.71.7";
+const APP_VERSION = "6.72.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -6211,8 +6211,8 @@ function flipCanvas(axis) {
     status("Sheet flipped " + (axis === "h" ? "left \u2194 right" : "top \u2194 bottom") + ".");
   }
 }
-$("btnFlipH").addEventListener("click", () => flipCanvas("h"));
-$("btnFlipV").addEventListener("click", () => flipCanvas("v"));
+$("btnCanvasFlipH").addEventListener("click", () => flipCanvas("h"));
+$("btnCanvasFlipV").addEventListener("click", () => flipCanvas("v"));
 $("btnReload").addEventListener("click", () => {
   if (float) floatFlatten();
   persistPng();   // belt and suspenders — the sheet is already persisted per stroke
