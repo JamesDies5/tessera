@@ -307,9 +307,13 @@
   <button class="optline shkind" data-v="rect" title="Rectangle — drag corner to corner"><span data-icon="shRect"></span>Rectangle</button>
   <button class="optline shkind" data-v="ellipse" title="Ellipse — drag the bounding box (Bresenham midpoint, pixel-exact)"><span data-icon="shEllipse"></span>Ellipse</button>
   <button class="optline shkind" data-v="line" title="Line — drag from end to end"><span data-icon="shLine"></span>Line</button>
+  <button class="optline shkind" data-v="curve" title="Curve — drag the endpoints, then pull the two control handles (Aseprite's spline)"><span data-icon="shCurve"></span>Curve</button>
   <span class="vsep"></span>
   <button class="optline shfill" data-v="0" title="Outline — the edge only, in the current brush width"><span data-icon="shOutline"></span>Outline</button>
   <button class="optline shfill" data-v="1" title="Filled — solid interior plus the edge"><span data-icon="shFilled"></span>Filled</button>
+  <span class="vsep shpend" style="display:none"></span>
+  <button class="optline shpend" id="shapePlace" style="display:none" title="Place the shape (switching tools or tapping outside it also places it)"><span data-icon="check"></span>Place</button>
+  <button class="optline shpend" id="shapeCancel" style="display:none" title="Discard the shape"><span data-icon="sqx"></span>Cancel</button>
 </div>
 <!-- Tiled / Symmetry trays (v6.67): background projects only, opened from the header like Options -->
 <div class="tray" id="tiledbar" data-set="tiled">
@@ -1883,6 +1887,8 @@ const ICONS = {
   chevron: '<path d="m6 9 6 6 6-6"/>',
   shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   shRect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+  shCurve: '<path d="M4 18c6 0 4-12 10-12s4 8 6 8"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="14" r="1.5" fill="currentColor"/>',
+  check: '<path d="m5 12 5 5 9-10"/>',
   shEllipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
   shLine: '<path d="M4 19 20 5"/><circle cx="4" cy="19" r="1.5" fill="currentColor"/><circle cx="20" cy="5" r="1.5" fill="currentColor"/>',
   shOutline: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
@@ -2926,19 +2932,35 @@ function drawGrid() {
       ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
     }
   }
-  if (activeTab === "ed" && stroke && stroke.kind === "shape") {   // v6.70: shape preview, pixel-exact, in the mapped color
-    const px = shapePixels(shapeKind, shapeFill, stroke.x0, stroke.y0, stroke.x1, stroke.y1);
+  const shpView = (activeTab === "ed" && tool === "shape") ? (shp || (stroke && stroke.kind === "shape" && shpFromStroke(stroke))) : null;
+  if (shpView) {   // shape preview, pixel-exact, in the mapped color (in-progress drag or pending shape)
+    const px = shapePixels(shpView.kind, shpView.kind === "curve" ? false : shpView.fill, shpView.x0, shpView.y0, shpView.x1, shpView.y1, shpView.c1, shpView.c2);
     const pal = palettes[palIdx], l = color.r;
     let fill;
     if (pal.base) { const lut = pal.lut || (pal.lut = buildPalLut(pal.base)); fill = `rgba(${lut[l*3]},${lut[l*3+1]},${lut[l*3+2]},0.85)`; }
     else fill = `rgba(${color.r},${color.g},${color.b},0.85)`;
     ovCtx.fillStyle = fill;
     const off = brushOffsets();
-    for (let i = 0; i < px.inner.length; i += 2) ovCtx.fillRect(v.x + px.inner[i] * v.s, v.y + px.inner[i + 1] * v.s, v.s, v.s);
-    for (let i = 0; i < px.edge.length; i += 2) for (const o of off) ovCtx.fillRect(v.x + (px.edge[i] + o[0]) * v.s, v.y + (px.edge[i + 1] + o[1]) * v.s, v.s, v.s);
-    ovCtx.strokeStyle = "rgba(255,255,255,0.5)"; ovCtx.lineWidth = 1;
-    const lx = Math.min(stroke.x0, stroke.x1), ty = Math.min(stroke.y0, stroke.y1), w2 = Math.abs(stroke.x1 - stroke.x0) + 1, h2 = Math.abs(stroke.y1 - stroke.y0) + 1;
-    if (shapeKind !== "line") ovCtx.strokeRect(v.x + lx * v.s + 0.5, v.y + ty * v.s + 0.5, w2 * v.s, h2 * v.s);
+    for (let i = 0; i < px.inner.length; i += 2) if (ditherOK(px.inner[i], px.inner[i + 1])) ovCtx.fillRect(v.x + px.inner[i] * v.s, v.y + px.inner[i + 1] * v.s, v.s, v.s);
+    for (let i = 0; i < px.edge.length; i += 2) for (const o of off) { const ex = px.edge[i] + o[0], ey = px.edge[i + 1] + o[1]; if (ditherOK(ex, ey)) ovCtx.fillRect(v.x + ex * v.s, v.y + ey * v.s, v.s, v.s); }
+    if (shp) {   // pending: bounding box + handles (+ control lines for curves)
+      const b = shpBox(shp);
+      ovCtx.setLineDash([]);
+      ovCtx.lineWidth = 3; ovCtx.strokeStyle = "rgba(0,0,0,0.55)"; ovCtx.strokeRect(v.x + b.x0 * v.s - 1, v.y + b.y0 * v.s - 1, (b.x1 - b.x0) * v.s + 2, (b.y1 - b.y0) * v.s + 2);
+      ovCtx.lineWidth = 1.5; ovCtx.strokeStyle = "rgba(255,255,255,0.95)"; ovCtx.strokeRect(v.x + b.x0 * v.s - 1, v.y + b.y0 * v.s - 1, (b.x1 - b.x0) * v.s + 2, (b.y1 - b.y0) * v.s + 2);
+      if (shp.kind === "curve") { ovCtx.strokeStyle = "rgba(255,220,80,0.7)"; ovCtx.lineWidth = 1; ovCtx.setLineDash([4, 4]); ovCtx.beginPath();
+        ovCtx.moveTo(v.x + (shp.x0 + .5) * v.s, v.y + (shp.y0 + .5) * v.s); ovCtx.lineTo(v.x + (shp.c1[0] + .5) * v.s, v.y + (shp.c1[1] + .5) * v.s);
+        ovCtx.moveTo(v.x + (shp.x1 + .5) * v.s, v.y + (shp.y1 + .5) * v.s); ovCtx.lineTo(v.x + (shp.c2[0] + .5) * v.s, v.y + (shp.c2[1] + .5) * v.s); ovCtx.stroke(); ovCtx.setLineDash([]); }
+      for (const h of shpHandles(shp)) {
+        const hx = v.x + h.x * v.s, hy = v.y + h.y * v.s, ctrl = h.id === "c1" || h.id === "c2";
+        ovCtx.fillStyle = ctrl ? "#ffd84f" : "#fff"; ovCtx.strokeStyle = "rgba(0,0,0,0.6)"; ovCtx.lineWidth = 1;
+        ovCtx.beginPath(); ovCtx.arc(hx, hy, ctrl ? 5 : 4.5, 0, Math.PI * 2); ovCtx.fill(); ovCtx.stroke();
+      }
+    } else {
+      ovCtx.strokeStyle = "rgba(255,255,255,0.5)"; ovCtx.lineWidth = 1;
+      const lx = Math.min(stroke.x0, stroke.x1), ty = Math.min(stroke.y0, stroke.y1), w2 = Math.abs(stroke.x1 - stroke.x0) + 1, h2 = Math.abs(stroke.y1 - stroke.y0) + 1;
+      if (shapeKind !== "line" && shapeKind !== "curve") ovCtx.strokeRect(v.x + lx * v.s + 0.5, v.y + ty * v.s + 0.5, w2 * v.s, h2 * v.s);
+    }
   }
   if (activeTab === "ed" && (selEdges || float || selPoly || (stroke && stroke.kind === "sel"))) {
     const vs = v.s;
@@ -3539,6 +3561,7 @@ function genRoom(force) {
   return { fills: F, slopes: S, name, cols: CW, rows: CH, doors, spawn };
 }
 function undo() {
+  if (shp) { shpCancel(); return; }   // v6.75: undo on a pending shape discards it
   if (float) {
     if (floatHist.length) {   // step back one drag/flip/rotate, staying in Move mode
       floatRedoHist.push(floatSnapState());
@@ -3745,7 +3768,8 @@ let shapeKind = "rect", shapeFill = false;
 try { const sp = JSON.parse(localStorage.getItem("tessera.shape") || "null"); if (sp) { shapeKind = sp.kind || "rect"; shapeFill = !!sp.fill; } } catch (e) {}
 function shapeSyncBar() {
   document.querySelectorAll("#shapebar .shkind").forEach((b) => b.classList.toggle("on", b.dataset.v === shapeKind));
-  document.querySelectorAll("#shapebar .shfill").forEach((b) => b.classList.toggle("on", (b.dataset.v === "1") === shapeFill));
+  document.querySelectorAll("#shapebar .shfill").forEach((b) => { b.classList.toggle("on", (b.dataset.v === "1") === shapeFill); b.disabled = shapeKind === "curve"; b.style.opacity = shapeKind === "curve" ? ".4" : ""; });
+  document.querySelectorAll("#shapebar .shpend").forEach((b) => { b.style.display = shp ? "" : "none"; });
   const want = activeTab === "ed" && tool === "shape" ? "flex" : "none";
   if ($("shapebar").style.display !== want) { $("shapebar").style.display = want; sizeOverlay(); }
   try { localStorage.setItem("tessera.shape", JSON.stringify({ kind: shapeKind, fill: shapeFill })); } catch (e) {}
@@ -3783,8 +3807,45 @@ function ellipseOutlinePts(x0, y0, x1, y1) {   // verbatim port of Aseprite adju
   if (vPixels > 0) for (let i = initialY1 + 1; i < initialY0 + vPixels; i++) { proc(initialX0, i); proc(initialX1, i); }
   return pts;
 }
-function shapePixels(kind, fill, x0, y0, x1, y1) {   // -> { edge: [x,y,...], inner: [x,y,...] }
+/* Curve (v6.75): verbatim port of Aseprite algo_spline (src/doc/algo.cpp) —
+   samples the cubic Bézier with forward differences into up to 64 short
+   segments; each segment is then Bresenham'd. C++ (int) truncation kept. */
+function splineSegs(x0, y0, x1, y1, x2, y2, x3, y3) {
+  const DIST = (x, y) => Math.sqrt(x * x + y * y);
+  let npts = Math.trunc(Math.sqrt(DIST(x1 - x0, y1 - y0) + DIST(x2 - x1, y2 - y1) + DIST(x3 - x2, y3 - y2)) * 1.2);
+  if (npts > 64) npts = 64; else if (npts < 4) npts = 4;
+  const dt = 1.0 / (npts - 1), dt2 = dt * dt, dt3 = dt2 * dt;
+  let xdt2 = 3 * (x2 - 2 * x1 + x0), ydt2 = 3 * (y2 - 2 * y1 + y0);
+  let xdt3 = x3 + 3 * (-x2 + x1) - x0, ydt3 = y3 + 3 * (-y2 + y1) - y0;
+  xdt2 = dt2 * xdt2; ydt2 = dt2 * ydt2; xdt3 = dt3 * xdt3; ydt3 = dt3 * ydt3;
+  const dddx = 6 * xdt3, dddy = 6 * ydt3;
+  let ddx = -6 * xdt3 + 2 * xdt2, ddy = -6 * ydt3 + 2 * ydt2;
+  let dx = xdt3 - xdt2 + 3 * dt * (x1 - x0), dy = ydt3 - ydt2 + dt * 3 * (y1 - y0);
+  let x = x0, y = y0, ox = Math.trunc(x0), oy = Math.trunc(y0);
+  const segs = [];
+  x += .5; y += .5;
+  for (let i = 1; i < npts; i++) {
+    ddx += dddx; ddy += dddy; dx += ddx; dy += ddy; x += dx; y += dy;
+    const nx = Math.trunc(x), ny = Math.trunc(y);
+    segs.push([ox, oy, nx, ny]); ox = nx; oy = ny;
+  }
+  return segs;
+}
+function bresenhamInto(out, seen, x0, y0, x1, y1) {
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let err = dx - dy;
+  while (true) {
+    const k = x0 + "," + y0; if (!seen.has(k)) { seen.add(k); out.push(x0, y0); }
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err; if (e2 > -dy) { err -= dy; x0 += sx; } if (e2 < dx) { err += dx; y0 += sy; }
+  }
+}
+function shapePixels(kind, fill, x0, y0, x1, y1, c1, c2) {   // -> { edge: [x,y,...], inner: [x,y,...] }
   const edge = [], inner = [];
+  if (kind === "curve") {
+    const a = c1 || [x0, y0], b = c2 || [x1, y1], seen = new Set();
+    for (const sg of splineSegs(x0, y0, a[0], a[1], b[0], b[1], x1, y1)) bresenhamInto(edge, seen, sg[0], sg[1], sg[2], sg[3]);
+    return { edge, inner };
+  }
   const lx = Math.min(x0, x1), rx = Math.max(x0, x1), ty = Math.min(y0, y1), by = Math.max(y0, y1);
   if (kind === "line") {
     let ax = x0, ay = y0; const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let err = dx - dy;
@@ -3808,14 +3869,68 @@ function shapePixels(kind, fill, x0, y0, x1, y1) {   // -> { edge: [x,y,...], in
   return { edge, inner };
 }
 function shapeCommit(s) {
-  const px = shapePixels(shapeKind, shapeFill, s.x0, s.y0, s.x1, s.y1);
+  const px = shapePixels(s.kind || shapeKind, s.kind === "curve" ? false : (s.fill !== undefined ? s.fill : shapeFill), s.x0, s.y0, s.x1, s.y1, s.c1, s.c2);
   snapshot();
   for (let i = 0; i < px.inner.length; i += 2) { putPx(px.inner[i], px.inner[i + 1]); const m = symOf(px.inner[i], px.inner[i + 1]); if (m) for (const q of m) putPx(q[0], q[1]); }
-  for (let i = 0; i < px.edge.length; i += 2) stampEd(px.edge[i], px.edge[i + 1], true);   // outlines stay solid
+  for (let i = 0; i < px.edge.length; i += 2) stampEd(px.edge[i], px.edge[i + 1]);   // v6.74.1: outlines dither like everything else
   templateChanged(); persistPng(); refreshFileSwatches();
   const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
-  status((shapeFill ? "Filled " : "") + (shapeKind === "line" ? "line" : shapeKind === "rect" ? "rectangle" : "ellipse") + (shapeKind === "line" ? "" : " " + w + " \u00d7 " + h) + " placed.");
+  const k = s.kind || shapeKind, f = k === "curve" ? false : (s.fill !== undefined ? s.fill : shapeFill);
+  status((f ? "Filled " : "") + (k === "line" ? "line" : k === "curve" ? "curve" : k === "rect" ? "rectangle" : "ellipse") + (k === "line" || k === "curve" ? "" : " " + w + " \u00d7 " + h) + " placed.");
 }
+/* ==== Pending shape (v6.75) ====
+   A drawn shape is not committed on release; it stays live with a bounding
+   box and handles: drag inside to move, corner / edge handles to resize
+   (rectangle, ellipse), endpoint handles (line), endpoint + control handles
+   (curve). Place with the tray button, by switching tools, or by starting a
+   new shape outside it; Cancel discards. Rasterization always re-runs from
+   the parameters, so every edit keeps the pixel-exact shape rules. */
+let shp = null;   // { kind, fill, x0, y0, x1, y1, c1, c2 }
+function shpFromStroke(st) {
+  const o = { kind: shapeKind, fill: shapeFill, x0: st.x0, y0: st.y0, x1: st.x1, y1: st.y1 };
+  if (o.kind === "curve") shpInitControls(o);
+  return o;
+}
+function shpInitControls(o) {   // controls at thirds along the chord: the curve starts as the straight line
+  o.c1 = [Math.round(o.x0 + (o.x1 - o.x0) / 3), Math.round(o.y0 + (o.y1 - o.y0) / 3)];
+  o.c2 = [Math.round(o.x0 + (o.x1 - o.x0) * 2 / 3), Math.round(o.y0 + (o.y1 - o.y0) * 2 / 3)];
+}
+function shpBox(o) {   // canvas-space bounds incl. brush footprint, for hit tests
+  const xs = [o.x0, o.x1], ys = [o.y0, o.y1];
+  if (o.kind === "curve") { xs.push(o.c1[0], o.c2[0]); ys.push(o.c1[1], o.c2[1]); }
+  const off = brushOffsets(); let bx0 = 0, bx1 = 0, by0 = 0, by1 = 0; for (const q of off) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
+  return { x0: Math.min(...xs) + bx0, y0: Math.min(...ys) + by0, x1: Math.max(...xs) + bx1 + 1, y1: Math.max(...ys) + by1 + 1 };
+}
+function shpHandles(o) {   // [{ id, x, y }] in canvas coords (pixel centers)
+  if (o.kind === "line") return [{ id: "p0", x: o.x0 + 0.5, y: o.y0 + 0.5 }, { id: "p1", x: o.x1 + 0.5, y: o.y1 + 0.5 }];
+  if (o.kind === "curve") return [{ id: "p0", x: o.x0 + 0.5, y: o.y0 + 0.5 }, { id: "p1", x: o.x1 + 0.5, y: o.y1 + 0.5 }, { id: "c1", x: o.c1[0] + 0.5, y: o.c1[1] + 0.5 }, { id: "c2", x: o.c2[0] + 0.5, y: o.c2[1] + 0.5 }];
+  const lx = Math.min(o.x0, o.x1), rx = Math.max(o.x0, o.x1) + 1, ty = Math.min(o.y0, o.y1), by = Math.max(o.y0, o.y1) + 1, mx = (lx + rx) / 2, my = (ty + by) / 2;
+  return [{ id: "nw", x: lx, y: ty }, { id: "n", x: mx, y: ty }, { id: "ne", x: rx, y: ty }, { id: "e", x: rx, y: my }, { id: "se", x: rx, y: by }, { id: "s", x: mx, y: by }, { id: "sw", x: lx, y: by }, { id: "w", x: lx, y: my }];
+}
+function shpHit(vp) {   // vp = viewport point; -> { id } handle, "move", or null
+  if (!shp) return null;
+  const v = view.ed, R = 16;
+  for (const h of shpHandles(shp)) if (Math.hypot(v.x + h.x * v.s - vp.x, v.y + h.y * v.s - vp.y) <= R) return { id: h.id };
+  const b = shpBox(shp), wx = (vp.x - v.x) / v.s, wy = (vp.y - v.y) / v.s;
+  if (wx >= b.x0 - 4 / v.s && wx < b.x1 + 4 / v.s && wy >= b.y0 - 4 / v.s && wy < b.y1 + 4 / v.s) return { id: "move" };
+  return null;
+}
+function shpApplyDrag(st, x, y) {   // st = { id, o: original shp copy, ax, ay }
+  const o = st.o, dx = x - st.ax, dy = y - st.ay, n = shp;
+  const norm = (a, b) => [Math.min(a, b), Math.max(a, b)];
+  if (st.id === "move") { n.x0 = o.x0 + dx; n.y0 = o.y0 + dy; n.x1 = o.x1 + dx; n.y1 = o.y1 + dy; if (o.c1) { n.c1 = [o.c1[0] + dx, o.c1[1] + dy]; n.c2 = [o.c2[0] + dx, o.c2[1] + dy]; } return; }
+  if (st.id === "p0") { n.x0 = o.x0 + dx; n.y0 = o.y0 + dy; return; }
+  if (st.id === "p1") { n.x1 = o.x1 + dx; n.y1 = o.y1 + dy; return; }
+  if (st.id === "c1") { n.c1 = [o.c1[0] + dx, o.c1[1] + dy]; return; }
+  if (st.id === "c2") { n.c2 = [o.c2[0] + dx, o.c2[1] + dy]; return; }
+  // box handles (rect / ellipse): edit the normalized bounds, then write back
+  let [lx, rx] = norm(o.x0, o.x1), [ty, by] = norm(o.y0, o.y1);
+  if (st.id.includes("w")) lx = Math.min(lx + dx, rx); if (st.id.includes("e")) rx = Math.max(rx + dx, lx);
+  if (st.id.includes("n")) ty = Math.min(ty + dy, by); if (st.id.includes("s")) by = Math.max(by + dy, ty);
+  n.x0 = lx; n.x1 = rx; n.y0 = ty; n.y1 = by;
+}
+function shpCommit() { if (!shp) return; const o = shp; shp = null; shapeCommit(o); shapeSyncBar(); drawGrid(); }
+function shpCancel() { if (!shp) return; shp = null; shapeSyncBar(); drawGrid(); status("Shape discarded."); }
 function shapeRect(x0, y0, x1, y1) {
   const m = new Uint8Array(TW * TH);
   const ax = Math.max(0, Math.min(x0, x1)), bx = Math.min(TW - 1, Math.max(x0, x1));
@@ -4416,7 +4531,14 @@ function beginStroke(e) {
     if (tool === "slopeF" || tool === "slopeC") { status("Slope tools draw in the LEVEL tab."); return; }
     if (tool === "pick") { pickAt(x, y); return; }
     if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
-    if (tool === "shape") { stroke = { kind: "shape", x0: x, y0: y, x1: x, y1: y }; drawGrid(); return; }
+    if (tool === "shape") {
+      if (shp) {   // editing the pending shape, or committing it and starting the next
+        const hit = shpHit(vpPoint(e));
+        if (hit) { stroke = { kind: "shpEdit", id: hit.id, o: JSON.parse(JSON.stringify(shp)), ax: x, ay: y }; return; }
+        shpCommit();
+      }
+      stroke = { kind: "shape", x0: x, y0: y, x1: x, y1: y }; drawGrid(); return;
+    }
     if (tool === "marquee") {
       if (selShape === "wand") { wandSelect(x, y); return; }   // v6.69: automatic selection is a tap, not a drag
       stroke = { kind: "sel", x0: x, y0: y, x1: x, y1: y, pts: [[x, y]], downVp: vpPoint(e), drag: false };
@@ -4494,6 +4616,7 @@ function moveStroke(e) {
     return;
   }
   if (stroke.kind === "shape") { const [x, y] = edPos(e); if (x !== stroke.x1 || y !== stroke.y1) { stroke.x1 = x; stroke.y1 = y; drawGrid(); } return; }
+  if (stroke.kind === "shpEdit") { const [x, y] = edPos(e); shpApplyDrag(stroke, x, y); drawGrid(); return; }
   if (stroke.kind === "sel") {
     const [x, y] = edPos(e);
     if (!stroke.drag) {
@@ -4578,7 +4701,8 @@ function endStroke() {
     stroke = null;
     return;
   }
-  if (stroke && stroke.kind === "shape") { const s = stroke; stroke = null; shapeCommit(s); drawGrid(); return; }
+  if (stroke && stroke.kind === "shape") { const s = stroke; stroke = null; shp = shpFromStroke(s); shapeSyncBar(); drawGrid(); status("Drag to move, handles to adjust; Place when it's right."); return; }
+  if (stroke && stroke.kind === "shpEdit") { stroke = null; drawGrid(); return; }
   if (stroke && stroke.kind === "sel") {
     const s = stroke; stroke = null;
     if (selShape === "rect") { selApply(shapeRect(s.x0, s.y0, s.x1, s.y1)); return; }
@@ -4805,6 +4929,7 @@ function setTool(t) {
     floatBegin();
   }
   if (t !== "selmove" && float) { floatFlatten(); selClear(); }   // leaving Transform commits it; no marquee remains
+  if (t !== "shape" && shp) shpCommit();                            // leaving Shapes places the pending shape
   exitCanvasMode();
   tool = t;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
@@ -4815,8 +4940,14 @@ function setTool(t) {
   drawGrid();   // vary outlines appear/disappear with the tool
   syncSelbar(); shapeSyncBar();
 }
-document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => { shapeKind = b.dataset.v; shapeSyncBar(); }));
-document.querySelectorAll("#shapebar .shfill").forEach((b) => b.addEventListener("click", () => { shapeFill = b.dataset.v === "1"; shapeSyncBar(); }));
+document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => {
+  shapeKind = b.dataset.v;
+  if (shp) { shp.kind = shapeKind; if (shapeKind === "curve" && !shp.c1) shpInitControls(shp); drawGrid(); }   // a pending shape follows the choice
+  shapeSyncBar();
+}));
+document.querySelectorAll("#shapebar .shfill").forEach((b) => b.addEventListener("click", () => { shapeFill = b.dataset.v === "1"; if (shp) { shp.fill = shapeFill; drawGrid(); } shapeSyncBar(); }));
+$("shapePlace").addEventListener("click", shpCommit);
+$("shapeCancel").addEventListener("click", shpCancel);
 /* Fill mode (v6.74): contiguous (flood) or global (replace the tapped color everywhere in the fill's bounds —
    the canvas in a background project, the 16px cell in a tileset). Tapping the bucket while it is already the
    active tool opens the pop-out beside it. */
@@ -5649,6 +5780,7 @@ function bgPersist() {
   } catch (e) {}
 }
 function bgSelectLayer(i, quiet) {   // point the shared editor at entry i (folders get the scratch canvas)
+  if (!quiet && shp) shpCommit();
   i = Math.max(0, Math.min(bgDoc.layers.length - 1, i));
   bgDoc.active = i;
   if (isFolder(bgDoc.layers[i])) {
@@ -6231,7 +6363,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.74.0";
+const APP_VERSION = "6.75.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
