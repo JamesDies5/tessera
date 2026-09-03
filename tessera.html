@@ -195,6 +195,11 @@
   .lyBtn { width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--dim); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; flex: 0 0 auto; }
   .lyBtn svg { width: 16px; height: 16px; }
   .lyBtn.on { color: var(--accent); border-color: var(--accent); }
+  .lyBtn.alpha { color: #e05555; border-color: #e05555; }
+  /* Fill pop-out (v6.74): tap the active bucket to choose contiguous / global */
+  .fillPop { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 6px; background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  .fillPop .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
+  .lyRow.alphaLocked { box-shadow: inset 0 0 0 1.5px #c94545; }
   #layerMenu .lmFoot { font-size: 10px; color: var(--dim); letter-spacing: .5px; text-align: center; }
   /* per-layer options popover — opens to the left of the panel, aligned to the tapped row */
   #layerOpts { position: fixed; z-index: 72; display: none; flex-direction: column; min-width: 190px;
@@ -277,13 +282,11 @@
       <button data-v="1" title="25% — one pixel in four"><canvas class="bdit" width="4" height="4" data-d="1"></canvas>25%</button>
       <button data-v="2" title="50% — checkerboard"><canvas class="bdit" width="4" height="4" data-d="2"></canvas>50%</button>
       <button data-v="3" title="75% — three pixels in four"><canvas class="bdit" width="4" height="4" data-d="3"></canvas>75%</button></div></div>
-    <div class="cmNote">Dither is locked to canvas pixels, so strokes, fills, and shapes never double over each other. Outlines of shapes stay solid.</div>
   </div></span>
   <span class="fly"><button class="ibtn" id="btnLayers" data-icon="layers" title="Layers — add, hide, lock, reorder, merge" style="display:none"></button>
   <div id="layerMenu">
     <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyOpts" data-icon="chevron" title="Options for the selected layer (same menu as tapping it)"></button><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
     <div id="layerList"></div>
-    <div class="lmFoot">tap selected row for options &middot; swipe right to multi-select &middot; drag grip to reorder or move into / out of a group</div>
   </div>
   <div id="layerOpts"></div></span>
   <span class="fly"><button id="colorCurrent" title="Current color — tap for stops, file colors, and the zone palette"></button>
@@ -442,6 +445,10 @@
     <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes (U) — drag to place a pixel-exact rectangle, ellipse, or line; outline or filled, in the current color and brush width"></button>
     <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
     <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform (V) — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
+    <div class="fillPop" id="fillPop">
+      <button class="optline fillMode on" data-v="contiguous" title="Fill the connected region under the tap"><span data-icon="bucket"></span>Contiguous</button>
+      <button class="optline fillMode" data-v="global" title="Replace every pixel of the tapped color, connected or not"><span data-icon="dots"></span>Global</button>
+    </div>
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
     <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
     <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
@@ -3074,7 +3081,9 @@ function refreshFileSwatches() {
 /* ---- undo ---- */
 let actionLog = [], redoLog = [], levelUndo = [], levelRedo = [];
 const UNDO_CAP = APP_MODE === "bg" ? 24 : 40;   // a 480×270 snapshot is ~0.5 MB; keep iPad memory sane
-function snapshot() { const im = edCtx.getImageData(0, 0, TW, TH); if (APP_MODE === "bg") im.bgLayer = bgDoc.active; undoStack.push(im); if (undoStack.length > UNDO_CAP) undoStack.shift(); redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
+let lockMask = null;   // v6.74: alpha lock — 1 where the layer had pixels when the edit began
+function snapshot() { const im = edCtx.getImageData(0, 0, TW, TH); if (APP_MODE === "bg") im.bgLayer = bgDoc.active; undoStack.push(im); if (undoStack.length > UNDO_CAP) undoStack.shift();
+  if (bgAlphaLocked()) { lockMask = new Uint8Array(TW * TH); const d = im.data; for (let i = 0; i < lockMask.length; i++) if (d[i * 4 + 3]) lockMask[i] = 1; } else lockMask = null; redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function levelStateJSON() { return JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows, doors: roomDoors, spawn: roomSpawn }); }
 function levelSnapshot() { levelUndo.push(levelStateJSON()); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function applyLevelState(s) {
@@ -3589,6 +3598,7 @@ function putPx(x, y, solid) {
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (selMask && !selMask[y * TW + x]) return;   // active selection isolates painting
   if (!solid && !ditherOK(x, y)) return;         // v6.73: dither, anchored to canvas coordinates
+  if (lockMask && (tool === "eraser" || !lockMask[y * TW + x])) return;   // v6.74: alpha lock keeps transparency exactly
   if (tool === "eraser") edCtx.clearRect(x, y, 1, 1);
   else { edCtx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a / 255})`; edCtx.clearRect(x, y, 1, 1); edCtx.fillRect(x, y, 1, 1); }
 }
@@ -4115,7 +4125,7 @@ function canvasFill(x, y) {
     if (selMask && !selMask[idx]) continue;
     const i = idx * 4;
     if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
-    if (ditherOK(px, py)) { d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3]; }   // v6.73: dithered fill — skipped pixels keep the old color but the flood still passes through them
+    if (ditherOK(px, py) && !(lockMask && (tool === "eraser" || !lockMask[idx]))) { d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3]; }   // dither + alpha lock; the flood still passes through skipped pixels
     if (px + 1 < TW && !seen[idx + 1]) { seen[idx + 1] = 1; stack.push(idx + 1); }
     if (px > 0 && !seen[idx - 1]) { seen[idx - 1] = 1; stack.push(idx - 1); }
     if (py + 1 < TH && !seen[idx + TW]) { seen[idx + TW] = 1; stack.push(idx + TW); }
@@ -4124,6 +4134,7 @@ function canvasFill(x, y) {
   edCtx.putImageData(img, 0, 0);
 }
 function cellFill(x, y) {
+  if (fillMode === "global") { globalReplace(x, y); return; }   // v6.74 (symmetry is moot — the whole area is covered)
   if (APP_MODE === "bg") { canvasFill(x, y); const m = symOf(x, y); if (m) for (const q of m) canvasFill(q[0], q[1]); return; }
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (selMask && !selMask[y * TW + x]) { status("Fill starts inside the selection."); return; }
@@ -4139,7 +4150,7 @@ function cellFill(x, y) {
     if (selMask && !selMask[(cy + py) * TW + (cx + px)]) continue;   // selection edge is a wall
     const i = (py * TILE + px) * 4;
     if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
-    if (ditherOK(cx + px, cy + py)) { d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3]; }   // v6.73: dithered fill
+    if (ditherOK(cx + px, cy + py) && !(lockMask && (tool === "eraser" || !lockMask[(cy + py) * TW + (cx + px)]))) { d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3]; }   // dither + alpha lock
     for (const [qx, qy] of [[px+1,py],[px-1,py],[px,py+1],[px,py-1]]) {
       if (qx < 0 || qy < 0 || qx >= TILE || qy >= TILE) continue;
       const k = qy * TILE + qx; if (!seen[k]) { seen[k] = 1; stack.push([qx, qy]); }
@@ -4806,8 +4817,43 @@ function setTool(t) {
 }
 document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => { shapeKind = b.dataset.v; shapeSyncBar(); }));
 document.querySelectorAll("#shapebar .shfill").forEach((b) => b.addEventListener("click", () => { shapeFill = b.dataset.v === "1"; shapeSyncBar(); }));
+/* Fill mode (v6.74): contiguous (flood) or global (replace the tapped color everywhere in the fill's bounds —
+   the canvas in a background project, the 16px cell in a tileset). Tapping the bucket while it is already the
+   active tool opens the pop-out beside it. */
+let fillMode = "contiguous";
+try { const fm = localStorage.getItem("tessera.fillmode"); if (fm === "global") fillMode = fm; } catch (e) {}
+function fillSync() {
+  document.querySelectorAll("#fillPop .fillMode").forEach((q) => q.classList.toggle("on", q.dataset.v === fillMode));
+  try { localStorage.setItem("tessera.fillmode", fillMode); } catch (e) {}
+}
+function closeFillPop() { $("fillPop").style.display = "none"; }
+function openFillPop() {
+  const b = document.querySelector('.tool[data-tool="fill"]').getBoundingClientRect(), p = $("fillPop");
+  fillSync(); p.style.left = (b.right + 8) + "px"; p.style.top = b.top + "px"; p.style.display = "flex";
+}
+document.querySelectorAll("#fillPop .fillMode").forEach((b) => b.addEventListener("click", () => { fillMode = b.dataset.v; fillSync(); closeFillPop(); status(fillMode === "global" ? "Fill: global \u2014 replaces the tapped color everywhere." : "Fill: contiguous."); }));
+document.addEventListener("pointerdown", (e) => { const p = $("fillPop"); if (p.style.display === "flex" && !p.contains(e.target) && !e.target.closest('.tool[data-tool="fill"]')) closeFillPop(); }, true);
+function globalReplace(x, y) {   // every pixel matching the tapped one, within bounds; honours selection, dither, alpha lock
+  if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+  if (selMask && !selMask[y * TW + x]) { status("Fill starts inside the selection."); return; }
+  let bx = 0, by = 0, bw = TW, bh = TH;
+  if (APP_MODE !== "bg") { bx = Math.floor(x / TILE) * TILE; by = Math.floor(y / TILE) * TILE; bw = TILE; bh = TILE; }
+  const img = edCtx.getImageData(bx, by, bw, bh), d = img.data;
+  const si = ((y - by) * bw + (x - bx)) * 4, t = [d[si], d[si+1], d[si+2], d[si+3]];
+  const nc = tool === "eraser" ? [0,0,0,0] : [color.r, color.g, color.b, color.a];
+  for (let py = 0; py < bh; py++) for (let px = 0; px < bw; px++) {
+    const i = (py * bw + px) * 4, gx = bx + px, gy = by + py, gi = gy * TW + gx;
+    if (d[i]!==t[0] || d[i+1]!==t[1] || d[i+2]!==t[2] || d[i+3]!==t[3]) continue;
+    if (selMask && !selMask[gi]) continue;
+    if (!ditherOK(gx, gy)) continue;
+    if (lockMask && (tool === "eraser" || !lockMask[gi])) continue;
+    d[i]=nc[0]; d[i+1]=nc[1]; d[i+2]=nc[2]; d[i+3]=nc[3];
+  }
+  edCtx.putImageData(img, bx, by);
+}
 document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => {
   const t = b.dataset.tool;
+  if (t === "fill" && tool === "fill") { if ($("fillPop").style.display === "flex") closeFillPop(); else openFillPop(); return; }
   setTool((t === tool && (t === "slopeF" || t === "slopeC")) ? "pencil" : t);   // slope tools toggle off
 }));
 document.querySelectorAll(".ptool").forEach((b) => b.addEventListener("click", () => {
@@ -5567,8 +5613,6 @@ function bgLayerEditable() {
   const L = bgDoc.layers[bgDoc.active];
   if (isFolder(L)) { status("\u201c" + L.name + "\u201d is a group \u2014 select a layer inside it to draw."); return false; }
   const F = bgFolderOf(L);
-  if (L.locked) { status("\u201c" + L.name + "\u201d is locked \u2014 unlock it in the Layers panel to draw."); return false; }
-  if (F && F.locked) { status("Group \u201c" + F.name + "\u201d is locked \u2014 unlock it to draw inside."); return false; }
   if (!L.visible) { status("\u201c" + L.name + "\u201d is hidden \u2014 show it to draw on it."); return false; }
   if (F && !F.visible) { status("Group \u201c" + F.name + "\u201d is hidden \u2014 show it to draw inside."); return false; }
   return true;
@@ -5743,7 +5787,6 @@ function bgFlattenFolder(i) {   // folder header at i -> one plain layer at the 
 function bgMergeDown() {
   const i = bgDoc.active, L = bgDoc.layers[i];
   if (isFolder(L)) {   // Merge on a folder = flatten it back to a single layer
-    if (L.locked) { status("Unlock the group first."); return; }
     if (float) floatFlatten();
     bgStructSnapshot();
     const at = bgFlattenFolder(i);
@@ -5754,7 +5797,6 @@ function bgMergeDown() {
   if (i === 0) { status("Nothing below to merge into."); return; }
   let below = i - 1;
   if (isFolder(bgDoc.layers[below])) { status("Merging down into a group \u2014 flatten the group first, or drag this layer inside it."); return; }
-  if (bgDoc.layers[below].locked) { status("The layer below is locked."); return; }
   if (float) floatFlatten();
   bgStructSnapshot();
   const tgt = bgLayers[below];
@@ -5767,7 +5809,6 @@ function bgMergeDown() {
 function bgMergeSelected() {   // active + multi merge into the lowest plain layer of the group; folders in the set flatten first
   const idxs = bgGroupIdx();
   if (idxs.length < 2) { bgMergeDown(); return; }
-  if (idxs.some((i) => bgDoc.layers[i].locked)) { status("Unlock every entry in the group first."); return; }
   if (float) floatFlatten();
   bgStructSnapshot();
   const ids = idxs.map((i) => bgDoc.layers[i].id);
@@ -5844,7 +5885,12 @@ function bgRenameLayer() {
   L.name = name; persistPng(); bgRenderLayerList();
 }
 function bgToggleVisible(i) { bgDoc.layers[i].visible = !bgDoc.layers[i].visible; templateChanged(); persistPng(); bgRenderLayerList(); }
-function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); }
+function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); status(bgDoc.layers[i].locked ? "Alpha lock on \u2014 \u201c" + bgDoc.layers[i].name + "\u201d keeps its transparency." : "Alpha lock off."); }
+function bgAlphaLocked() {   // v6.74: the selected layer (or its group) is alpha-locked
+  if (APP_MODE !== "bg" || !bgDoc) return false;
+  const L = bgDoc.layers[bgDoc.active]; if (!L || isFolder(L)) return false;
+  const F = bgFolderOf(L); return !!(L.locked || (F && F.locked));
+}
 function bgToggleCollapsed(i) { bgDoc.layers[i].collapsed = !bgDoc.layers[i].collapsed; persistPng(); bgRenderLayerList(); }
 function bgSelectLayerPixels() {   // marquee = the layer's opaque pixels
   if (float) floatFlatten();
@@ -5932,7 +5978,8 @@ function bgRenderLayerList() {
       tg.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleCollapsed(i); });
       row.appendChild(tg);
     }
-    const lk = document.createElement("button"); lk.className = "lyBtn" + (L.locked ? " on" : ""); lk.innerHTML = svg(L.locked ? "lock" : "unlock"); lk.title = L.locked ? "Locked \u2014 tap to unlock" : "Unlocked \u2014 tap to lock";
+    const lk = document.createElement("button"); lk.className = "lyBtn" + (L.locked ? " alpha" : ""); lk.innerHTML = svg(L.locked ? "lock" : "unlock"); lk.title = L.locked ? "Alpha locked \u2014 paint lands only where this layer already has pixels; tap to release" : "Alpha lock \u2014 paint only where this layer already has pixels" + (folder ? " (applies to every layer in the group)" : "");
+    if (L.locked) row.classList.add("alphaLocked");
     lk.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleLocked(i); });
     const vs = document.createElement("button"); vs.className = "lyBtn" + (L.visible ? " on" : ""); vs.innerHTML = svg("eye"); vs.title = L.visible ? "Visible \u2014 tap to hide" : "Hidden \u2014 tap to show";
     vs.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleVisible(i); });
@@ -6184,7 +6231,7 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.73.0";
+const APP_VERSION = "6.74.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
