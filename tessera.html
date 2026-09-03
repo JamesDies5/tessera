@@ -85,7 +85,6 @@
   #brushMenu .seg button .bsq { width: 12px; height: 12px; background: currentColor; }
   #brushMenu .seg button .bci { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
   #brushMenu .seg button .bdit { width: 14px; height: 14px; image-rendering: pixelated; }
-  #brushMenu .cmNote { font-size: 10px; color: var(--dim); letter-spacing: .5px; }
   #selbar { display: none; flex-direction: column; gap: 6px; align-items: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); }
   .selrow { display: flex; gap: 6px; align-items: center; }
@@ -106,6 +105,10 @@
   .tray .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
   .tray .lbl { margin-right: 6px; }
   .tray .optline.ico { padding: 0 9px; gap: 0; }
+  #gradChips { display: inline-flex; gap: 5px; align-items: center; }
+  #gradChips .gch { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line); cursor: pointer; padding: 0; position: relative; }
+  #gradChips .gch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #gradChips .gch.tr { background: conic-gradient(#333 25%, #555 0 50%, #333 0 75%, #555 0); background-size: 8px 8px; }
   .tray .optline.ico svg { width: 18px; height: 18px; }
   .optItem { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 66px;
     padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -200,11 +203,14 @@
   .lyBtn svg { width: 16px; height: 16px; }
   .lyBtn.on { color: var(--accent); border-color: var(--accent); }
   .lyBtn.alpha { color: #e05555; border-color: #e05555; }
+  .lyPct { font-size: 10px; letter-spacing: 0; }
+  .lyOpRow { display: flex; align-items: center; gap: 10px; padding: 8px 12px 10px 40px; border-bottom: 1px solid #3a3a3a; background: #202020; }
+  .lyOpRow input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); touch-action: none; height: 32px; }
+  .lyOpVal { flex: 0 0 40px; text-align: right; font-size: 12px; color: var(--text); }
   /* Fill pop-out (v6.74): tap the active bucket to choose contiguous / global */
   .fillPop { position: fixed; z-index: 70; display: none; flex-direction: column; gap: 6px; background: rgba(18,18,18,.96); border: 1px solid #454545; border-radius: 10px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
   .fillPop .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
   .lyRow.alphaLocked { box-shadow: inset 0 0 0 1.5px #c94545; }
-  #layerMenu .lmFoot { font-size: 10px; color: var(--dim); letter-spacing: .5px; text-align: center; }
   /* per-layer options popover — opens to the left of the panel, aligned to the tapped row */
   #layerOpts { position: fixed; z-index: 72; display: none; flex-direction: column; min-width: 190px;
     background: rgba(18,18,18,.98); border: 1px solid #454545; border-radius: 12px; padding: 6px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
@@ -319,6 +325,22 @@
   <span class="vsep shpend" style="display:none"></span>
   <button class="optline shpend" id="shapePlace" style="display:none" title="Place the shape (switching tools or tapping outside it also places it)"><span data-icon="check"></span>Place</button>
   <button class="optline shpend" id="shapeCancel" style="display:none" title="Discard the shape"><span data-icon="sqx"></span>Cancel</button>
+</div>
+<!-- Gradient tray (v6.79): shown while the Gradient tool is active -->
+<div class="tray" id="gradbar">
+  <span class="lbl">DITHER</span>
+  <button class="optline grmat" data-v="0" title="No dither — hard steps at each midpoint">None</button>
+  <button class="optline grmat" data-v="2" title="Bayer 2×2 — coarse, 4 density levels per transition">2×2</button>
+  <button class="optline grmat" data-v="4" title="Bayer 4×4 — 16 levels">4×4</button>
+  <button class="optline grmat" data-v="8" title="Bayer 8×8 — 64 levels, smoothest">8×8</button>
+  <span class="vsep"></span>
+  <span class="lbl">STOP</span>
+  <span id="gradChips" title="Recolor the selected stop"></span>
+  <button class="optline ico" id="gradAdd" title="Add a stop in the middle of the longest gap"><span data-icon="plus"></span></button>
+  <button class="optline ico" id="gradDel" title="Remove the selected stop"><span data-icon="minus"></span></button>
+  <span class="vsep"></span>
+  <button class="optline" id="gradApply" title="Fill with the gradient (one undo step)"><span data-icon="check"></span>Apply</button>
+  <button class="optline" id="gradCancel" title="Discard the gradient"><span data-icon="sqx"></span>Cancel</button>
 </div>
 <!-- Outline tray (v6.77): shown while the Outline tool is active; live preview on the canvas, Apply commits -->
 <div class="tray" id="outlinebar">
@@ -464,8 +486,7 @@
   <div id="rail">
     <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
     <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
-    <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes (U) — drag to place a pixel-exact rectangle, ellipse, or line; outline or filled, in the current color and brush width"></button>
-    <button class="ibtn tool" data-tool="outline" data-icon="outline" title="Outline — draw a border around (or just inside) everything on the selected layer, in the current color; options in the tray, Apply to commit"></button>
+    <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes — drag to place a pixel-exact rectangle, ellipse, or line; outline or filled, in the current color and brush width"></button>
     <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
     <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform (V) — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
     <div class="fillPop" id="fillPop">
@@ -473,6 +494,12 @@
       <button class="optline fillMode" data-v="global" title="Replace every pixel of the tapped color, connected or not"><span data-icon="dots"></span>Global</button>
     </div>
     <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
+    <button class="ibtn tool" data-tool="outline" data-icon="outline" title="Outline — draw a border around (or just inside) everything on the selected layer, in the current color; options in the tray, Apply to commit"></button>
+    <div class="fillPop" id="gradPop">
+      <button class="optline gradMode on" data-v="linear" title="Linear — the ramp runs along the line"><span data-icon="gradient"></span>Linear</button>
+      <button class="optline gradMode" data-v="radial" title="Radial — the ramp runs outward from the first point; the line's length is the radius"><span data-icon="gradRadial"></span>Radial</button>
+    </div>
+    <button class="ibtn tool" data-tool="gradient" data-icon="gradient" title="Gradient — drag a line to fill the selection (or the layer) with a dithered ramp between color stops; adjust stops and fall-off before Apply"></button>
     <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
     <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
     <button class="ibtn tool" data-tool="vary" data-icon="dice" title="Variations — view the deep-core variation pool on the Template tab: green outline = primary tile, yellow = variants. Tap an outlined cell to view and edit its weight."></button>
@@ -1904,6 +1931,7 @@ window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + 
 const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  opacity: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" opacity=".6"/>',
   shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   shRect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
   outline: '<rect x="7" y="7" width="10" height="10" rx="1"/><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2.2"/>',
@@ -1913,6 +1941,8 @@ const ICONS = {
   olV: '<path d="M12 4v5M12 15v5"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
   olOut: '<rect x="8" y="8" width="8" height="8" fill="currentColor" stroke="none" opacity=".5"/><rect x="5" y="5" width="14" height="14" rx="1"/>',
   olIn: '<rect x="5" y="5" width="14" height="14" rx="1" fill="currentColor" stroke="none" opacity=".35"/><rect x="5" y="5" width="14" height="14" rx="1"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
+  gradient: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M11 5v14M15 5v14" stroke-dasharray="1.5 1.5"/>',
+  gradRadial: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5" stroke-dasharray="1.5 1.5"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>',
   shPoly: '<path d="M12 3 20 9l-3 10H7L4 9z"/>',
   shCurve: '<path d="M4 18c6 0 4-12 10-12s4 8 6 8"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="14" r="1.5" fill="currentColor"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
@@ -2959,6 +2989,47 @@ function drawGrid() {
       ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.strokeRect(hx - .5, hy - .5, hs + 1, hs + 1);
     }
   }
+  if (activeTab === "ed" && tool === "gradient" && grad && !float) {   // v6.79: gradient preview + handles
+    const pal = palettes[palIdx], lut = pal.base ? (pal.lut || (pal.lut = buildPalLut(pal.base))) : null;
+    if (shpPrev.width !== TW || shpPrev.height !== TH) { shpPrev.width = TW; shpPrev.height = TH; }
+    const pg = shpPrev.getContext("2d"), img = pg.createImageData(TW, TH), d = img.data, reg = gradRegion();
+    for (let i = 0; i < reg.length; i += 2) {
+      const x = reg[i], y = reg[i + 1], g = gradColorAt(x, y, grad); if (g === null) continue;
+      const k = (y * TW + x) * 4; if (lut) { d[k] = lut[g * 3]; d[k + 1] = lut[g * 3 + 1]; d[k + 2] = lut[g * 3 + 2]; } else { d[k] = d[k + 1] = d[k + 2] = g; } d[k + 3] = 255;
+    }
+    pg.putImageData(img, 0, 0);
+    ovCtx.save(); ovCtx.imageSmoothingEnabled = false; ovCtx.globalAlpha = 0.9; ovCtx.drawImage(shpPrev, v.x, v.y, TW * v.s, TH * v.s); ovCtx.restore();
+    const P = (t) => { const q = gradPt(t, grad); return [v.x + q[0] * v.s, v.y + q[1] * v.s]; };
+    const a0 = P(0), a1 = P(1), hs = gradHandles(grad), e0 = hs[0], e1 = hs[1];
+    ovCtx.setLineDash([]); ovCtx.lineWidth = 3; ovCtx.strokeStyle = "rgba(0,0,0,0.5)"; ovCtx.beginPath(); ovCtx.moveTo(v.x + e0.x * v.s, v.y + e0.y * v.s); ovCtx.lineTo(v.x + e1.x * v.s, v.y + e1.y * v.s); ovCtx.stroke();
+    ovCtx.lineWidth = 1.5; ovCtx.strokeStyle = "rgba(255,255,255,0.9)"; ovCtx.stroke();
+    if (grad.shape === "radial") {   // the radius ring
+      const R = Math.hypot(grad.x1 - grad.x0, grad.y1 - grad.y0) * v.s;
+      ovCtx.lineWidth = 1; ovCtx.strokeStyle = "rgba(255,255,255,0.45)"; ovCtx.setLineDash([5, 5]); ovCtx.beginPath(); ovCtx.arc(a0[0], a0[1], R, 0, Math.PI * 2); ovCtx.stroke(); ovCtx.setLineDash([]);
+    }
+    const dragId = stroke && stroke.kind === "gradEdit" ? stroke.id : null;
+    const pill = (hx, hy, text) => {   // v6.79.1: value readout while a handle is being dragged
+      ovCtx.font = "600 12px ui-monospace, Menlo, monospace"; const w = ovCtx.measureText(text).width + 12;
+      ovCtx.fillStyle = "rgba(0,0,0,0.7)"; ovCtx.beginPath(); ovCtx.roundRect(hx - w / 2, hy + 12, w, 18, 9); ovCtx.fill();
+      ovCtx.fillStyle = "#fff"; ovCtx.textAlign = "center"; ovCtx.textBaseline = "middle"; ovCtx.fillText(text, hx, hy + 21); ovCtx.textAlign = "start"; ovCtx.textBaseline = "alphabetic";
+    };
+    for (const h of hs) {
+      const hx = v.x + h.x * v.s, hy = v.y + h.y * v.s;
+      if (h.id[0] === "p") { ovCtx.fillStyle = "#fff"; ovCtx.strokeStyle = "rgba(0,0,0,0.6)"; ovCtx.lineWidth = 1; ovCtx.beginPath(); ovCtx.arc(hx, hy, 5, 0, Math.PI * 2); ovCtx.fill(); ovCtx.stroke(); }
+      else if (h.id[0] === "s") {
+        const i = +h.id.slice(1), g = grad.stops[i].g;
+        ovCtx.fillStyle = g === null ? "rgba(0,0,0,0)" : (lut ? `rgb(${lut[g*3]},${lut[g*3+1]},${lut[g*3+2]})` : `rgb(${g},${g},${g})`);
+        ovCtx.strokeStyle = i === grad.sel ? "#ffd84f" : "#fff"; ovCtx.lineWidth = i === grad.sel ? 2.5 : 1.5;
+        ovCtx.beginPath(); ovCtx.rect(hx - 7, hy - 7, 14, 14); ovCtx.fill(); ovCtx.stroke();
+        if (g === null) { ovCtx.beginPath(); ovCtx.moveTo(hx - 5, hy + 5); ovCtx.lineTo(hx + 5, hy - 5); ovCtx.stroke(); }
+        if (dragId === h.id) pill(hx, hy, Math.round(grad.stops[i].t * 100) + "%");
+      } else {   // midpoint diamond
+        ovCtx.fillStyle = "#8fe6ff"; ovCtx.strokeStyle = "rgba(0,0,0,0.6)"; ovCtx.lineWidth = 1;
+        ovCtx.beginPath(); ovCtx.moveTo(hx, hy - 5); ovCtx.lineTo(hx + 5, hy); ovCtx.lineTo(hx, hy + 5); ovCtx.lineTo(hx - 5, hy); ovCtx.closePath(); ovCtx.fill(); ovCtx.stroke();
+        if (dragId === h.id) { const i = +h.id.slice(1), m = grad.mids[i] === undefined ? 0.5 : grad.mids[i]; pill(hx, hy, Math.round(m * 100) + "%"); }
+      }
+    }
+  }
   if (activeTab === "ed" && tool === "outline" && !float) {   // v6.77: outline preview — the pixels Apply would paint, in the mapped color
     const px = outlinePixels(), pal = palettes[palIdx], l = color.r;
     if (shpPrev.width !== TW || shpPrev.height !== TH) { shpPrev.width = TW; shpPrev.height = TH; }
@@ -3604,6 +3675,7 @@ function genRoom(force) {
 }
 function undo() {
   if (shp) { if (shp.kind === "poly" && !shp.closed && shp.pts.length > 1) { shp.pts.pop(); drawGrid(); status("Point removed."); return; } shpCancel(); return; }   // undo on a pending shape: step back a vertex, or discard
+  if (grad) { gradCancel(); return; }
   if (float) {
     if (floatHist.length) {   // step back one drag/flip/rotate, staying in Move mode
       floatRedoHist.push(floatSnapState());
@@ -3613,7 +3685,7 @@ function undo() {
     // history exhausted: retire the float — a pasted one just vanishes (it
     // has no cut snapshot to pop); a cut one falls through to pop the sheet
     const wasPasted = float.pasted;
-    selMask = float.origMask; float = null; floatEdges = null; floatHist = []; floatRedoHist = [];
+    selMask = float.origMask; float = null; floatHist = []; floatRedoHist = [];
     selRebuildEdges();
     setTool("marquee");
     if (wasPasted) { blit(); drawGrid(); status("Paste removed."); return; }
@@ -3720,7 +3792,7 @@ function persistBrush() { try { localStorage.setItem(LS.brush, JSON.stringify({ 
    (auto-closes on release); tap-start = polygon session (taps place
    vertices, drags extend the path, tapping the origin marker closes). */
 let selMask = null, selEdges = null, selPoly = null;
-let selShape = "rect", selMode = "add", antPhase = 0;
+let selShape = "rect", selMode = "add";
 /* Selection hatch (v6.69.1): screen-space diagonal stripes over the unselected
    part of the canvas, with the selection punched out. Pattern built once per
    DPR; the mask canvas is rebuilt only when the selection changes. */
@@ -3853,6 +3925,144 @@ function outlineApply() {
 document.querySelectorAll("#outlinebar .olplace").forEach((b) => b.addEventListener("click", () => { olPlace = b.dataset.v; outlineSyncBar(); drawGrid(); }));
 document.querySelectorAll("#outlinebar .olmat").forEach((b) => b.addEventListener("click", () => { olMatrix = b.dataset.v; outlineSyncBar(); drawGrid(); }));
 $("outlineApply").addEventListener("click", outlineApply);
+/* ==== Gradient tool (v6.79) ====
+   Drag a line; the selection (or the whole layer) fills with a ramp between
+   color stops along that line, rendered as ordered (Bayer) dither so only
+   the stop colors are ever painted. Pending until Apply: endpoints, stops
+   (slide along the line, recolor from the tray), and midpoint diamonds that
+   skew each transition's fall-off (Photoshop's midpoint). Selection and
+   alpha lock apply through putPx; the brush dither does not stack on top. */
+let grad = null;          // { x0, y0, x1, y1, stops: [{ t, g }], mids: [m...], sel }  g = gray 0..255 or null (transparent)
+let gradMatrix = 4, gradShape = "linear";   // v6.80: "linear" | "radial"
+try { const gs = localStorage.getItem("tessera.gradshape"); if (gs === "radial") gradShape = gs; } catch (e) {}
+try { const raw = localStorage.getItem("tessera.gradmat"); if (raw !== null && [0, 2, 4, 8].includes(+raw)) gradMatrix = +raw; } catch (e) {}
+const BAYER = { 2: [0, 2, 3, 1], 4: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
+  8: [0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28, 52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21] };
+function gradNew(x0, y0, x1, y1) {
+  const g0 = color.r, lane = STOP_GRAYS.slice().sort((a, b) => a - b);
+  const above = lane.find((g) => g > g0), below = lane.slice().reverse().find((g) => g < g0);
+  const g1 = above !== undefined ? above : (below !== undefined ? below : g0);   // default: current color to the next lane stop up
+  return { x0, y0, x1, y1, shape: gradShape, stops: [{ t: 0, g: g0 }, { t: 1, g: g1 }], mids: [0.5], sel: 1 };
+}
+function gradThreshold(x, y) {   // 0..1 exclusive, from the Bayer cell at this canvas pixel; None = 0.5 (hard step)
+  if (!gradMatrix) return 0.5;
+  const n = gradMatrix, m = BAYER[n]; return (m[(y % n) * n + (x % n)] + 0.5) / (n * n);
+}
+function gradColorAt(x, y, G) {   // -> gray or null (transparent) for pixel (x, y)
+  const dx = G.x1 - G.x0, dy = G.y1 - G.y0, L2 = dx * dx + dy * dy || 1;
+  let t;
+  if (G.shape === "radial") t = Math.hypot(x - G.x0, y - G.y0) / Math.sqrt(L2);   // distance from the center over the radius
+  else t = ((x + 0.5 - (G.x0 + 0.5)) * dx + (y + 0.5 - (G.y0 + 0.5)) * dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  const st = G.stops;
+  if (t <= st[0].t) return st[0].g;
+  if (t >= st[st.length - 1].t) return st[st.length - 1].g;
+  let i = 0; while (i + 1 < st.length && t > st[i + 1].t) i++;
+  const a = st[i], b = st[i + 1], span = (b.t - a.t) || 1e-9, u = (t - a.t) / span, m = Math.max(0.02, Math.min(0.98, G.mids[i] === undefined ? 0.5 : G.mids[i]));
+  const uu = u < m ? 0.5 * u / m : 0.5 + 0.5 * (u - m) / (1 - m);   // midpoint skew: u = m maps to the 50/50 point
+  return uu > gradThreshold(x, y) ? b.g : a.g;
+}
+function gradRegion() {   // pixels the gradient fills: the selection, else the whole canvas
+  const out = []; for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) if (!selMask || selMask[y * TW + x]) out.push(x, y); return out;
+}
+function gradApply() {
+  if (!grad) return;
+  if (APP_MODE === "bg" && !bgLayerEditable()) return;
+  if (float) floatFlatten();
+  const G = grad; grad = null;
+  const savedTool = tool, savedColor = color; tool = "pencil";
+  snapshot(); let n = 0;
+  const reg = gradRegion();
+  for (let i = 0; i < reg.length; i += 2) {
+    const x = reg[i], y = reg[i + 1], g = gradColorAt(x, y, G);
+    if (g === null) { if (lockMask) continue; if (!selMask || selMask[y * TW + x]) edCtx.clearRect(x, y, 1, 1); n++; continue; }
+    color = { r: g, g: g, b: g, a: 255 }; putPx(x, y, true); n++;
+  }
+  color = savedColor; tool = savedTool;
+  templateChanged(); persistPng(); refreshFileSwatches(); gradSyncBar(); drawGrid();
+  status("Gradient applied \u2014 " + G.stops.length + " stops, " + (gradMatrix ? "Bayer " + gradMatrix + "\u00d7" + gradMatrix : "hard steps") + ".");
+}
+function gradCancel() { if (!grad) return; grad = null; gradSyncBar(); drawGrid(); status("Gradient discarded."); }
+function gradPt(t, G) { return [G.x0 + 0.5 + (G.x1 - G.x0) * t, G.y0 + 0.5 + (G.y1 - G.y0) * t]; }   // canvas coords (pixel centers)
+function gradHandles(G) {   // endpoints (pushed 18 screen px past the ends so the end stops stay grabbable), stop chips, midpoint diamonds
+  const v = view.ed, dx = G.x1 - G.x0, dy = G.y1 - G.y0, L = Math.hypot(dx, dy) || 1, ex = dx / L * 18 / v.s, ey = dy / L * 18 / v.s;
+  const h = [{ id: "p0", x: G.x0 + 0.5 - ex, y: G.y0 + 0.5 - ey }, { id: "p1", x: G.x1 + 0.5 + ex, y: G.y1 + 0.5 + ey }];
+  G.stops.forEach((s2, i) => { const q = gradPt(s2.t, G); h.push({ id: "s" + i, x: q[0], y: q[1] }); });
+  for (let i = 0; i + 1 < G.stops.length; i++) { const m = G.mids[i] === undefined ? 0.5 : G.mids[i]; const q = gradPt(G.stops[i].t + (G.stops[i + 1].t - G.stops[i].t) * m, G); h.push({ id: "m" + i, x: q[0], y: q[1] }); }
+  return h;
+}
+function gradHit(vp) {
+  if (!grad) return null;
+  const v = view.ed; let best = null, bd = 16;
+  for (const h of gradHandles(grad)) { const d = Math.hypot(v.x + h.x * v.s - vp.x, v.y + h.y * v.s - vp.y); if (d <= bd) { best = h; bd = d; } }
+  return best ? { id: best.id } : null;
+}
+function gradProject(x, y, G) {   // canvas point -> t along the line
+  const dx = G.x1 - G.x0, dy = G.y1 - G.y0, L2 = dx * dx + dy * dy || 1;
+  return Math.max(0, Math.min(1, ((x - (G.x0 + 0.5)) * dx + (y - (G.y0 + 0.5)) * dy) / L2));
+}
+function gradDrag(st, x, y) {   // st = { id, o, ax, ay }; x, y are canvas px (floored)
+  const o = st.o, G = grad, dx = x - st.ax, dy = y - st.ay;
+  if (st.id === "p0") { G.x0 = o.x0 + dx; G.y0 = o.y0 + dy; return; }
+  if (st.id === "p1") { G.x1 = o.x1 + dx; G.y1 = o.y1 + dy; return; }
+  const t = gradProject(x + 0.5, y + 0.5, G);
+  if (st.id[0] === "s") {   // slide a stop between its neighbours
+    const i = +st.id.slice(1), lo = i > 0 ? G.stops[i - 1].t + 0.01 : 0, hi = i + 1 < G.stops.length ? G.stops[i + 1].t - 0.01 : 1;
+    G.stops[i].t = Math.max(lo, Math.min(hi, t)); G.sel = i; return;
+  }
+  if (st.id[0] === "m") {   // midpoint as a fraction of its segment
+    const i = +st.id.slice(1), a = G.stops[i].t, b = G.stops[i + 1].t;
+    G.mids[i] = Math.max(0.05, Math.min(0.95, (t - a) / ((b - a) || 1e-9)));
+  }
+}
+function gradAddStop() {
+  if (!grad) { status("Drag a gradient first."); return; }
+  const st = grad.stops; let bi = 0, bg = -1;
+  for (let i = 0; i + 1 < st.length; i++) { const gap = st[i + 1].t - st[i].t; if (gap > bg) { bg = gap; bi = i; } }
+  const t = (st[bi].t + st[bi + 1].t) / 2;
+  st.splice(bi + 1, 0, { t, g: color.r }); grad.mids.splice(bi, 1, 0.5, 0.5); grad.sel = bi + 1;
+  gradSyncBar(); drawGrid();
+}
+function gradDelStop() {
+  if (!grad || grad.stops.length <= 2) { status("A gradient needs at least two stops."); return; }
+  const i = grad.sel; grad.stops.splice(i, 1); grad.mids.splice(Math.max(0, i - 1), 1); grad.sel = Math.max(0, Math.min(grad.stops.length - 1, i - 1));
+  const mids = []; for (let k = 0; k + 1 < grad.stops.length; k++) mids.push(grad.mids[k] === undefined ? 0.5 : grad.mids[k]); grad.mids = mids;
+  gradSyncBar(); drawGrid();
+}
+function gradPopSync() { document.querySelectorAll("#gradPop .gradMode").forEach((q) => q.classList.toggle("on", q.dataset.v === gradShape)); try { localStorage.setItem("tessera.gradshape", gradShape); } catch (e) {} }
+function closeGradPop() { $("gradPop").style.display = "none"; }
+function openGradPop() {
+  const b = document.querySelector('.tool[data-tool="gradient"]').getBoundingClientRect(), p = $("gradPop");
+  gradPopSync(); p.style.left = (b.right + 8) + "px"; p.style.top = b.top + "px"; p.style.display = "flex";
+}
+document.querySelectorAll("#gradPop .gradMode").forEach((b) => b.addEventListener("click", () => {
+  gradShape = b.dataset.v; gradPopSync(); closeGradPop();
+  if (grad) { grad.shape = gradShape; drawGrid(); }   // a pending gradient switches shape in place
+  status(gradShape === "radial" ? "Gradient: radial \u2014 the first point is the center, the line is the radius." : "Gradient: linear.");
+}));
+document.addEventListener("pointerdown", (e) => { const p = $("gradPop"); if (p.style.display === "flex" && !p.contains(e.target) && !e.target.closest('.tool[data-tool="gradient"]')) closeGradPop(); }, true);
+function gradSyncBar() {
+  document.querySelectorAll("#gradbar .grmat").forEach((b) => b.classList.toggle("on", +b.dataset.v === gradMatrix));
+  const host = $("gradChips"); host.innerHTML = "";
+  const grays = STOP_GRAYS.slice().sort((a, b) => a - b), selG = grad ? grad.stops[grad.sel].g : undefined;
+  for (const g of grays) {
+    const c = document.createElement("button"); c.className = "gch" + (selG === g ? " on" : ""); c.style.background = displayColor({ r: g, g: g, b: g, a: 255 }); c.title = "gray " + g;
+    c.addEventListener("click", () => { if (!grad) { status("Drag a gradient first, then pick colors for its stops."); return; } grad.stops[grad.sel].g = g; gradSyncBar(); drawGrid(); });
+    host.appendChild(c);
+  }
+  const tr = document.createElement("button"); tr.className = "gch tr" + (selG === null ? " on" : ""); tr.title = "transparent";
+  tr.addEventListener("click", () => { if (!grad) return; grad.stops[grad.sel].g = null; gradSyncBar(); drawGrid(); });
+  host.appendChild(tr);
+  for (const id of ["gradAdd", "gradDel", "gradApply", "gradCancel"]) { $(id).disabled = !grad; $(id).style.opacity = grad ? "" : ".4"; }
+  const want = activeTab === "ed" && tool === "gradient" ? "flex" : "none";
+  if ($("gradbar").style.display !== want) { $("gradbar").style.display = want; sizeOverlay(); }
+  try { localStorage.setItem("tessera.gradmat", String(gradMatrix)); } catch (e) {}
+}
+document.querySelectorAll("#gradbar .grmat").forEach((b) => b.addEventListener("click", () => { gradMatrix = +b.dataset.v; gradSyncBar(); drawGrid(); }));
+$("gradAdd").addEventListener("click", gradAddStop);
+$("gradDel").addEventListener("click", gradDelStop);
+$("gradApply").addEventListener("click", gradApply);
+$("gradCancel").addEventListener("click", gradCancel);
 function shapeSyncBar() {
   document.querySelectorAll("#shapebar .shkind").forEach((b) => b.classList.toggle("on", b.dataset.v === shapeKind));
   document.querySelectorAll("#shapebar .shfill").forEach((b) => { b.classList.toggle("on", (b.dataset.v === "1") === shapeFill); b.disabled = shapeKind === "curve" || shapeKind === "line"; b.style.opacity = b.disabled ? ".4" : ""; });
@@ -4096,12 +4306,12 @@ function syncSelbar() {
    leaving Move flattens it where it rests (a second undo step) and the
    selection re-anchors at the drop position. Flips and the 90-degree
    rotation are pure ImageData loops — pixel-exact, no canvas transforms. */
-let float = null, floatEdges = null, floatGen = 0;
+let float = null, floatGen = 0;
 let floatHist = [], floatRedoHist = [];   // per-op history inside Move mode
 function floatSnapState() { return { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y }; }
 function floatRestoreState(st) {
   float.cv = st.cv; float.mask = st.mask; float.w = st.w; float.h = st.h; float.x = st.x; float.y = st.y;
-  floatGen++; floatRebuildEdges(); blit(); drawGrid();
+  floatGen++; blit(); drawGrid();
 }
 /* ==== canvas resize ====
    Sheet dims are contract base + persisted extension. Resizing swaps the
@@ -4143,17 +4353,6 @@ function resizeSheet(cols, rows) {
 }
 const floatTintCv = document.createElement("canvas");
 let floatTintKey = "";
-function floatRebuildEdges() {
-  const E = [], w = float.w, h = float.h, m = float.mask;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (!m[y * w + x]) continue;
-    if (y === 0 || !m[(y - 1) * w + x]) E.push([x, y, x + 1, y]);
-    if (y === h - 1 || !m[(y + 1) * w + x]) E.push([x, y + 1, x + 1, y + 1]);
-    if (x === 0 || !m[y * w + x - 1]) E.push([x, y, x, y + 1]);
-    if (x === w - 1 || !m[y * w + x + 1]) E.push([x + 1, y, x + 1, y + 1]);
-  }
-  floatEdges = E;
-}
 function floatDisplay() {   // float through the active palette, like edDisplay
   const pal = palettes[palIdx];
   if (!pal.base) return float.cv;
@@ -4199,7 +4398,6 @@ function floatBegin() {   // cut the selection into the float
   floatHist = []; floatRedoHist = [];
   selMask = null; selEdges = null; selPoly = null;
   floatGen++;
-  floatRebuildEdges();
   templateChanged(); persistPng(); refreshFileSwatches();
   status(float.origMask ? "Transform \u2014 drag to move; flip and rotate below. Switching tools commits it." : "Transform");
 }
@@ -4216,7 +4414,7 @@ function floatFlatten() {   // drop the float where it rests
     m[ty * TW + tx] = 1;
   }
   selMask = m; selRebuildEdges();
-  float = null; floatEdges = null; floatHist = []; floatRedoHist = [];
+  float = null; floatHist = []; floatRedoHist = [];
   templateChanged(); persistPng(); refreshFileSwatches();
   status("Transform committed.");
 }
@@ -4244,7 +4442,6 @@ function floatXform(kind) {   // fh | fv | rot (90 CW); pixel-exact loops
   float.cv = cv; float.mask = nm; float.w = nw; float.h = nh;
   float.x = Math.round(cx - nw / 2); float.y = Math.round(cy - nh / 2);
   floatGen++;
-  floatRebuildEdges();
   blit(); drawGrid();
 }
 /* ==== copy / paste (Phase 3) ====
@@ -4293,7 +4490,6 @@ function doPaste() {
   selMask = null; selEdges = null; selPoly = null;
   floatHist = []; floatRedoHist = [];
   floatGen++;
-  floatRebuildEdges();
   setTool("selmove");
   blit(); drawGrid();
   status(APP_MODE === "bg" ? "Pasted onto \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d \u2014 drag, flip, or rotate; switching tools places it." : "Pasted \u2014 drag, flip, or rotate; switching tools places it.");
@@ -4644,6 +4840,14 @@ function beginStroke(e) {
     if (tool === "pick") { pickAt(x, y); return; }
     if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
     if (tool === "outline") { status("Outline \u2014 choose Outside / Inside and a corner style in the tray, then Apply."); return; }
+    if (tool === "gradient") {
+      if (grad) {
+        const hit = gradHit(vpPoint(e));
+        if (hit) { if (hit.id[0] === "s") { grad.sel = +hit.id.slice(1); gradSyncBar(); } stroke = { kind: "gradEdit", id: hit.id, o: JSON.parse(JSON.stringify(grad)), ax: x, ay: y }; drawGrid(); return; }
+        gradApply();   // tapping elsewhere applies the pending one and starts the next
+      }
+      stroke = { kind: "gradNew", x0: x, y0: y, x1: x, y1: y }; return;
+    }
     if (tool === "shape") {
       if (shp) {   // editing the pending shape, or committing it and starting the next
         const hit = shpHit(vpPoint(e));
@@ -4735,6 +4939,8 @@ function moveStroke(e) {
   }
   if (stroke.kind === "shape") { const [x, y] = edPos(e); if (x !== stroke.x1 || y !== stroke.y1) { stroke.x1 = x; stroke.y1 = y; drawGrid(); } return; }
   if (stroke.kind === "shpEdit") { const [x, y] = edPos(e); shpApplyDrag(stroke, x, y); drawGrid(); return; }
+  if (stroke.kind === "gradNew") { const [x, y] = edPos(e); if (x !== stroke.x1 || y !== stroke.y1) { stroke.x1 = x; stroke.y1 = y; grad = gradNew(stroke.x0, stroke.y0, x, y); drawGrid(); } return; }
+  if (stroke.kind === "gradEdit") { const [x, y] = edPos(e); gradDrag(stroke, x, y); drawGrid(); return; }
   if (stroke.kind === "polyTap") { const [x, y] = edPos(e); if (x !== stroke.x || y !== stroke.y) { stroke.x = x; stroke.y = y; drawGrid(); } return; }
   if (stroke.kind === "sel") {
     const [x, y] = edPos(e);
@@ -4822,6 +5028,8 @@ function endStroke() {
   }
   if (stroke && stroke.kind === "shape") { const s = stroke; stroke = null; shp = shpFromStroke(s); shapeSyncBar(); drawGrid(); status("Drag to move, handles to adjust; Place when it's right."); return; }
   if (stroke && stroke.kind === "shpEdit") { stroke = null; drawGrid(); return; }
+  if (stroke && stroke.kind === "gradNew") { const st = stroke; stroke = null; if (st.x0 === st.x1 && st.y0 === st.y1) { grad = null; } else { grad = gradNew(st.x0, st.y0, st.x1, st.y1); } gradSyncBar(); drawGrid(); if (grad) status("Drag the endpoints, stops, or midpoints; pick stop colors in the tray; Apply when it's right."); return; }
+  if (stroke && stroke.kind === "gradEdit") { stroke = null; drawGrid(); return; }
   if (stroke && stroke.kind === "polyTap") {   // the vertex lands where the finger lifted
     const st = stroke; stroke = null;
     if (shp && shp.kind === "poly") { if (!st.first) shp.pts.push([st.x, st.y]); else shp.pts[0] = [st.x, st.y]; status(shp.pts.length < 3 ? "Tap to add points." : "Tap the first point to close, or keep adding points."); }
@@ -5055,6 +5263,7 @@ function setTool(t) {
   }
   if (t !== "selmove" && float) { floatFlatten(); selClear(); }   // leaving Transform commits it; no marquee remains
   if (t !== "shape" && shp) shpCommit();                            // leaving Shapes places the pending shape
+  if (t !== "gradient" && grad) gradApply();                         // leaving Gradient applies the pending one
   exitCanvasMode();
   tool = t;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
@@ -5063,7 +5272,7 @@ function setTool(t) {
   if (t !== "vary") { closeVaryPanel(); closeVaryConfirm(); }
   syncVarybar();
   drawGrid();   // vary outlines appear/disappear with the tool
-  syncSelbar(); shapeSyncBar(); outlineSyncBar();
+  syncSelbar(); shapeSyncBar(); outlineSyncBar(); gradSyncBar();
 }
 document.querySelectorAll("#shapebar .shkind").forEach((b) => b.addEventListener("click", () => {
   if (shp && (shp.kind === "poly" || b.dataset.v === "poly")) shpCommit();   // polygons don't convert; place what's pending first
@@ -5111,6 +5320,7 @@ function globalReplace(x, y) {   // every pixel matching the tapped one, within 
 document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => {
   const t = b.dataset.tool;
   if (t === "fill" && tool === "fill") { if ($("fillPop").style.display === "flex") closeFillPop(); else openFillPop(); return; }
+  if (t === "gradient" && tool === "gradient") { if ($("gradPop").style.display === "flex") closeGradPop(); else openGradPop(); return; }
   setTool((t === tool && (t === "slopeF" || t === "slopeC")) ? "pencil" : t);   // slope tools toggle off
 }));
 document.querySelectorAll(".ptool").forEach((b) => b.addEventListener("click", () => {
@@ -5884,14 +6094,16 @@ function bgComposite() {
     bgComp.width = TW; bgComp.height = TH;
     const g = bgComp.getContext("2d"); g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, TW, TH);
-    bgDoc.layers.forEach((L, i) => { if (!isFolder(L) && bgEffVisible(i)) g.drawImage(bgLayers[i].canvas, 0, 0); });
+    bgDoc.layers.forEach((L, i) => { if (!isFolder(L) && bgEffVisible(i)) { g.globalAlpha = bgOpacity(L); g.drawImage(bgLayers[i].canvas, 0, 0); } });
+    g.globalAlpha = 1;
   }
   return bgComp;
 }
 function bgFolderComposite(fid, w, h) {   // members only, for thumbnails and group export
   const c = document.createElement("canvas"); c.width = w || TW; c.height = h || TH;
   const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
-  for (const i of bgMembersOf(fid)) if (bgDoc.layers[i].visible) g.drawImage(bgLayers[i].canvas, 0, 0);
+  for (const i of bgMembersOf(fid)) if (bgDoc.layers[i].visible) { g.globalAlpha = bgOpacity(bgDoc.layers[i]); g.drawImage(bgLayers[i].canvas, 0, 0); }
+  g.globalAlpha = 1;
   return c;
 }
 function bgPersist() {
@@ -5907,6 +6119,7 @@ function bgPersist() {
 }
 function bgSelectLayer(i, quiet) {   // point the shared editor at entry i (folders get the scratch canvas)
   if (!quiet && shp) shpCommit();
+  if (!quiet && grad) gradApply();
   i = Math.max(0, Math.min(bgDoc.layers.length - 1, i));
   bgDoc.active = i;
   if (isFolder(bgDoc.layers[i])) {
@@ -6033,7 +6246,8 @@ function bgDuplicateLayer() {
 function bgFlattenFolder(i) {   // folder header at i -> one plain layer at the same spot (no snapshot; callers own that)
   const F = bgDoc.layers[i], members = bgMembersOf(F.id);
   const nl = bgMakeCanvas(TW, TH);
-  for (const m of members) if (bgDoc.layers[m].visible) nl.ctx.drawImage(bgLayers[m].canvas, 0, 0);
+  for (const m of members) if (bgDoc.layers[m].visible) { nl.ctx.globalAlpha = bgOpacity(bgDoc.layers[m]); nl.ctx.drawImage(bgLayers[m].canvas, 0, 0); }
+  nl.ctx.globalAlpha = 1;
   const L = { id: bgNewLayerId(), name: F.name, visible: F.visible, locked: F.locked, png: null };
   const kill = new Set(members.concat([i]));
   const keep = bgDoc.layers.map((_, k) => k).filter((k) => !kill.has(k));
@@ -6058,7 +6272,7 @@ function bgMergeDown() {
   if (float) floatFlatten();
   bgStructSnapshot();
   const tgt = bgLayers[below];
-  if (L.visible) tgt.ctx.drawImage(bgLayers[i].canvas, 0, 0);
+  if (L.visible) { tgt.ctx.globalAlpha = bgOpacity(L); tgt.ctx.drawImage(bgLayers[i].canvas, 0, 0); tgt.ctx.globalAlpha = 1; }   // merging bakes the layer's opacity
   tgt.png = null;
   bgDoc.layers.splice(i, 1); bgLayers.splice(i, 1);
   bgSelectLayer(below, true);
@@ -6073,7 +6287,8 @@ function bgMergeSelected() {   // active + multi merge into the lowest plain lay
   for (const id of ids) { const k = bgDoc.layers.findIndex((L) => L.id === id); if (k >= 0 && isFolder(bgDoc.layers[k])) { const at = bgFlattenFolder(k); ids[ids.indexOf(id)] = bgDoc.layers[at].id; } }
   const set = ids.map((id) => bgDoc.layers.findIndex((L) => L.id === id)).filter((k) => k >= 0).sort((a, b) => a - b);
   const base = set[0], target = bgLayers[base];
-  for (let k = 1; k < set.length; k++) if (bgDoc.layers[set[k]].visible) target.ctx.drawImage(bgLayers[set[k]].canvas, 0, 0);
+  for (let k = 1; k < set.length; k++) if (bgDoc.layers[set[k]].visible) { target.ctx.globalAlpha = bgOpacity(bgDoc.layers[set[k]]); target.ctx.drawImage(bgLayers[set[k]].canvas, 0, 0); }
+  target.ctx.globalAlpha = 1;
   target.png = null;
   for (let k = set.length - 1; k >= 1; k--) { bgDoc.layers.splice(set[k], 1); bgLayers.splice(set[k], 1); }
   bgMulti.clear();
@@ -6143,6 +6358,12 @@ function bgRenameLayer() {
   L.name = name; persistPng(); bgRenderLayerList();
 }
 function bgToggleVisible(i) { bgDoc.layers[i].visible = !bgDoc.layers[i].visible; templateChanged(); persistPng(); bgRenderLayerList(); }
+function bgOpacity(L) { return L.opacity === undefined ? 1 : Math.max(0, Math.min(1, L.opacity)); }   // v6.78
+let lyOpOpen = null;   // id of the layer whose opacity slider is showing
+function bgSetOpacity(i, pct, save) {   // v6.78.1: live = recomposite only; the document is saved once on release
+  bgDoc.layers[i].opacity = Math.max(0, Math.min(100, pct)) / 100;
+  if (save) persistPng(); else { edGen++; blit(); }
+}
 function bgToggleLocked(i) { bgDoc.layers[i].locked = !bgDoc.layers[i].locked; persistPng(); bgRenderLayerList(); status(bgDoc.layers[i].locked ? "Alpha lock on \u2014 \u201c" + bgDoc.layers[i].name + "\u201d keeps its transparency." : "Alpha lock off."); }
 function bgAlphaLocked() {   // v6.74: the selected layer (or its group) is alpha-locked
   if (APP_MODE !== "bg" || !bgDoc) return false;
@@ -6235,6 +6456,14 @@ function bgRenderLayerList() {
       const tg = document.createElement("button"); tg.className = "lyBtn lyDisc" + (L.collapsed ? " closed" : ""); tg.innerHTML = svg("chevron"); tg.title = L.collapsed ? "Expand group" : "Collapse group";
       tg.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); bgToggleCollapsed(i); });
       row.appendChild(tg);
+    }
+    if (!folder) {   // v6.78: opacity — a button that reveals a slider row under the layer
+      const op = document.createElement("button"); op.className = "lyBtn lyOp" + (lyOpOpen === L.id ? " on" : "");
+      const pct = Math.round(bgOpacity(L) * 100);
+      op.innerHTML = pct === 100 ? svg("opacity") : '<span class="lyPct">' + pct + '</span>';
+      op.title = "Opacity \u2014 " + pct + "%";
+      op.addEventListener("click", (e) => { e.stopPropagation(); closeLayerOpts(); lyOpOpen = lyOpOpen === L.id ? null : L.id; bgRenderLayerList(); });
+      row.appendChild(op);
     }
     const lk = document.createElement("button"); lk.className = "lyBtn" + (L.locked ? " alpha" : ""); lk.innerHTML = svg(L.locked ? "lock" : "unlock"); lk.title = L.locked ? "Alpha locked \u2014 paint lands only where this layer already has pixels; tap to release" : "Alpha lock \u2014 paint only where this layer already has pixels" + (folder ? " (applies to every layer in the group)" : "");
     if (L.locked) row.classList.add("alphaLocked");
@@ -6366,6 +6595,17 @@ function bgRenderLayerList() {
     grip.addEventListener("pointerup", endDrag);
     grip.addEventListener("pointercancel", endDrag);
     host.appendChild(row);
+    if (!folder && lyOpOpen === L.id) {   // the slider row
+      const sr = document.createElement("div"); sr.className = "lyOpRow";
+      const lab = document.createElement("span"); lab.className = "lbl"; lab.textContent = "OPACITY";
+      const sl = document.createElement("input"); sl.type = "range"; sl.min = 0; sl.max = 100; sl.step = 1; sl.value = Math.round(bgOpacity(L) * 100);
+      const val = document.createElement("span"); val.className = "lyOpVal"; val.textContent = sl.value + "%";
+      sl.addEventListener("input", () => { bgSetOpacity(i, +sl.value, false); val.textContent = sl.value + "%"; const b = row.querySelector(".lyOp"); if (b) { b.innerHTML = +sl.value === 100 ? svg("opacity") : '<span class="lyPct">' + sl.value + '</span>'; b.title = "Opacity \u2014 " + sl.value + "%"; } });
+      sl.addEventListener("change", () => { bgSetOpacity(i, +sl.value, true); bgRenderLayerList(); });   // release: save + refresh thumbnails
+      sl.addEventListener("pointerdown", (e) => e.stopPropagation());
+      sr.appendChild(lab); sr.appendChild(sl); sr.appendChild(val);
+      host.appendChild(sr);
+    }
   }
 }
 function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display = "none"; $("btnLayers").classList.remove("on"); closeLayerOpts(); } }
@@ -6489,7 +6729,16 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
-const APP_VERSION = "6.77.1";
+/* 2026-09-02 arc (v6.61 → v6.81): Backgrounds project type — layers with
+   groups, alpha lock, and opacity; tiled preview; symmetry; Transform
+   (Procreate model); magic wand, invert, hatch selection display; Shapes
+   (rect / ellipse / polygon / line / curve — ellipse and curve are verbatim
+   Aseprite ports) with pending edit handles; pixel-perfect pencil; Bayer
+   dither for brush, fills, shapes; Outline tool (Aseprite's filter rule);
+   Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
+   Copy All; canvas flip; gallery type filter + PNG import; palm handling by
+   pointercancel. Tileset rules untouched throughout. */
+const APP_VERSION = "6.81.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
