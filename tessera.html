@@ -272,10 +272,12 @@
   <div class="brand"><h1>TESSERA</h1><div id="ver"></div><div id="bgLabel" style="display:none" title="Background project — canvas size"></div></div>
   <button class="ibtn" id="btnReload" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
   <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset lives in its own project; opening this gallery or switching auto-saves the open one"></button>
+  <span class="vsep"></span>
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
+  <button class="tab" data-tab="rules" data-icon="rules" title="Rules — this project's own tileset layout: pick a rule in the tray, tap cells on the sheet; the Level tab shows the result"></button>
+  <span class="vsep"></span>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
   <button class="tab" data-tab="zoo" data-icon="puzzle" title="Zoo — generated coverage: every blob mask + all twelve slope stamps"></button>
-  <button class="tab" data-tab="rules" data-icon="rules" title="Rules — this project's own tileset layout: inner rim straights and edge cadence; the sample block redraws as you edit"></button>
   <select class="pal" id="ctSelect" title="Terrain sheet format — 3&times;3 is the current production ATLAS/Godot contract; 4&times;4 adds parity edge pairs and depth bands (TESSERA-only until the ATLAS port)">
     <option value="v1">3&times;3</option>
     <option value="v2">4&times;4</option>
@@ -7094,7 +7096,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.85.0";
+const APP_VERSION = "6.85.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
