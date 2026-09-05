@@ -167,6 +167,8 @@
     color: var(--text); font: inherit; font-size: 13px; padding: 4px 6px 4px 4px; cursor: pointer; }
   .rulesChip .rulesX { color: var(--dim); font-size: 15px; line-height: 1; padding: 0 4px; }
   .rulesAdd { padding: 10px 12px; color: var(--dim); }
+  .rulesChip[data-rim] { transition: transform .12s; user-select: none; -webkit-user-select: none; }
+  .rulesChip.dragging { transition: none; position: relative; z-index: 3; border-color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
   .rulesAdd.armed { color: var(--accent); border-color: var(--accent); }
   .rulesCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
   .rulesNote { color: var(--dim); line-height: 1.4; }
@@ -638,6 +640,7 @@
 <div id="rulesbot">
   <div class="rulesRow" id="rulesDepthRow" style="display:none"><span class="rulesLab">Border depth</span><span id="rulesDepthBtns" style="display:contents"></span></div>
   <div id="rulesRim" style="display:contents"></div>
+  <div class="rulesRow" id="rulesSidesRow" style="display:none"><label class="rulesCheck"><input type="checkbox" id="rulesSidesCol"> Sides continue below corners</label></div>
   <div class="rulesRow" id="rulesCadRow" style="display:none">
     <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count edge tiles from each corner</label>
     <span class="rulesNote" id="rulesCadNote"></span>
@@ -1327,10 +1330,10 @@ function resolveAll(cells, ct) {
         else role = "dot";
         if (fam) {
           const fams = lvl === "2" ? ct.RIM_VARIANTS2 : ct.RIM_VARIANTS;
-          const rv = fams[fam];
+          const rv = fams && fams[fam];
           const axis = (fam === "top" || fam === "bottom") ? "x" : "y";
-          const vc = cadPick(rv, axis === "x" ? c : r, c, r, axis, lvl === "2" ? 3 : 2);
-          out[k] = { ax: vc[0], ay: vc[1] };
+          if (rv && rv.length) { const vc = cadPick(rv, axis === "x" ? c : r, c, r, axis, lvl === "2" ? 3 : 2); out[k] = { ax: vc[0], ay: vc[1] }; }
+          else { const Tt = lvl === "2" ? ct.TRANSITION2 : ct.TRANSITION, sc = Tt && Tt["i" + { top: "T", bottom: "B", left: "L", right: "R" }[fam]]; if (sc) out[k] = { ax: sc[0], ay: sc[1] }; }   // v6.90.2: an unassigned family keeps the ring's straight
         } else {
           const jc = ct.RING_ROLES[lvl][role];
           out[k] = { ax: jc[0], ay: jc[1] };
@@ -1396,9 +1399,9 @@ function resolveAll(cells, ct) {
            VERTICAL cadence (r % len), the y-axis mirror of the top/bottom
            rule. v3 carries no left/right arrays, so its single iL/iR path
            below is untouched. */
-        if (col && !row && ct.RIM_VARIANTS && ct.RIM_VARIANTS.left) {
-          const rv = ct.RIM_VARIANTS[col === "L" ? "left" : "right"];
-          const vc = cadPick(rv, r, c, r, "y", 2);
+        const rvSide = col && !row && ct.RIM_VARIANTS ? ct.RIM_VARIANTS[col === "L" ? "left" : "right"] : null;   // v6.90.2: each side is optional on its own; an unassigned side takes iL / iR below
+        if (rvSide && rvSide.length) {
+          const vc = cadPick(rvSide, r, c, r, "y", 2);
           out[k] = { ax: vc[0], ay: vc[1] };
           continue;
         }
@@ -1586,6 +1589,30 @@ function resolveAll(cells, ct) {
      whenever a group or a spread tile won the roll there. Singles-only
      pools without spread roll over the same candidates as before and
      resolve byte-identically. */
+  /* v6.90 — SIDES CONTINUE BELOW CORNERS (James 2026-09-05). With RIM_COLUMNS
+     on, a corner cell used as a Top straight grows its side beneath it:
+     below the ring's top-left corner the Left cycle runs down, below the
+     top-right corner the Right cycle, each picked by row exactly as the
+     side rim itself is (cadPick on the y axis, so an interior leg stays in
+     step with the wall beside it), until the column meets a rim row, an
+     edge or a slope. Column cells continue themselves. Column cells leave
+     the deep pool. Off, or a side with no cells assigned: nothing grows. */
+  if (ct.RIM_COLUMNS && ct.TRANSITION && deepKeys.length) {
+    const T = ct.TRANSITION, rv = ct.RIM_VARIANTS || {};
+    const left = rv.left && rv.left.length ? rv.left : null, right = rv.right && rv.right.length ? rv.right : null;   // v6.90.2: sides are optional — unassigned means no legs
+    const sideOf = {};   // "ax,ay" -> the cycle that runs beneath it
+    if (left) { if (T.iTL) sideOf[T.iTL[0] + "," + T.iTL[1]] = left; for (const q of left) sideOf[q[0] + "," + q[1]] = left; }
+    if (right) { if (T.iTR) sideOf[T.iTR[0] + "," + T.iTR[1]] = right; for (const q of right) sideOf[q[0] + "," + q[1]] = right; }
+    const keep = [];
+    const top = deepKeys.slice().sort((a, b) => { const [ac, ar] = a.split(",").map(Number), [bc, br] = b.split(",").map(Number); return ar - br || ac - bc; });
+    for (const k of top) {
+      const [c, r] = k.split(",").map(Number);
+      const ak = K(c, r - 1), above = cells[ak], t = out[ak];
+      const cyc = above && above.kind !== "slope" && t ? sideOf[t.ax + "," + t.ay] : null;
+      if (cyc) { const vc = cadPick(cyc, r, c, r, "y", 2); out[k] = { ax: vc[0], ay: vc[1] }; } else keep.push(k);
+    }
+    deepKeys.length = 0; for (const k of keep) deepKeys.push(k);
+  }
   if (deepKeys.length) {
     const pool = effDeepVariants(ct);
     const primary = pool[0];
@@ -5543,6 +5570,8 @@ function rulesRender() {
   $("btnRulesLayoutReset").style.display = own ? "" : "none";
   $("rulesDepthRow").style.display = rulesMode === "depth" ? "flex" : "none";
   $("rulesRim").style.display = rulesMode === "rim" ? "contents" : "none";
+  $("rulesSidesRow").style.display = rulesMode === "rim" && CT.TRANSITION && CT.TRANSITION.iL ? "flex" : "none";   // v6.90: only formats with sides
+  $("rulesSidesCol").checked = !!CT.RIM_COLUMNS;
   $("rulesCadRow").style.display = rulesMode === "cadence" ? "flex" : "none";
   $("rulesVaryRow").style.display = rulesMode === "vary" ? "flex" : "none";
   if (rulesMode === "vary") { syncVarybar(); $("btnVaryDraw").style.display = onSheet ? "" : "none"; $("btnVaryErase").style.display = onSheet ? "" : "none"; rulesDrawSide(); }
@@ -5562,7 +5591,7 @@ function rulesRender() {
     : rulesMode === "rim"
     ? (depth < 2 ? "Border depth is 1, so the inner rim is switched off — these straights are kept for when it comes back. "
         : "") + (!onSheet ? "Tap a chip to remove a straight; add cells on the Template tab."
-        : rulesArmed ? "Tap a cell on the sheet to add it to the " + rulesArmed + " rim." : "Outlined cells are the rim straights. Tap “+ add” on a row, then a cell on the sheet; tap a chip to remove it.")
+        : rulesArmed ? "Tap a cell on the sheet to add it to the " + rulesArmed + " rim." : "Each row is a cycle, in order left to right — keep Top and Bottom in the same order so their tiles line up. Hold and drag a chip to reorder; × removes; “+ add” then a sheet cell appends.")
     : rulesMode === "vary"
     ? (!onSheet ? "Drag a weight on the right and watch the level; tap a tile for spread and rotation. Add or remove entries on the Template tab."
       : varyMode === "draw" ? "Tap a free cell to add it to the pool at weight 4; drag across cells to add a group. Tap a pooled cell to edit it."
@@ -5637,8 +5666,7 @@ function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; cal
   } else if (rulesMode === "rim") {
     const T = CT.TRANSITION || {};
     for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) box(T[k][0], T[k][1], "rgba(255,255,255,0.4)", 1, 3.5);
-    const rv = CT.RIM_VARIANTS || {};
-    for (const key of RIM_KEYS) for (const [x, y] of (rv[key] || [])) box(x, y, RIM_COLORS[key], 2, 1.5);
+    for (const key of RIM_KEYS) for (const [x, y] of rimCells(key)) box(x, y, RIM_COLORS[key], 2, 1.5);
   } else if (rulesMode === "cadence") {
     const ev = CT.EDGE_VARIANTS || {};
     for (const m of Object.keys(ev)) { const side = EDGE_SIDE[m]; if (!side) continue; for (const [x, y] of (ev[m].cells || [])) box(x, y, RIM_COLORS[side], 2, 1.5); }
@@ -5676,27 +5704,33 @@ function rulesSetDepth(d) {
   setBorderDepth(d);
   rulesCommit("Border depth set to " + d + (d === 1 ? " band." : " bands."));
 }
+const RIM_SIDE = { left: true, right: true };   // v6.90.2: sides are optional — no cells means the wall keeps the ring's single straight and grows no legs
+function rimHasRow(key) { const T = CT.TRANSITION; return !!(CT.RIM_VARIANTS && (CT.RIM_VARIANTS[key] || (RIM_SIDE[key] && T && T.iL))); }
+function rimCells(key) { const rv = CT.RIM_VARIANTS; return (rv && rv[key]) || []; }
 function rulesDrawChips() {
   const host = $("rulesRim"); host.innerHTML = "";
   const rv = CT.RIM_VARIANTS;
   if (!rv) { const n = document.createElement("div"); n.className = "rulesNote"; n.textContent = "This format has no inner rim variants."; host.appendChild(n); return; }
   const src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 36;
   for (const key of RIM_KEYS) {
-    if (!rv[key]) continue;
+    if (!rimHasRow(key)) continue;
+    const cells = rimCells(key);   // v6.90.2: a side may be empty
     const row = document.createElement("div"); row.className = "rulesRow";
     const lab = document.createElement("span"); lab.className = "rulesLab"; lab.textContent = key; lab.style.color = RIM_COLORS[key]; row.appendChild(lab);
-    rv[key].forEach(([x, y], i) => {
+    cells.forEach(([x, y], i) => {
       const chip = document.createElement("button"); chip.className = "rulesChip"; chip.type = "button"; chip.dataset.rim = key; chip.dataset.cell = cellName(x, y);
-      chip.title = "Remove " + cellName(x, y) + " from the " + key + " rim";
+      chip.title = cellName(x, y) + " — hold and drag to reorder the cycle; × removes";
       const mini = document.createElement("canvas"); mini.width = TS * dpr; mini.height = TS * dpr; mini.style.width = TS + "px"; mini.style.height = TS + "px";
       const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.fillStyle = "#1a1a1a"; mg.fillRect(0, 0, mini.width, mini.height);
       mg.drawImage(src, x * TILE, y * TILE, TILE, TILE, 0, 0, mini.width, mini.height);
       chip.appendChild(mini);
       const t = document.createElement("span"); t.textContent = cellName(x, y); chip.appendChild(t);
-      const xx = document.createElement("span"); xx.className = "rulesX"; xx.textContent = "×"; xx.setAttribute("aria-hidden", "true"); chip.appendChild(xx);
-      chip.addEventListener("click", () => rulesRimRemove(key, i));
+      const xx = document.createElement("span"); xx.className = "rulesX"; xx.textContent = "×"; xx.title = "Remove " + cellName(x, y) + " from the " + key + " rim"; chip.appendChild(xx);
+      xx.addEventListener("click", (e) => { e.stopPropagation(); rulesRimRemove(key, i); });
+      rulesChipDrag(chip, row, key, i);   // v6.90.5: hold and drag along the row — the row IS the cycle
       row.appendChild(chip);
     });
+    if (!cells.length) { const n = document.createElement("span"); n.className = "rulesNote"; n.textContent = rulesEngaged ? "unassigned \u2014 the wall keeps " + cellName(...(key === "left" ? CT.TRANSITION.iL : CT.TRANSITION.iR)) : "unassigned"; row.appendChild(n); }
     if (rulesEngaged) {   // v6.88: adding needs the sheet; on Level the row is remove-only
       const add = document.createElement("button"); add.type = "button"; add.className = "rulesChip rulesAdd" + (rulesArmed === key ? " armed" : ""); add.dataset.rimAdd = key;
       add.textContent = rulesArmed === key ? "tap a cell…" : "+ add";
@@ -5709,15 +5743,62 @@ function rulesDrawChips() {
 }
 function rulesRimAdd(key, x, y) {
   materializeContract();
+  if (!CT.RIM_VARIANTS[key]) CT.RIM_VARIANTS[key] = [];   // v6.90.2: a side starts empty
   const list = CT.RIM_VARIANTS[key];
   if (list.some(([a, b]) => a === x && b === y)) { rulesArmed = null; rulesRender(); status(cellName(x, y) + " is already in the " + key + " rim."); return; }
   list.push([x, y]); rulesArmed = null;
   rulesCommit(cellName(x, y) + " added to the " + key + " rim.");
 }
+/* v6.90.5 — CHIP DRAG (same model as the layer list): pointer capture on
+   the chip; once the pointer has moved a few px it lifts and follows the
+   finger on x, the other chips in the row slide aside, and the drop slot is
+   wherever its centre sits when released. A plain tap does nothing (× is
+   the remove). */
+let rimDrag = null;
+function rulesChipDrag(chip, row, key, i) {
+  chip.style.touchAction = "none";
+  chip.addEventListener("pointerdown", (e) => {
+    if (e.target.classList.contains("rulesX")) return;
+    e.preventDefault(); e.stopPropagation();
+    const chips = [...row.querySelectorAll(".rulesChip[data-rim]")];
+    rimDrag = { key, i, chip, chips, rects: chips.map((c) => c.getBoundingClientRect()), x0: e.clientX, dx: 0, live: false, to: i };
+    chip.setPointerCapture(e.pointerId);
+  });
+  chip.addEventListener("pointermove", (e) => {
+    const d = rimDrag; if (!d || d.chip !== chip) return;
+    d.dx = e.clientX - d.x0;
+    if (!d.live) { if (Math.abs(d.dx) < 6) return; d.live = true; chip.classList.add("dragging"); }
+    chip.style.transform = "translateX(" + d.dx + "px)";
+    const me = d.rects[d.i], center = me.left + d.dx + me.width / 2;
+    let to = d.i;
+    d.chips.forEach((c, k) => {
+      if (k === d.i) return;
+      const rc = d.rects[k], cC = rc.left + rc.width / 2;
+      let shift = 0;
+      if (k < d.i && center < cC) { shift = me.width + 8; to = Math.min(to, k); }        // passed leftward over it -> it slides right
+      else if (k > d.i && center > cC) { shift = -(me.width + 8); to = Math.max(to, k); }   // passed rightward -> it slides left
+      c.style.transform = shift ? "translateX(" + shift + "px)" : "";
+    });
+    d.to = to;
+  });
+  const end = () => {
+    const d = rimDrag; if (!d || d.chip !== chip) return; rimDrag = null;
+    d.chips.forEach((c) => { c.style.transform = ""; c.classList.remove("dragging"); });
+    if (d.live && d.to !== d.i) rulesRimMove(key, d.i, d.to); else if (d.live) rulesRender();
+  };
+  chip.addEventListener("pointerup", end); chip.addEventListener("pointercancel", end);
+}
+function rulesRimMove(key, from, to) {   // reorder the cycle: the row's order is the rule
+  const list = CT.RIM_VARIANTS[key]; if (!list || from === to || to < 0 || to >= list.length) return;
+  materializeContract();
+  const L = CT.RIM_VARIANTS[key]; const [cell] = L.splice(from, 1); L.splice(to, 0, cell);
+  rulesCommit(cellName(cell[0], cell[1]) + " is now " + (to + 1) + " of " + L.length + " in the " + key + " cycle.");
+}
 function rulesRimRemove(key, i) {
-  if ((CT.RIM_VARIANTS[key] || []).length <= 1) { status("Keep at least one straight in the " + key + " rim."); return; }
+  if (!RIM_SIDE[key] && (CT.RIM_VARIANTS[key] || []).length <= 1) { status("Keep at least one straight in the " + key + " rim."); return; }   // top/bottom keep one; sides may empty
   materializeContract();
   const [x, y] = CT.RIM_VARIANTS[key].splice(i, 1)[0];
+  if (RIM_SIDE[key] && !CT.RIM_VARIANTS[key].length) delete CT.RIM_VARIANTS[key];   // v6.90.2: empty side = unassigned = off
   rulesCommit(cellName(x, y) + " removed from the " + key + " rim.");
 }
 function rulesSetAnchor(on) {
@@ -5730,6 +5811,11 @@ function rulesReset() { resetContract(); rulesArmed = null; rebuild(); rulesRend
 document.querySelectorAll("#rulesbar .rulesMode").forEach((b) => b.addEventListener("click", () => rulesSetMode(b.dataset.v)));
 $("btnRules").addEventListener("click", rulesToggle);
 $("rulesAnchor").addEventListener("change", (e) => rulesSetAnchor(e.target.checked));
+$("rulesSidesCol").addEventListener("change", (e) => {   // v6.90
+  materializeContract();
+  if (e.target.checked) CT.RIM_COLUMNS = true; else delete CT.RIM_COLUMNS;   // absent = off, so an untouched layout stays template-equal
+  rulesCommit(e.target.checked ? "Sides now continue down below the corners in the Top cycle." : "Sides stop at the rim.");
+});
 $("btnRulesLayoutReset").addEventListener("click", () => { if (confirm("Reset this project's layout to the " + CT.label + " template? Rim and edge settings go back to the defaults.")) rulesReset(); });
 
 /* ---- tabs ---- */
@@ -7255,7 +7341,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.88.2";
+const APP_VERSION = "6.90.5";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
