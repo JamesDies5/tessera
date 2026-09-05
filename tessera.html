@@ -432,7 +432,8 @@
      layout, not to one rule. -->
 <div id="rulesbar">
   <span class="vlbl">RULES</span>
-  <button class="optline rulesMode on" data-v="rim" title="Inner rim — the straight tiles the resolver cycles through along each side of the inner rim ring">Rim</button>
+  <button class="optline rulesMode on" data-v="depth" title="Border depth — how many bands of tiles make up the border before the core begins">Depth</button>
+  <button class="optline rulesMode" data-v="rim" title="Inner rim — the straight tiles the resolver cycles through along each side of the inner rim ring">Rim</button>
   <button class="optline rulesMode" data-v="cadence" title="Edge cadence — where the edge tiles start counting: from each corner of a run, or from the room origin">Cadence</button>
   <span class="spacer"></span>
   <span id="rulesState"></span>
@@ -629,6 +630,7 @@
 
 <!-- v6.85: Rules tab lower tray — the selected rule's editable properties -->
 <div id="rulesbot">
+  <div class="rulesRow" id="rulesDepthRow" style="display:none"><span class="rulesLab">Border depth</span><span id="rulesDepthBtns" style="display:contents"></span></div>
   <div id="rulesRim" style="display:contents"></div>
   <div class="rulesRow" id="rulesCadRow" style="display:none">
     <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count edge tiles from each corner</label>
@@ -2724,6 +2726,32 @@ function materializeContract() {   // first edit copies the template into the pr
   return CT;
 }
 function resetContract() { delete ctOverrides[CT.id]; persistCtOverrides(); CT = CONTRACTS[CT.id]; }
+/* v6.86 — BORDER DEPTH. Bands counted from the outside: 1 = the edge tile is
+   the whole border, 2 = edge + inner rim, 3 = edge + rim + deeper ring (7×7).
+   The resolver already gates each inner band on a contract key (TRANSITION
+   for the rim; RING_ROLES / TRANSITION2 for the deeper ring), so a band is
+   switched off by writing those keys as null into the project's layout copy
+   and on by restoring the template's values. Explicit nulls survive
+   healContract's additive fill and travel in the rules file, so ATLAS
+   resolves the same depth from the file alone. Only the GATE keys are
+   touched: RIM_VARIANTS is read inside the gated blocks, so a project's own
+   rim straights survive a trip through depth 1. The template's depth is the
+   format's deepest. */
+const DEPTH_GATES = { 2: ["TRANSITION"], 3: ["RING_ROLES", "TRANSITION2"] };
+function ctMaxDepth(id) { const t = CONTRACTS[id]; return (t.RING_ROLES || t.TRANSITION2) ? 3 : t.TRANSITION ? 2 : 1; }
+function ctDepth(ct) {   // deepest band whose gate is live, counted outward-in so a stray deeper key never reports without its rim
+  const max = ctMaxDepth(ct.id); let d = 1;
+  for (const b of [2, 3]) { if (b > max) break; if (DEPTH_GATES[b].some((k) => ct[k])) d = b; else break; }
+  return d;
+}
+function setBorderDepth(d) {
+  materializeContract();
+  const t = CONTRACTS[CT.id];
+  for (const b of [2, 3]) for (const k of DEPTH_GATES[b]) {
+    if (!(k in t) || !t[k]) continue;   // the format never had this band
+    CT[k] = b <= d ? JSON.parse(JSON.stringify(t[k])) : null;
+  }
+}
 function canonJSON(v) {   // key-order-insensitive stringify, for "is this layout the template?"
   if (Array.isArray(v)) return "[" + v.map(canonJSON).join(",") + "]";
   if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonJSON(v[k])).join(",") + "}";
@@ -5433,9 +5461,10 @@ document.addEventListener("gesturechange", (e) => e.preventDefault());
 const RIM_KEYS = ["top", "bottom", "left", "right"];
 const RIM_COLORS = { top: "#6fd3ff", bottom: "#ffb060", left: "#c9a6ff", right: "#9cf59c" };
 const EDGE_SIDE = { 124: "top", 199: "bottom", 31: "left", 241: "right" };   // EDGE_VARIANTS mask -> side (cadence highlights)
-const RULES_MODES = ["rim", "cadence"];
+const RULES_MODES = ["depth", "rim", "cadence"];
+const DEPTH_COLORS = { 2: "#9be564", 3: "#ffd24a" };   // band outlines on the sheet (band 1, the edge, is never optional)
 let rulesTab = false;        // the Rules tab is open (viewport is the template's, trays are the rules')
-let rulesMode = "rim";       // selected upper-tray rule
+let rulesMode = "depth";     // selected upper-tray rule
 let rulesArmed = null;       // rim row waiting for a sheet tap
 let rulesPrevTool = null;    // the drawing tool to restore on leaving
 function rulesIsOpen() { return rulesTab; }
@@ -5473,8 +5502,10 @@ function rulesRender() {
     ? "This project has its own layout, edited from the " + CONTRACTS[CT.id].label + " template. Other projects are unaffected."
     : "Using the " + CT.label + " template layout. Editing anything here gives this project its own copy; other projects are unaffected.";
   $("btnRulesLayoutReset").style.display = own ? "" : "none";
+  $("rulesDepthRow").style.display = rulesMode === "depth" ? "flex" : "none";
   $("rulesRim").style.display = rulesMode === "rim" ? "contents" : "none";
   $("rulesCadRow").style.display = rulesMode === "cadence" ? "flex" : "none";
+  if (rulesMode === "depth") rulesDrawDepth();
   if (rulesMode === "rim") rulesDrawChips();
   if (rulesMode === "cadence") {
     $("rulesAnchor").checked = CT.CADENCE_ANCHOR === "run";
@@ -5482,8 +5513,13 @@ function rulesRender() {
       ? "Edge tiles restart their cycle at each corner, so every run starts on the same tile."
       : "Edge tiles cycle from the room origin, so a run's first tile depends on where it sits.";
   }
-  $("rulesHint").textContent = rulesMode === "rim"
-    ? (rulesArmed ? "Tap a cell on the sheet to add it to the " + rulesArmed + " rim." : "Outlined cells are the rim straights. Tap “+ add” on a row, then a cell on the sheet; tap a chip to remove it.")
+  const depth = ctDepth(CT), maxD = ctMaxDepth(CT.id);
+  $("rulesHint").textContent = rulesMode === "depth"
+    ? (maxD === 1 ? "This format's border is the edge tile alone; there is no inner band to switch."
+      : "Solid outlines are the bands in use; dashed ones are switched off. " + (depth === 1 ? "Everything behind the edge tile is core." : depth === 2 ? "Edge, one rim ring, then core." : "Edge, rim ring, deeper ring, then core."))
+    : rulesMode === "rim"
+    ? (depth < 2 ? "Border depth is 1, so the inner rim is switched off — these straights are kept for when it comes back. "
+        : "") + (rulesArmed ? "Tap a cell on the sheet to add it to the " + rulesArmed + " rim." : "Outlined cells are the rim straights. Tap “+ add” on a row, then a cell on the sheet; tap a chip to remove it.")
     : "Outlined cells are the edge tiles that cycle along each side; dashed cells are the fixed run ends.";
   viewport.style.boxShadow = rulesArmed ? "inset 0 0 0 2px " + RIM_COLORS[rulesArmed] : "";
   drawGrid();
@@ -5496,7 +5532,17 @@ function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; cal
     ovCtx.strokeRect(px + inset, py + inset, S - 2 * inset, S - 2 * inset);
     ovCtx.setLineDash([]);
   };
-  if (rulesMode === "rim") {
+  if (rulesMode === "depth") {
+    const t = CONTRACTS[CT.id], depth = ctDepth(CT);
+    const band = (b, T, rv) => {   // a band's cells: its ring slots + its cadence straights, from the TEMPLATE so switched-off bands still show where they live
+      const on = depth >= b, col = on ? DEPTH_COLORS[b] : "rgba(255,255,255,0.35)", dash = on ? null : [4, 3];
+      const seen = new Set(), put = (x, y) => { const k = x + "," + y; if (seen.has(k)) return; seen.add(k); box(x, y, col, on ? 2 : 1.5, 1.5, dash); };
+      for (const k of Object.keys(T || {})) put(T[k][0], T[k][1]);
+      for (const side of RIM_KEYS) for (const [x, y] of ((rv || {})[side] || [])) put(x, y);
+    };
+    if (t.TRANSITION) band(2, t.TRANSITION, CT.RIM_VARIANTS || t.RIM_VARIANTS);
+    if (t.TRANSITION2) band(3, t.TRANSITION2, CT.RIM_VARIANTS2 || t.RIM_VARIANTS2);
+  } else if (rulesMode === "rim") {
     const T = CT.TRANSITION || {};
     for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) box(T[k][0], T[k][1], "rgba(255,255,255,0.4)", 1, 3.5);
     const rv = CT.RIM_VARIANTS || {};
@@ -5510,6 +5556,7 @@ function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; cal
 }
 function rulesTap(cx, cy) {   // a tap on the sheet, in template cells
   if (cx < 0 || cy < 0 || cx >= TW / TILE || cy >= TH / TILE) return;
+  if (rulesMode === "depth") { status("Border depth is set with the buttons below."); return; }
   if (rulesMode === "rim") {
     if (!rulesArmed) { status("Tap “+ add” on a rim row first, then tap a cell."); return; }
     rulesRimAdd(rulesArmed, cx, cy);
@@ -5518,6 +5565,25 @@ function rulesTap(cx, cy) {   // a tap on the sheet, in template cells
   status("Cadence has no cells to assign — it's the checkbox below.");
 }
 function rulesSetMode(m) { rulesMode = m; rulesArmed = null; rulesRender(); }
+function rulesDrawDepth() {
+  const host = $("rulesDepthBtns"); host.innerHTML = "";
+  const max = ctMaxDepth(CT.id), cur = ctDepth(CT);
+  for (let d = 1; d <= max; d++) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "optline" + (d === cur ? " on" : "");
+    b.textContent = d + (d === 1 ? " band" : " bands") + (d === max ? " (template)" : "");
+    b.title = d === 1 ? "The edge tile is the whole border; everything behind it is core"
+      : d === 2 ? "Edge tile, then one inner rim ring, then core"
+      : "Edge tile, inner rim ring, deeper ring, then core";
+    if (max === 1) b.disabled = true;
+    b.addEventListener("click", () => rulesSetDepth(d));
+    host.appendChild(b);
+  }
+}
+function rulesSetDepth(d) {
+  if (d === ctDepth(CT)) return;
+  setBorderDepth(d);
+  rulesCommit("Border depth set to " + d + (d === 1 ? " band." : " bands."));
+}
 function rulesDrawChips() {
   const host = $("rulesRim"); host.innerHTML = "";
   const rv = CT.RIM_VARIANTS;
@@ -7096,7 +7162,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.85.1";
+const APP_VERSION = "6.86.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
