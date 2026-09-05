@@ -2230,20 +2230,9 @@ function projRenderGallery() {
         const name = (prompt("Rename project:", r.name) || "").trim();
         if (!name || name === r.name) return;
         r.name = name;
-        /* v6.84: the repo folder and file names follow the project name. A
-           project that has already been pushed (or pulled) keeps a note of
-           its previous folder so the next push moves the files there —
-           GitHub's file API has no rename, so a move is write-new + delete-old
-           and happens inside ghPushFiles. Never pushed: nothing to move. */
-        if (r.slug) {
-          const ns = slugFromName(name);
-          if (ns !== r.slug) {
-            r.oldSlugs = (r.oldSlugs || []).filter((x) => x !== ns);
-            if (!r.oldSlugs.includes(r.slug)) r.oldSlugs.push(r.slug);
-            r.slug = ns;
-            r.pushedHash = null;   // the repo no longer matches until the move lands
-          }
-        }
+        /* v6.84.4: the repo folder follows the name, reconciled at push time
+           (projReconcileSlug) — so this only records the name. The badge goes
+           stale on its own when name and folder disagree. */
         projPut(r).then(projRenderGallery).catch(() => status("Rename failed."));
       }));
       mk("Duplicate", () => {
@@ -2259,21 +2248,25 @@ function projRenderGallery() {
         /* v6.84.1: a project that has been pushed (or pulled) has a folder in
            the repo; Delete removes that too. Repo first, then the record, so a
            failed repo delete leaves the project in the library to retry from. */
-        const remote = r.slug && ghToken() ? r.slug : null;
-        const where = remote ? " from Tessera and from GitHub (" + remote + "/)" : (r.slug ? " from Tessera (no GitHub token set — the repo folder " + r.slug + "/ stays)" : "");
+        const folders = r.slug ? [r.slug].concat((r.oldSlugs || []).filter((x) => x && x !== r.slug)) : [];   // v6.84.4: wherever it lives or last lived
+        const remote = folders.length && ghToken() ? folders : null;
+        const list = folders.map((x) => x + "/").join(", ");
+        const where = remote ? " from Tessera and from GitHub (" + list + ")" : (folders.length ? " from Tessera (no GitHub token set — the repo folder " + list + " stays)" : "");
         if (!confirm('Delete "' + r.name + '" forever' + where + '? This cannot be undone.')) return;
         const local = () => projDel(r.id).then(projRenderGallery).catch(() => status("Delete failed."));
         if (!remote) { local(); return; }
-        status("Removing " + remote + "/ from GitHub…");
-        ghDeleteFolder(r, remote, "TESSERA: delete " + r.name)
+        status("Removing " + list + " from GitHub…");
+        let del = Promise.resolve();
+        for (const f of remote) del = del.then(() => ghDeleteFolder(r, f, "TESSERA: delete " + r.name));
+        del
           .then(() => { status("Deleted “" + r.name + "” from Tessera and GitHub."); return local(); })
           .catch((e) => { projPushUI(r.id, 1, "Removal failed: " + e.message, "err"); status("GitHub removal failed: " + e.message + " — “" + r.name + "” was kept so you can retry."); });   // v6.84.3: clear the card's bar on failure
       }));
       const badge = document.createElement("button");
       const curHash = fnv1aStr(JSON.stringify(rec.keys || {}));
-      const inSync = rec.pushedHash === curHash;
+      const inSync = rec.pushedHash === curHash && !projSlugStale(rec);   // v6.84.4: a pending folder move counts as out of sync
       badge.className = "syncbadge " + (inSync ? "fresh" : "stale");
-      badge.title = inSync ? "In sync with GitHub" : "Changes since last push — tap to push";
+      badge.title = inSync ? "In sync with GitHub" : projSlugStale(rec) ? "Repo folder " + rec.slug + "/ will move to " + slugFromName(rec.name) + "/ on push" : "Changes since last push — tap to push";
       badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS.reload + '</svg>';
       badge.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2418,6 +2411,21 @@ function projSlug(rec) {
   rec.slug = slugFromName(rec.name);
   return rec.slug;
 }
+/* v6.84.4 — the folder a project should live in is always its name. rec.slug
+   is where it LAST lived (set by its first push, or by the folder it was
+   pulled from). Run at push time: if the two disagree — renamed under any
+   version, or pulled from a folder that never matched — the old folder is
+   queued for removal and the push lands under the name. */
+function projReconcileSlug(rec) {
+  const ns = slugFromName(rec.name);
+  if (rec.slug && rec.slug !== ns) {
+    rec.oldSlugs = (rec.oldSlugs || []).filter((x) => x !== ns);
+    if (!rec.oldSlugs.includes(rec.slug)) rec.oldSlugs.push(rec.slug);
+  }
+  rec.slug = ns;
+  return ns;
+}
+function projSlugStale(rec) { return !!rec.slug && rec.slug !== slugFromName(rec.name); }   // name and repo folder disagree
 function ghListDir() {
   return ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "?ref=" + GH.branch).then((r) => {
     if (r.status === 404) return [];               // no projects/ dir yet — first push creates it
@@ -2552,7 +2560,7 @@ function ghArtifactsFromRecord(rec, slug) {
 }
 function ghPushProject(rec) {
   if (!ghToken()) { status("Set your GitHub token in Sync first."); return; }
-  const slug = projSlug(rec);
+  const slug = projReconcileSlug(rec);   // v6.84.4: folder follows the name; a mismatch queues the old folder for removal
   const base = GH.dir + "/" + slug;
   /* Open project: refresh the record's canvas key from the live artboard so
      the pushed PNG (and its hash) is byte-exact with the screen. */
@@ -7100,7 +7108,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.84.3";
+const APP_VERSION = "6.84.4";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
