@@ -2227,11 +2227,28 @@ function projRenderGallery() {
         b.addEventListener("click", (e) => { e.stopPropagation(); fn(); }); acts.appendChild(b); };
       mk("Rename", () => {
         const name = (prompt("Rename project:", rec.name) || "").trim();
-        if (!name) return;
-        rec.name = name; projPut(rec).then(projRenderGallery).catch(() => status("Rename failed."));
+        if (!name || name === rec.name) return;
+        rec.name = name;
+        /* v6.84: the repo folder and file names follow the project name. A
+           project that has already been pushed (or pulled) keeps a note of
+           its previous folder so the next push moves the files there —
+           GitHub's file API has no rename, so a move is write-new + delete-old
+           and happens inside ghPushFiles. Never pushed: nothing to move. */
+        if (rec.slug) {
+          const ns = slugFromName(name);
+          if (ns !== rec.slug) {
+            rec.oldSlugs = (rec.oldSlugs || []).filter((x) => x !== ns);
+            if (!rec.oldSlugs.includes(rec.slug)) rec.oldSlugs.push(rec.slug);
+            rec.slug = ns;
+            rec.pushedHash = null;   // the repo no longer matches until the move lands
+          }
+        }
+        projPut(rec).then(projRenderGallery).catch(() => status("Rename failed."));
       });
       mk("Duplicate", () => {
-        const copy = projNewRecord(rec.name + " copy");
+        const name = (prompt("Name for the copy:", rec.name + " copy") || "").trim();   // v6.84: name first; slug derives from it on the first push
+        if (!name) return;
+        const copy = projNewRecord(name);
         copy.keys = JSON.parse(JSON.stringify(rec.keys || {}));
         projPut(copy).then(projRenderGallery).catch(() => status("Duplicate failed."));
       });
@@ -2381,9 +2398,12 @@ function b64EncodeUtf8(str) {
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
+function slugFromName(name) {   // v6.84: one place turns a project name into its repo folder / file name
+  return (name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+}
 function projSlug(rec) {
   if (rec.slug) return rec.slug;
-  rec.slug = (rec.name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+  rec.slug = slugFromName(rec.name);
   return rec.slug;
 }
 function ghListDir() {
@@ -2412,6 +2432,33 @@ function ghPutFile(path, b64, msg, sha) {
   const body = { message: msg, branch: GH.branch, content: b64 };
   if (sha) body.sha = sha;
   return ghFetch(path, { method: "PUT", body: JSON.stringify(body) }).then((r) => (r.ok ? r : Promise.reject(ghErr(r))));
+}
+function ghDeleteFile(path, sha, msg) {   // v6.84
+  return ghFetch(path, { method: "DELETE", body: JSON.stringify({ message: msg, branch: GH.branch, sha }) }).then((r) => (r.ok ? r : Promise.reject(ghErr(r))));
+}
+/* v6.84 — finish a rename on the repo side. Runs after the project's files
+   are in place under the current slug: every file in each previous folder is
+   deleted (the Contents API has no folder delete; an emptied folder leaves git
+   on its own). Resolves with the list of folders removed. */
+function ghRemoveOldSlugs(rec) {
+  const cur = projSlug(rec);
+  const olds = (rec.oldSlugs || []).filter((x) => x && x !== cur);
+  if (!olds.length) return Promise.resolve([]);
+  let chain = Promise.resolve();
+  for (const old of olds) {
+    chain = chain.then(() => ghListSub(GH.dir + "/" + old)).then((entries) => {
+      let c = Promise.resolve();
+      for (const f of entries || []) {
+        if (f.type !== "file") continue;
+        c = c.then(() => {
+          projPushUI(rec.id, 0.95, "Removing " + old + "/" + f.name + "…");
+          return ghDeleteFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + f.path, f.sha, "TESSERA: " + rec.name + " — moved from " + old + "/");
+        });
+      }
+      return c;
+    });
+  }
+  return chain.then(() => { rec.oldSlugs = []; return olds; });
 }
 /* ---- snapshot artifact builders (v6.42) ----
    Push publishes for ANY project by rebuilding the game-facing artifacts
@@ -2522,13 +2569,14 @@ function ghPushFiles(rec, base, files) {
       }
       return chain;
     })
-    .then(() => {
+    .then(() => ghRemoveOldSlugs(rec))   // v6.84: a rename's previous folder(s) go once the new files are in place
+    .then((moved) => {
       rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));
-      projPut(rec).catch(() => {});                 // persist slug + push fingerprint
+      projPut(rec).catch(() => {});                 // persist slug + push fingerprint (+ cleared oldSlugs)
       const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
       if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
       projPushUI(rec.id, 1, projType(rec) === "bg" ? "Pushed ✓ project + PNG" : "Pushed ✓ project + PNG + rules", "ok");
-      status("Pushed “" + rec.name + "” to GitHub.");
+      status("Pushed “" + rec.name + "” to GitHub." + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
     })
     .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
 }
@@ -7039,7 +7087,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.82.4";
+const APP_VERSION = "6.84.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
