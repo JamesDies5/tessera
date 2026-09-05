@@ -1,21 +1,25 @@
 # Tessera Blueprint
 
-**Status:** agreed 2026-09-04; updated 2026-09-05 (naming arc shipped, sample block dropped). Nothing in §3–§7 is built yet.
+**Status:** agreed 2026-09-04; updated 2026-09-05 (naming arc, Rules tab rebuild, border depth and fit-first deep roll shipped). §3 border depth is built; the rest of §3–§7 is not.
 **Purpose:** the single reference for where Tessera, ATLAS and the Godot terrain pipeline are going, so each arc starts from the same plan.
 
 ---
 
 ## 1. Where things stand
 
-### Tessera v6.84.5 (current stable)
+### Tessera v6.90.5 (current stable)
 - **Projects own their layout.** A project may carry its own copy of the contract (`tessera.ct`). Nothing is copied until the project edits the layout or imports a rules file whose layout differs from the template. Opening an old project writes nothing. Fields the template gains later are filled in additively; an explicit `CADENCE_ANCHOR: "origin"` survives that fill. Reset to template drops the copy.
-- **Rules tab** (placeholder for §5): inner rim straights (tap slot, tap cell), "count edge tiles from each corner", reset, live sample block. Sheet and sample honour the rail's cell-grid and `A1` toggles.
+- **Rules (v6.85–v6.88, §5 built, then reshaped).** Rules is a rail **toggle**, not a tab (v6.88): persisted; on, the two trays stay up on every tab. Template + Rules on: the sheet is the template viewport, taps assign cells, drawing tools step aside. Level/Zoo + Rules on: level tools keep the pointer; the trays are for tuning what was assigned (depth, cadence, pool weights, cycle order) against the live level, which redraws on every commit. Modes: Depth · Rim · Cadence · Variations. Header: Projects | Template · Level · Zoo.
+- **Variations is a rule (v6.87–v6.88.2).** Pool outlines/Draw/Erase on the sheet; a right-side rail (Variations mode, any tab) lists every entry with a live 0–100 weight slider, its share of picks, and a share bar; tap the thumbnail for spread/rotation/remove.
+- **Rim (v6.89–v6.90.5).** Top/Bottom cycles plus optional Left/Right cycles on the 5×5 (unassigned = the ring's iL/iR straight, identical to before). Each row is the cycle in order; chips reorder by hold-and-drag. "Sides continue below corners" (`RIM_COLUMNS`): a corner cell used as a Top straight grows its assigned side beneath it through the core, picked by row as the wall is, until a rim row, edge or slope; leg cells leave the pool.
+- **Border depth (v6.86, first row of §3 built).** Per project, 1–3 bands as the format allows. Pure contract data: a band is off when its gate key is null (`TRANSITION` for the rim; `RING_ROLES` + `TRANSITION2` for the deeper ring); `healContract` keeps explicit nulls; ATLAS reads them from the file. Only gate keys are touched, so custom rim straights survive depth 1. Slope stamps stay two deep until §6.
+- **Fit-first deep roll (v6.86.1).** A core cell rolls only among pool entries that can be placed there; the primary always qualifies and at weight 0 is drawn only as the sole candidate. Unspread singles pools are byte-identical; spread/group pools move ~3–4% of core cells.
+- **Resolver changes since July** (all gated on contract data no existing file carries; every existing contract and room byte-identical, 3,308 cells verified): fit-first deep roll (v6.86.1), optional sides read independently + `RIM_COLUMNS` (v6.90.3). Resolver region md5 `9259cf8b…`.
 - **Export** writes the project's layout onto the rules file. **Import** adopts a file's layout if it differs from the template.
-- The resolver (pure region) is byte-identical to the July baseline.
 - **Project naming (v6.84.0–6.84.5).** A project's repo folder and file names are always its name (slugged). Reconciled at push time: if the folder it last lived in disagrees, the push writes under the name and removes the old folder (GitHub has no rename; move = write-new + delete-old, in one push). Duplicate asks for the name first. Delete removes the repo folder(s) too, repo first so a failure keeps the local record. Rename/Delete read the stored record, not the card's copy. Every write/delete retries on 409/5xx (3 attempts, 1.5 s / 3 s).
 
-### ATLAS v29.23
-- The embedded Tessera resolver was re-lifted from Tessera v6.81.2 (it had been frozen at v6.38.0).
+### ATLAS v29.27
+- The embedded Tessera resolver is lifted from Tessera v6.90.3 (v29.24 from v6.86.1; v29.23 from v6.81.2; v29.25/26 withdrawn). Same three `[PORT]` lines. Verified by James 2026-09-05 on Lavune rooms after each lift.
 - ATLAS resolves each terrain from the **contract block inside its own rules file**, not from a built-in table. A per-project layout change in Tessera therefore reaches ATLAS through the file alone; no ATLAS edit is needed for new rules to take effect.
 - Consequences: run-anchored cadence works in ATLAS; 7×7 sheets can be used; any sheet size and any cell layout the file describes is accepted.
 - Verified zero-diff over every owned cell of `tessera_test` and `tessera_test_2` before shipping.
@@ -44,13 +48,13 @@ One contract with explicit, per-tileset properties instead of behaviour baked in
 
 | Property | Today | Target |
 |---|---|---|
-| Border depth | Fixed by layout (5×5 = 2 bands, 7×7 = 3) | 1 or 2 rim bands, per tileset; later maybe per side (thick floor rail, thin ceiling line) |
+| Border depth | **Built (v6.86):** 1–3 bands per project, contract-data only | Later maybe per side (thick floor rail, thin ceiling line) |
 | Core | Single cell (5×5) | Everything inside the rim |
 | Panels | Deep-variant groups, small, weighted | Multi-cell props at fixed sizes (2×2, 3×2, 3×3); sparsity; non-overlap; placement mode random / symmetric / hand-placed |
 | Edge variants | 3 per side + caps | Configurable count per side; caps separate |
 | Slopes | Surface + underlay stamps, ring logic beneath | Wedge stamps as deep as the border; no logic beneath; authored caps at each end |
 
-**Order of work:** border depth → edge run length → wedges → panels. Border depth first because the other three lean on it and because it can be tested on a real sheet in an afternoon.
+**Order of work:** ~~border depth~~ → edge run length → wedges → panels. Border depth first because the other three lean on it and because it can be tested on a real sheet in an afternoon.
 
 ---
 
@@ -124,10 +128,11 @@ Recorded because they apply directly to wedges.
 
 ## 10. Open items carried forward
 
-- Two projects whose names slug to the same folder would overwrite each other in the repo; no guard yet (noted 2026-09-05).
-- Border depth (§3) needs no resolver change: `TRANSITION` / `TRANSITION2` set to `null` in the project's layout copy switch the rings off; `healContract` keeps explicit nulls; ATLAS reads `rules.contract` as-is. Still to probe: what gates the 7×7 `RING_ROLES` path, which runs before the `TRANSITION` block.
+- **One-column inner rims and convex inner corners have no authored tiles or rules (James 2026-09-05).** A 1-wide interior column between two walls, or a 1-tall interior row, resolves from whatever side/rim/edge straights the mask logic lands on — a random-looking mix. The 5×5 has no pinch tiles (the 7×7's JOINTS had pinchV/pinchH; the 5×5 never got them) and the inner ring only authors concave corners (the four `TRANSITION` slots), not convex ones. Take this on in full when the tile re-sort phase (§4) opens the sheet up: author pinch tiles for both axes and the four convex inner corners, and give the resolver a rule for each. Until then, avoid 1-wide interior gaps in level geometry.
 
-- Rules tab visual pass (match the app's existing panels).
+- Two projects whose names slug to the same folder would overwrite each other in the repo; no guard yet (noted 2026-09-05).
+
+- A rim can't hold the same cell twice, so "C2, C2, F12" (a panel every third rim tile) isn't expressible; sparsity belongs to §3 panels.
 - Gateway-1: apply rim + cadence fix from the Rules tab, export, drop beside `gateway-1.png`; Godot registration by hand.
 - The one-pixel drift at depth 27 in `A12`/`A13` on the Truce sheet.
 - Save-pad style stale-snapshot gap: properties set on placed entities in Godot must be pulled into ATLAS before the next push (importer is destructive on entity roots).

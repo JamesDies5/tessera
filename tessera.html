@@ -127,6 +127,7 @@
   /* v6.88.1: Variations side rail — one row per pool entry, weight slider live */
   #rulesSide { display: none; flex: 0 0 232px; flex-direction: column; gap: 8px; padding: 8px 10px; overflow-y: auto; border-left: 1px solid var(--line); background: #1a1a1a; font-size: 12px; color: var(--text); }
   #rulesSide .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; }
+  #rulesSide.off .vrow { opacity: .45; }
   .vrow { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 6px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px; background: var(--panel); }
   .vrow.primary { border-left-color: #9be564; } .vrow.variant { border-left-color: #ffd24a; }
   .vrow canvas { grid-row: 1 / span 2; width: 40px; height: 40px; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
@@ -607,7 +608,7 @@
     <div id="statusChip"></div>
   </div>
   <!-- v6.88.1: Variations side rail (Rules on, Variations selected, any tab) -->
-  <div id="rulesSide"><span class="vlbl">VARIATION POOL</span><div id="rulesSideList" style="display:contents"></div></div>
+  <div id="rulesSide"><label class="rulesCheck" title="A/B preview: every core cell shows the primary alone. The pool, its weights and settings stay as they are, and export is unaffected."><input type="checkbox" id="rulesVaryOff"> Disable variations</label><span class="vlbl">VARIATION POOL</span><div id="rulesSideList" style="display:contents"></div></div>
 </div>
 
 <!-- Selection options bar (bottom): shapes on top, modes + deselect below.
@@ -2803,7 +2804,14 @@ function canonJSON(v) {   // key-order-insensitive stringify, for "is this layou
   if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonJSON(v[k])).join(",") + "}";
   return JSON.stringify(v);
 }
-function effDeepVariants(ct) { const o = deepVarOverrides[ct.id]; return (o && o.length) ? o : ct.DEEP_VARIANTS; }
+function poolOf(ct) { const o = deepVarOverrides[ct.id]; return (o && o.length) ? o : ct.DEEP_VARIANTS; }   // the pool as authored — UI and export read this
+/* v6.91 — DISABLE VARIATIONS (A/B preview): the resolver reads the pool
+   through effDeepVariants; with the preview switch on it sees the primary
+   alone, so every core cell resolves to it. The authored pool, its weights
+   and settings are untouched, the side rail still edits them, and export
+   still writes them — this is a view, not a rule. Session-only. */
+let varyOff = false;
+function effDeepVariants(ct) { const p = poolOf(ct); return varyOff && p.length ? [p[0]] : p; }
 function materializeDeepVars() { if (!deepVarOverrides[CT.id] || !deepVarOverrides[CT.id].length) deepVarOverrides[CT.id] = CT.DEEP_VARIANTS.map((p) => ({ ...p })); return deepVarOverrides[CT.id]; }
 
 /* ==== 5->7 cell remap + v4 bootstrap (v6.45) ========================
@@ -3163,7 +3171,7 @@ function drawGrid() {
   if (rulesEngaged && rulesMode === "vary" && CT && activeTab === "ed") {   // v6.87: pool outlines, Variations rule on the Template sheet
     /* variation pool: green = primary (index 0), yellow = variants;
        groups (w/h > 1) outline as ONE unit. */
-    const pool = effDeepVariants(CT);
+    const pool = poolOf(CT);
     for (let i = 0; i < pool.length; i++) {
       const p = pool[i];
       const px2 = v.x + p.ax * TILE * v.s, py2 = v.y + p.ay * TILE * v.s;
@@ -5274,7 +5282,7 @@ function placeSlopeRun(run) {
 }
 function endStroke() {
   clearHold();
-  if (stroke && stroke.kind === "varyRect") { const s = stroke; stroke = null; varyCommitRect(s); drawGrid(); return; }
+  if (stroke && stroke.kind === "varyRect") { const s = stroke; stroke = null; varyCommitRect(s); drawGrid(); rulesRender(); return; }   // v6.91.1
   if (stroke && stroke.kind === "resize") {
     const s = stroke; stroke = null;
     const cols = s.axis === "x" ? s.prop : TW / TILE;
@@ -5609,8 +5617,9 @@ function rulesSyncSide() {   // the Variations rail shows only for that rule, on
 let rulesSideRaf = 0;
 function rulesDrawSide() {   // v6.88.1: one row per pool entry — thumbnail (tap: spread/rotation/remove popover), name, live weight slider
   const host = $("rulesSideList"); host.innerHTML = "";
-  const pool = effDeepVariants(CT), src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 40;
-  const total = () => effDeepVariants(CT).reduce((a, p) => a + p.weight, 0);
+  $("rulesVaryOff").checked = varyOff; $("rulesSide").classList.toggle("off", varyOff);
+  const pool = poolOf(CT), src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 40;
+  const total = () => poolOf(CT).reduce((a, p) => a + p.weight, 0);
   pool.forEach((p, i) => {
     const gw = p.w || 1, gh = p.h || 1;
     const row = document.createElement("div"); row.className = "vrow " + (i === 0 ? "primary" : "variant");
@@ -5635,11 +5644,11 @@ function rulesDrawSide() {   // v6.88.1: one row per pool entry — thumbnail (t
       const w = Math.max(0, Math.floor(Number(sl.value) || 0));
       materializeDeepVars()[i].weight = w;
       showVal(w);
-      host.querySelectorAll(".vrow").forEach((r2, j) => { if (j !== i && r2._show) r2._show(effDeepVariants(CT)[j].weight); });   // shares move together
+      host.querySelectorAll(".vrow").forEach((r2, j) => { if (j !== i && r2._show) r2._show(poolOf(CT)[j].weight); });   // shares move together
       if (rulesSideRaf) return;   // one resolve per frame while dragging
       rulesSideRaf = requestAnimationFrame(() => { rulesSideRaf = 0; rebuild(); renderPreview(); blit(); drawGrid(); });
     });
-    sl.addEventListener("change", () => { persistDeepVars(); const w = effDeepVariants(CT)[i].weight; status(cellName(p.ax, p.ay) + " weight \u2192 " + w + " (" + varyPct(w, i).toFixed(1) + "% of deep picks)."); });
+    sl.addEventListener("change", () => { persistDeepVars(); const w = poolOf(CT)[i].weight; status(cellName(p.ax, p.ay) + " weight \u2192 " + w + " (" + varyPct(w, i).toFixed(1) + "% of deep picks)."); });
     row.appendChild(sl);
     row.appendChild(bar);
     host.appendChild(row);
@@ -5810,6 +5819,11 @@ function rulesCommit(msg) { persistCtOverrides(); rebuild(); renderPreview(); bl
 function rulesReset() { resetContract(); rulesArmed = null; rebuild(); rulesRender(); status("Layout reset to the " + CT.label + " template."); }
 document.querySelectorAll("#rulesbar .rulesMode").forEach((b) => b.addEventListener("click", () => rulesSetMode(b.dataset.v)));
 $("btnRules").addEventListener("click", rulesToggle);
+$("rulesVaryOff").addEventListener("change", (e) => {   // v6.91
+  varyOff = e.target.checked;
+  rebuild(); renderPreview(); blit(); drawGrid(); rulesRender();
+  status(varyOff ? "Variations off — core shows the primary alone (preview only; export is unaffected)." : "Variations on.");
+});
 $("rulesAnchor").addEventListener("change", (e) => rulesSetAnchor(e.target.checked));
 $("rulesSidesCol").addEventListener("change", (e) => {   // v6.90
   materializeContract();
@@ -6060,7 +6074,7 @@ $("revApply").addEventListener("click", () => {
    copied on first edit) so index i always addresses the same entry. */
 let varyIdx = null;
 function varyHitTest(cx, cy) {
-  const pool = effDeepVariants(CT);
+  const pool = poolOf(CT);
   for (let i = 0; i < pool.length; i++) {
     const p = pool[i];
     if (cx >= p.ax && cx < p.ax + (p.w || 1) && cy >= p.ay && cy < p.ay + (p.h || 1)) return i;
@@ -6068,7 +6082,7 @@ function varyHitTest(cx, cy) {
   return -1;
 }
 function varyPct(weight, idx) {
-  const pool = effDeepVariants(CT);
+  const pool = poolOf(CT);
   let total = 0;
   for (let i = 0; i < pool.length; i++) total += i === idx ? weight : pool[i].weight;
   return total > 0 ? (100 * weight) / total : 0;
@@ -6109,7 +6123,7 @@ function varyTapEd(x, y) {
     const pool = materializeDeepVars();
     pool.push({ ax: cx, ay: cy, weight: 4 });
     persistDeepVars();
-    rebuild(); renderPreview(); blit(); drawGrid();
+    rebuild(); renderPreview(); blit(); drawGrid(); rulesRender();   // v6.91.1: the rail lists the new entry at once
     status(cellName(cx, cy) + " added to the variation pool at weight 4 \u2014 tap it to adjust.");
     return;
   }
@@ -6143,7 +6157,7 @@ let varyEraseIdx = null;
 function openVaryConfirm(i) {
   closeVaryPanel();
   varyEraseIdx = i;
-  const p = effDeepVariants(CT)[i];
+  const p = poolOf(CT)[i];
   const gw = p.w || 1, gh = p.h || 1;
   $("varyConfirmMsg").textContent = "Remove " + cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " (" + gw + "\u00d7" + gh + " group)" : "") + " from the variation pool? Its weight is forgotten; Draw can re-add it later.";
   $("varyConfirm").style.display = "";
@@ -6153,7 +6167,7 @@ $("varyConfirmNo").addEventListener("click", closeVaryConfirm);
 $("varyConfirmYes").addEventListener("click", () => {
   if (varyEraseIdx === null) return;
   const i = varyEraseIdx;
-  const p = effDeepVariants(CT)[i];
+  const p = poolOf(CT)[i];
   closeVaryConfirm();
   materializeDeepVars().splice(i, 1);
   persistDeepVars();
@@ -6168,7 +6182,7 @@ $("btnVaryDraw").addEventListener("click", () => { varyMode = varyMode === "draw
 $("btnVaryErase").addEventListener("click", () => { varyMode = varyMode === "erase" ? "inspect" : "erase"; closeVaryPanel(); closeVaryConfirm(); syncVarybar(); rulesRender(); });
 function openVaryPanel(i) {
   varyIdx = i;
-  const p = effDeepVariants(CT)[i];
+  const p = poolOf(CT)[i];
   const gw = p.w || 1, gh = p.h || 1;
   $("varyTitle").textContent = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " (" + gw + "\u00d7" + gh + " group)" : "") +
     (i === 0 ? " \u2014 PRIMARY deep tile" : " \u2014 variant");
@@ -6185,7 +6199,7 @@ function syncVaryPct() {
   if (varyIdx === null) return;
   const w = Math.max(0, Math.floor(Number($("varyWeight").value) || 0));
   if (w === 0) { $("varyPct").textContent = "0% \u2014 OFF (kept in the pool)"; return; }
-  const pool = effDeepVariants(CT), me = pool[varyIdx];
+  const pool = poolOf(CT), me = pool[varyIdx];
   let tW = 0, tA = 0;
   for (let i = 0; i < pool.length; i++) {
     const p = pool[i], pw = i === varyIdx ? w : p.weight;
@@ -6251,7 +6265,7 @@ function rulesPayload() {
     contract: projectContract(CT.id),   // v6.82
     maskRules: { ...(DEFAULT_MASK_REMAPS[CT.id] || {}), ...(maskRemaps[CT.id] || {}) },
     roleRules: { ...(DEFAULT_ROLE_RULES[CT.id] || {}), ...(roleRemaps[CT.id] || {}) },
-    deepVariants: effDeepVariants(CT).map((p) => ({ ...p })),
+    deepVariants: poolOf(CT).map((p) => ({ ...p })),
   };
 }
 function rulesHash() {
@@ -7341,7 +7355,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.90.5";
+const APP_VERSION = "6.91.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
