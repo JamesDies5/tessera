@@ -2267,7 +2267,7 @@ function projRenderGallery() {
         status("Removing " + remote + "/ from GitHub…");
         ghDeleteFolder(r, remote, "TESSERA: delete " + r.name)
           .then(() => { status("Deleted “" + r.name + "” from Tessera and GitHub."); return local(); })
-          .catch((e) => status("GitHub removal failed: " + e.message + " — “" + r.name + "” was kept so you can retry."));
+          .catch((e) => { projPushUI(r.id, 1, "Removal failed: " + e.message, "err"); status("GitHub removal failed: " + e.message + " — “" + r.name + "” was kept so you can retry."); });   // v6.84.3: clear the card's bar on failure
       }));
       const badge = document.createElement("button");
       const curHash = fnv1aStr(JSON.stringify(rec.keys || {}));
@@ -7100,7 +7100,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.84.2";
+const APP_VERSION = "6.84.3";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
