@@ -2254,8 +2254,18 @@ function projRenderGallery() {
       });
       mk("Delete", () => {
         if (rec.id === activeProjectId) { status("The open project can't be deleted \u2014 switch to another one first."); return; }
-        if (!confirm('Delete "' + rec.name + '" forever? This cannot be undone.')) return;
-        projDel(rec.id).then(projRenderGallery).catch(() => status("Delete failed."));
+        /* v6.84.1: a project that has been pushed (or pulled) has a folder in
+           the repo; Delete removes that too. Repo first, then the record, so a
+           failed repo delete leaves the project in the library to retry from. */
+        const remote = rec.slug && ghToken() ? rec.slug : null;
+        const where = remote ? " from Tessera and from GitHub (" + remote + "/)" : (rec.slug ? " from Tessera (no GitHub token set — the repo folder " + rec.slug + "/ stays)" : "");
+        if (!confirm('Delete "' + rec.name + '" forever' + where + '? This cannot be undone.')) return;
+        const local = () => projDel(rec.id).then(projRenderGallery).catch(() => status("Delete failed."));
+        if (!remote) { local(); return; }
+        status("Removing " + remote + "/ from GitHub…");
+        ghDeleteFolder(rec, remote, "TESSERA: delete " + rec.name)
+          .then(() => { status("Deleted “" + rec.name + "” from Tessera and GitHub."); return local(); })
+          .catch((e) => status("GitHub removal failed: " + e.message + " — “" + rec.name + "” was kept so you can retry."));
       });
       const badge = document.createElement("button");
       const curHash = fnv1aStr(JSON.stringify(rec.keys || {}));
@@ -2440,24 +2450,25 @@ function ghDeleteFile(path, sha, msg) {   // v6.84
    are in place under the current slug: every file in each previous folder is
    deleted (the Contents API has no folder delete; an emptied folder leaves git
    on its own). Resolves with the list of folders removed. */
+function ghDeleteFolder(rec, folder, msg) {   // v6.84.1: every file under GH.dir/folder, one call each; a missing folder is a no-op
+  return ghListSub(GH.dir + "/" + folder).then((entries) => {
+    let c = Promise.resolve();
+    for (const f of entries || []) {
+      if (f.type !== "file") continue;
+      c = c.then(() => {
+        projPushUI(rec.id, 0.95, "Removing " + folder + "/" + f.name + "…");
+        return ghDeleteFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + f.path, f.sha, msg);
+      });
+    }
+    return c;
+  });
+}
 function ghRemoveOldSlugs(rec) {
   const cur = projSlug(rec);
   const olds = (rec.oldSlugs || []).filter((x) => x && x !== cur);
   if (!olds.length) return Promise.resolve([]);
   let chain = Promise.resolve();
-  for (const old of olds) {
-    chain = chain.then(() => ghListSub(GH.dir + "/" + old)).then((entries) => {
-      let c = Promise.resolve();
-      for (const f of entries || []) {
-        if (f.type !== "file") continue;
-        c = c.then(() => {
-          projPushUI(rec.id, 0.95, "Removing " + old + "/" + f.name + "…");
-          return ghDeleteFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + f.path, f.sha, "TESSERA: " + rec.name + " — moved from " + old + "/");
-        });
-      }
-      return c;
-    });
-  }
+  for (const old of olds) chain = chain.then(() => ghDeleteFolder(rec, old, "TESSERA: " + rec.name + " — moved from " + old + "/"));
   return chain.then(() => { rec.oldSlugs = []; return olds; });
 }
 /* ---- snapshot artifact builders (v6.42) ----
@@ -7087,7 +7098,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.84.0";
+const APP_VERSION = "6.84.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
