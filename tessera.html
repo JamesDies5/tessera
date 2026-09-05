@@ -2448,13 +2448,27 @@ function ghListSub(subdir) {
     return r.json();
   });
 }
+/* v6.84.5 — GitHub's Contents API answers 409 when commits land on the same
+   branch in quick succession (a multi-file push or delete does exactly that),
+   and 5xx on its bad days. Both are transient: wait, then try again. Three
+   attempts, 1.5 s / 3 s apart; anything else fails at once. */
+const GH_RETRY_ATTEMPTS = 3, GH_RETRY_MS = 1500;
+function ghCommitRetry(send, attempt) {
+  attempt = attempt || 1;
+  return send().then((r) => {
+    if (r.ok) return r;
+    if ((r.status === 409 || r.status >= 500) && attempt < GH_RETRY_ATTEMPTS)
+      return new Promise((res) => setTimeout(res, GH_RETRY_MS * attempt)).then(() => ghCommitRetry(send, attempt + 1));
+    return Promise.reject(ghErr(r));
+  });
+}
 function ghPutFile(path, b64, msg, sha) {
   const body = { message: msg, branch: GH.branch, content: b64 };
   if (sha) body.sha = sha;
-  return ghFetch(path, { method: "PUT", body: JSON.stringify(body) }).then((r) => (r.ok ? r : Promise.reject(ghErr(r))));
+  return ghCommitRetry(() => ghFetch(path, { method: "PUT", body: JSON.stringify(body) }));
 }
 function ghDeleteFile(path, sha, msg) {   // v6.84
-  return ghFetch(path, { method: "DELETE", body: JSON.stringify({ message: msg, branch: GH.branch, sha }) }).then((r) => (r.ok ? r : Promise.reject(ghErr(r))));
+  return ghCommitRetry(() => ghFetch(path, { method: "DELETE", body: JSON.stringify({ message: msg, branch: GH.branch, sha }) }));
 }
 /* v6.84 — finish a rename on the repo side. Runs after the project's files
    are in place under the current slug: every file in each previous folder is
@@ -7108,7 +7122,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.84.4";
+const APP_VERSION = "6.84.5";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
