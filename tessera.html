@@ -424,7 +424,7 @@
 <div id="varybar">
   <span class="vlbl">VARIATION POOL</span>
   <button class="ibtn" id="btnVaryDraw" data-icon="sqplus" title="Draw — tap a free template cell to add it to the variation pool (weight 4; tap it afterwards to adjust). Cells the ruleset already draws from are blocked."></button>
-  <button class="ibtn" id="btnVaryErase" data-icon="eraser" title="Erase — tap a yellow-outlined variant to remove it from the pool (asks first). The green primary can't be erased; set its weight to 0 to switch it off."></button>
+  <button class="ibtn" id="btnVaryErase" data-icon="eraser" title="Erase — tap a yellow-outlined variant to remove it from the pool (asks first). The green primary can't be erased; at weight 0 it never wins a roll and only fills a cell nothing else fits."></button>
 </div>
 
 <!-- v6.85: Rules tab upper tray — one button per rule mode; the layout's
@@ -1562,12 +1562,20 @@ function resolveAll(cells, ct) {
     if (cell) out[k] = { ax: cell.ax, ay: cell.ay };
   }
   /* Deep pass (v6.32): weighted picks run AFTER the main loop so multi-cell
-     groups can stamp intact. Row-major scan; when a group wins a cell its
-     full w×h footprint must be deep and unconsumed, else that one cell
-     falls back to the primary — groups never split or scramble. Same
-     terrHash01 per anchor as before: deterministic, shimmer-free, and
-     with a singles-only pool the output is byte-identical to the old
-     inline per-cell picks. */
+     groups can stamp intact. Row-major scan; groups never split or
+     scramble. Same terrHash01 per anchor as before: deterministic,
+     shimmer-free, and with a singles-only pool the output is byte-identical
+     to the old inline per-cell picks.
+     v6.86.1 — FIT-FIRST ROLL (James 2026-09-05): a cell rolls only among
+     the entries that can actually be placed there — footprint inside
+     unconsumed core in some enabled orientation, and clear of the spread
+     moat when the entry spreads. The primary (1×1, never spread) always
+     qualifies, so with weight 0 it is drawn only when it is the sole
+     candidate. Before this the roll came first and a misfit fell back to
+     the primary, which left one-cell gaps and corners on the primary
+     whenever a group or a spread tile won the roll there. Singles-only
+     pools without spread roll over the same candidates as before and
+     resolve byte-identically. */
   if (deepKeys.length) {
     const pool = effDeepVariants(ct);
     const primary = pool[0];
@@ -1580,61 +1588,62 @@ function resolveAll(cells, ct) {
       return rr ? { ax: e.ax, ay: e.ay, rot: rr } : { ax: e.ax, ay: e.ay };
     };
     const order = deepKeys.map((kk) => kk.split(",").map(Number)).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    const moatClear = (c0, r0, gw, gh, mw, mh) => {   // no committed placement within mw/mh cells of a gw×gh footprint at (c0,r0)
+      for (const q of placed) {
+        if (q.c <= c0 + gw - 1 + mw && q.c + q.w - 1 >= c0 - mw && q.r <= r0 + gh - 1 + mh && q.r + q.h - 1 >= r0 - mh) return false;
+      }
+      return true;
+    };
     for (const [dc, dr] of order) {
       const k = K(dc, dr);
       if (consumed.has(k)) continue;
-      const p = terrPickDeepEntry(dc, dr, pool);
-      const gw0 = p.w || 1, gh0 = p.h || 1;
-      if (gw0 === 1 && gh0 === 1) {
-        if (p.spaced && p !== primary) {
-          // 1x1 moat: no spread-participating placement in the 8-neighborhood
-          let clear = true;
-          for (const q of placed) {
-            if (q.c <= dc + 1 && q.c + q.w - 1 >= dc - 1 && q.r <= dr + 1 && q.r + q.h - 1 >= dr - 1) { clear = false; break; }
-          }
-          if (!clear) { out[k] = singleStamp(dc, dr, primary); consumed.add(k); continue; }
-          placed.push({ c: dc, r: dr, w: 1, h: 1 });
-        }
-        out[k] = singleStamp(dc, dr, p);
-        consumed.add(k); continue;
-      }
       /* Orientations (v6.34): rot 0 always; 1 = 90 CW, 3 = 90 CCW when the
          entry enables them. An independent position hash picks the preferred
          orientation (equal split); the rest are tried in cyclic order, so a
-         rotated footprint can slot where the default can't. Only a total
-         misfit falls back to the primary. */
-      const oris = [0]; if (p.rotCW) oris.push(1); if (p.rotCCW) oris.push(3);
-      const start = oris.length > 1 ? Math.floor(terrHash01(dc + 31337, dr + 27183) * oris.length) : 0;
-      let stamped = false;
-      for (let oi = 0; oi < oris.length && !stamped; oi++) {
-        const rot = oris[(start + oi) % oris.length];
-        const gw = rot ? gh0 : gw0, gh = rot ? gw0 : gh0;   // quarter turns swap the footprint
-        let fits = true;
-        for (let dy = 0; dy < gh && fits; dy++) for (let dx = 0; dx < gw; dx++) {
-          const kk = K(dc + dx, dr + dy);
-          if (!deepSet.has(kk) || consumed.has(kk)) { fits = false; break; }
-        }
-        if (fits && p.spaced) {
-          // spread-out moat: this orientation's footprint of clearance, against ALL placements
-          const pc0 = dc - gw, pr0 = dr - gh, pc1 = dc + 2 * gw - 1, pr1 = dr + 2 * gh - 1;
-          for (const q of placed) {
-            if (q.c <= pc1 && q.c + q.w - 1 >= pc0 && q.r <= pr1 && q.r + q.h - 1 >= pr0) { fits = false; break; }
+         rotated footprint can slot where the default can't. A single's moat
+         is its 8-neighbourhood; a group's is its own footprint of clearance. */
+      const fitOri = (e) => {   // first enabled orientation whose footprint fits at this cell, or -1
+        const gw0 = e.w || 1, gh0 = e.h || 1;
+        if (gw0 === 1 && gh0 === 1) return (!e.spaced || e === primary || moatClear(dc, dr, 1, 1, 1, 1)) ? 0 : -1;
+        const oris = [0]; if (e.rotCW) oris.push(1); if (e.rotCCW) oris.push(3);
+        const start = oris.length > 1 ? Math.floor(terrHash01(dc + 31337, dr + 27183) * oris.length) : 0;
+        for (let oi = 0; oi < oris.length; oi++) {
+          const rot = oris[(start + oi) % oris.length];
+          const gw = rot ? gh0 : gw0, gh = rot ? gw0 : gh0;   // quarter turns swap the footprint
+          let fits = true;
+          for (let dy = 0; dy < gh && fits; dy++) for (let dx = 0; dx < gw; dx++) {
+            const kk = K(dc + dx, dr + dy);
+            if (!deepSet.has(kk) || consumed.has(kk)) { fits = false; break; }
           }
+          if (fits && e.spaced && !moatClear(dc, dr, gw, gh, gw, gh)) fits = false;
+          if (fits) return rot;
         }
-        if (!fits) continue;
-        placed.push({ c: dc, r: dr, w: gw, h: gh });
-        for (let dy = 0; dy < gh; dy++) for (let dx = 0; dx < gw; dx++) {
-          let sx, sy;
-          if (rot === 0) { sx = dx; sy = dy; }
-          else if (rot === 1) { sx = dy; sy = gh0 - 1 - dx; }
-          else { sx = gw0 - 1 - dy; sy = dx; }
-          const kk = K(dc + dx, dr + dy);
-          out[kk] = rot ? { ax: p.ax + sx, ay: p.ay + sy, rot } : { ax: p.ax + sx, ay: p.ay + sy };
-          consumed.add(kk);
-        }
-        stamped = true;
+        return -1;
+      };
+      const fitting = [], oriOf = [];
+      for (const e of pool) {
+        if (e !== primary && !(e.weight > 0)) continue;   // weightless entries never roll
+        const o = fitOri(e); if (o >= 0) { fitting.push(e); oriOf.push(o); }
       }
-      if (!stamped) { out[k] = singleStamp(dc, dr, primary); consumed.add(k); }
+      let p = primary, rot = 0;
+      if (fitting.length) { p = terrPickDeepEntry(dc, dr, fitting); rot = oriOf[fitting.indexOf(p)]; }
+      const gw0 = p.w || 1, gh0 = p.h || 1;
+      if (gw0 === 1 && gh0 === 1) {
+        if (p.spaced && p !== primary) placed.push({ c: dc, r: dr, w: 1, h: 1 });   // spread singles join the moat set
+        out[k] = singleStamp(dc, dr, p);
+        consumed.add(k); continue;
+      }
+      const gw = rot ? gh0 : gw0, gh = rot ? gw0 : gh0;
+      placed.push({ c: dc, r: dr, w: gw, h: gh });
+      for (let dy = 0; dy < gh; dy++) for (let dx = 0; dx < gw; dx++) {
+        let sx, sy;
+        if (rot === 0) { sx = dx; sy = dy; }
+        else if (rot === 1) { sx = dy; sy = gh0 - 1 - dx; }
+        else { sx = gw0 - 1 - dy; sy = dx; }
+        const kk = K(dc + dx, dr + dy);
+        out[kk] = rot ? { ax: p.ax + sx, ay: p.ay + sy, rot } : { ax: p.ax + sx, ay: p.ay + sy };
+        consumed.add(kk);
+      }
     }
   }
   return out;
@@ -7162,7 +7171,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.86.0";
+const APP_VERSION = "6.86.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
