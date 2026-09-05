@@ -127,12 +127,15 @@
   /* v6.88.1: Variations side rail — one row per pool entry, weight slider live */
   #rulesSide { display: none; flex: 0 0 232px; flex-direction: column; gap: 8px; padding: 8px 10px; overflow-y: auto; border-left: 1px solid var(--line); background: #1a1a1a; font-size: 12px; color: var(--text); }
   #rulesSide .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; }
-  .vrow { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 6px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px; background: var(--panel); }
+  .vrow { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 6px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px; background: var(--panel); }
   .vrow.primary { border-left-color: #9be564; } .vrow.variant { border-left-color: #ffd24a; }
   .vrow canvas { grid-row: 1 / span 2; width: 40px; height: 40px; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
   .vrow .vname { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .vrow .vname .vval { color: var(--dim); margin-left: 6px; font-size: 11px; }
   .vrow input[type=range] { width: 100%; margin: 0; }
+  .vrow .vshare { grid-column: 1 / span 2; height: 2px; margin-top: 3px; background: var(--line); border-radius: 1px; overflow: hidden; }
+  .vrow .vshare i { display: block; height: 100%; width: 0; background: currentColor; transition: width .12s; }
+  .vrow.primary .vshare i { color: #9be564; } .vrow.variant .vshare i { color: #ffd24a; }
   #viewport { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; touch-action: none;
     background: var(--bg0); border: 1px solid var(--line); border-radius: 10px 0 0 0; }
   #screen, #gridOverlay { position: absolute; left: 0; top: 0; }
@@ -5592,7 +5595,9 @@ function rulesDrawSide() {   // v6.88.1: one row per pool entry — thumbnail (t
     const nm = document.createElement("div"); nm.className = "vname";
     const label = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " " + gw + "\u00d7" + gh : "") + (i === 0 ? " primary" : "") + (p.spaced ? " \u25e6" : "");
     const val = document.createElement("span"); val.className = "vval";
-    const showVal = (w) => { const t = total(); val.textContent = w + " \u00b7 " + (t > 0 ? (100 * w / t).toFixed(0) : 0) + "%"; };
+    const bar = document.createElement("div"); bar.className = "vshare"; const fill = document.createElement("i"); bar.appendChild(fill);
+    const showVal = (w) => { const t = total(), pct = t > 0 ? 100 * w / t : 0; val.textContent = w + " \u00b7 " + pct.toFixed(0) + "%"; fill.style.width = pct.toFixed(1) + "%"; };
+    row._show = showVal;   // v6.88.2: the share bar + % redraw together; other rows refresh through this on any drag
     nm.textContent = label; nm.appendChild(val); showVal(p.weight);
     row.appendChild(nm);
     const sl = document.createElement("input"); sl.type = "range"; sl.min = 0; sl.max = Math.max(100, p.weight); sl.step = 1; sl.value = p.weight;
@@ -5601,12 +5606,13 @@ function rulesDrawSide() {   // v6.88.1: one row per pool entry — thumbnail (t
       const w = Math.max(0, Math.floor(Number(sl.value) || 0));
       materializeDeepVars()[i].weight = w;
       showVal(w);
-      host.querySelectorAll(".vval").forEach((v, j) => { if (j !== i) { const q = effDeepVariants(CT)[j]; const t = total(); v.textContent = q.weight + " \u00b7 " + (t > 0 ? (100 * q.weight / t).toFixed(0) : 0) + "%"; } });
+      host.querySelectorAll(".vrow").forEach((r2, j) => { if (j !== i && r2._show) r2._show(effDeepVariants(CT)[j].weight); });   // shares move together
       if (rulesSideRaf) return;   // one resolve per frame while dragging
       rulesSideRaf = requestAnimationFrame(() => { rulesSideRaf = 0; rebuild(); renderPreview(); blit(); drawGrid(); });
     });
     sl.addEventListener("change", () => { persistDeepVars(); const w = effDeepVariants(CT)[i].weight; status(cellName(p.ax, p.ay) + " weight \u2192 " + w + " (" + varyPct(w, i).toFixed(1) + "% of deep picks)."); });
     row.appendChild(sl);
+    row.appendChild(bar);
     host.appendChild(row);
   });
 }
@@ -7249,7 +7255,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.88.1";
+const APP_VERSION = "6.88.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
