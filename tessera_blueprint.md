@@ -1,17 +1,18 @@
 # Tessera Blueprint
 
-**Status:** agreed 2026-09-04. Nothing in "Future" is built yet.
+**Status:** agreed 2026-09-04; updated 2026-09-05 (naming arc shipped, sample block dropped). Nothing in §3–§7 is built yet.
 **Purpose:** the single reference for where Tessera, ATLAS and the Godot terrain pipeline are going, so each arc starts from the same plan.
 
 ---
 
 ## 1. Where things stand
 
-### Tessera v6.82.4 (current stable)
+### Tessera v6.84.5 (current stable)
 - **Projects own their layout.** A project may carry its own copy of the contract (`tessera.ct`). Nothing is copied until the project edits the layout or imports a rules file whose layout differs from the template. Opening an old project writes nothing. Fields the template gains later are filled in additively; an explicit `CADENCE_ANCHOR: "origin"` survives that fill. Reset to template drops the copy.
 - **Rules tab** (placeholder for §5): inner rim straights (tap slot, tap cell), "count edge tiles from each corner", reset, live sample block. Sheet and sample honour the rail's cell-grid and `A1` toggles.
 - **Export** writes the project's layout onto the rules file. **Import** adopts a file's layout if it differs from the template.
 - The resolver (pure region) is byte-identical to the July baseline.
+- **Project naming (v6.84.0–6.84.5).** A project's repo folder and file names are always its name (slugged). Reconciled at push time: if the folder it last lived in disagrees, the push writes under the name and removes the old folder (GitHub has no rename; move = write-new + delete-old, in one push). Duplicate asks for the name first. Delete removes the repo folder(s) too, repo first so a failure keeps the local record. Rename/Delete read the stored record, not the card's copy. Every write/delete retries on 409/5xx (3 attempts, 1.5 s / 3 s).
 
 ### ATLAS v29.23
 - The embedded Tessera resolver was re-lifted from Tessera v6.81.2 (it had been frozen at v6.38.0).
@@ -71,7 +72,8 @@ Built like the Template tab so nothing has to be learned twice.
 - **Top tray:** rule modes (rim, edges, wedges, panels, collision, re-sort…). Each new rule is a tray mode, not a new panel.
 - **Sheet:** the tileset, with outlines on the cells the selected rule touches. Tap to assign.
 - **Bottom tray:** expands for the selected rule's details.
-- **Sample:** a fixed block resolved through the real resolver, redrawn on every change. Honours the rail's grid and `A1` toggles.
+- **No sample block** (decided 2026-09-05): Level view already gives live feedback after a change.
+- The sheet draws on the real `#screen` viewport (zoom, pan, grid and `A1` toggles are the existing ones); the separate `#rulesSheet` canvas goes away. Upper tray = the bar between header and stage (where Shapes/Gradient/Outline live); lower tray = the `#selbar` slot under the stage.
 - The current Rules tab (rim + cadence) is the placeholder this replaces.
 
 ---
@@ -121,6 +123,9 @@ Recorded because they apply directly to wedges.
 ---
 
 ## 10. Open items carried forward
+
+- Two projects whose names slug to the same folder would overwrite each other in the repo; no guard yet (noted 2026-09-05).
+- Border depth (§3) needs no resolver change: `TRANSITION` / `TRANSITION2` set to `null` in the project's layout copy switch the rings off; `healContract` keeps explicit nulls; ATLAS reads `rules.contract` as-is. Still to probe: what gates the 7×7 `RING_ROLES` path, which runs before the `TRANSITION` block.
 
 - Rules tab visual pass (match the app's existing panels).
 - Gateway-1: apply rim + cadence fix from the Rules tab, export, drop beside `gateway-1.png`; Godot registration by hand.
