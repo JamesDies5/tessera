@@ -2225,26 +2225,27 @@ function projRenderGallery() {
       const acts = document.createElement("div"); acts.className = "pacts";
       const mk = (label, fn) => { const b = document.createElement("button"); b.textContent = label;
         b.addEventListener("click", (e) => { e.stopPropagation(); fn(); }); acts.appendChild(b); };
-      mk("Rename", () => {
-        const name = (prompt("Rename project:", rec.name) || "").trim();
-        if (!name || name === rec.name) return;
-        rec.name = name;
+      mk("Rename", () => projGet(rec.id).then((fresh) => {   // v6.84.2: read the stored record — the card's copy predates any push made since the gallery was drawn
+        const r = fresh || rec;
+        const name = (prompt("Rename project:", r.name) || "").trim();
+        if (!name || name === r.name) return;
+        r.name = name;
         /* v6.84: the repo folder and file names follow the project name. A
            project that has already been pushed (or pulled) keeps a note of
            its previous folder so the next push moves the files there —
            GitHub's file API has no rename, so a move is write-new + delete-old
            and happens inside ghPushFiles. Never pushed: nothing to move. */
-        if (rec.slug) {
+        if (r.slug) {
           const ns = slugFromName(name);
-          if (ns !== rec.slug) {
-            rec.oldSlugs = (rec.oldSlugs || []).filter((x) => x !== ns);
-            if (!rec.oldSlugs.includes(rec.slug)) rec.oldSlugs.push(rec.slug);
-            rec.slug = ns;
-            rec.pushedHash = null;   // the repo no longer matches until the move lands
+          if (ns !== r.slug) {
+            r.oldSlugs = (r.oldSlugs || []).filter((x) => x !== ns);
+            if (!r.oldSlugs.includes(r.slug)) r.oldSlugs.push(r.slug);
+            r.slug = ns;
+            r.pushedHash = null;   // the repo no longer matches until the move lands
           }
         }
-        projPut(rec).then(projRenderGallery).catch(() => status("Rename failed."));
-      });
+        projPut(r).then(projRenderGallery).catch(() => status("Rename failed."));
+      }));
       mk("Duplicate", () => {
         const name = (prompt("Name for the copy:", rec.name + " copy") || "").trim();   // v6.84: name first; slug derives from it on the first push
         if (!name) return;
@@ -2252,21 +2253,22 @@ function projRenderGallery() {
         copy.keys = JSON.parse(JSON.stringify(rec.keys || {}));
         projPut(copy).then(projRenderGallery).catch(() => status("Duplicate failed."));
       });
-      mk("Delete", () => {
-        if (rec.id === activeProjectId) { status("The open project can't be deleted \u2014 switch to another one first."); return; }
+      mk("Delete", () => projGet(rec.id).then((fresh) => {   // v6.84.2: fresh record, so a project pushed since render is removed from the repo too
+        const r = fresh || rec;
+        if (r.id === activeProjectId) { status("The open project can't be deleted \u2014 switch to another one first."); return; }
         /* v6.84.1: a project that has been pushed (or pulled) has a folder in
            the repo; Delete removes that too. Repo first, then the record, so a
            failed repo delete leaves the project in the library to retry from. */
-        const remote = rec.slug && ghToken() ? rec.slug : null;
-        const where = remote ? " from Tessera and from GitHub (" + remote + "/)" : (rec.slug ? " from Tessera (no GitHub token set — the repo folder " + rec.slug + "/ stays)" : "");
-        if (!confirm('Delete "' + rec.name + '" forever' + where + '? This cannot be undone.')) return;
-        const local = () => projDel(rec.id).then(projRenderGallery).catch(() => status("Delete failed."));
+        const remote = r.slug && ghToken() ? r.slug : null;
+        const where = remote ? " from Tessera and from GitHub (" + remote + "/)" : (r.slug ? " from Tessera (no GitHub token set — the repo folder " + r.slug + "/ stays)" : "");
+        if (!confirm('Delete "' + r.name + '" forever' + where + '? This cannot be undone.')) return;
+        const local = () => projDel(r.id).then(projRenderGallery).catch(() => status("Delete failed."));
         if (!remote) { local(); return; }
         status("Removing " + remote + "/ from GitHub…");
-        ghDeleteFolder(rec, remote, "TESSERA: delete " + rec.name)
-          .then(() => { status("Deleted “" + rec.name + "” from Tessera and GitHub."); return local(); })
-          .catch((e) => status("GitHub removal failed: " + e.message + " — “" + rec.name + "” was kept so you can retry."));
-      });
+        ghDeleteFolder(r, remote, "TESSERA: delete " + r.name)
+          .then(() => { status("Deleted “" + r.name + "” from Tessera and GitHub."); return local(); })
+          .catch((e) => status("GitHub removal failed: " + e.message + " — “" + r.name + "” was kept so you can retry."));
+      }));
       const badge = document.createElement("button");
       const curHash = fnv1aStr(JSON.stringify(rec.keys || {}));
       const inSync = rec.pushedHash === curHash;
@@ -7098,7 +7100,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.84.1";
+const APP_VERSION = "6.84.2";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
