@@ -7,10 +7,11 @@
 
 ## 1. Where things stand
 
-### Tessera v6.90.5 (current stable)
+### Tessera v6.91.1 (current stable)
 - **Projects own their layout.** A project may carry its own copy of the contract (`tessera.ct`). Nothing is copied until the project edits the layout or imports a rules file whose layout differs from the template. Opening an old project writes nothing. Fields the template gains later are filled in additively; an explicit `CADENCE_ANCHOR: "origin"` survives that fill. Reset to template drops the copy.
 - **Rules (v6.85–v6.88, §5 built, then reshaped).** Rules is a rail **toggle**, not a tab (v6.88): persisted; on, the two trays stay up on every tab. Template + Rules on: the sheet is the template viewport, taps assign cells, drawing tools step aside. Level/Zoo + Rules on: level tools keep the pointer; the trays are for tuning what was assigned (depth, cadence, pool weights, cycle order) against the live level, which redraws on every commit. Modes: Depth · Rim · Cadence · Variations. Header: Projects | Template · Level · Zoo.
 - **Variations is a rule (v6.87–v6.88.2).** Pool outlines/Draw/Erase on the sheet; a right-side rail (Variations mode, any tab) lists every entry with a live 0–100 weight slider, its share of picks, and a share bar; tap the thumbnail for spread/rotation/remove.
+- **Disable variations (v6.91).** A/B preview switch at the top of the Variations rail: core resolves to the primary alone; pool untouched; export unaffected; session-only.
 - **Rim (v6.89–v6.90.5).** Top/Bottom cycles plus optional Left/Right cycles on the 5×5 (unassigned = the ring's iL/iR straight, identical to before). Each row is the cycle in order; chips reorder by hold-and-drag. "Sides continue below corners" (`RIM_COLUMNS`): a corner cell used as a Top straight grows its assigned side beneath it through the core, picked by row as the wall is, until a rim row, edge or slope; leg cells leave the pool.
 - **Border depth (v6.86, first row of §3 built).** Per project, 1–3 bands as the format allows. Pure contract data: a band is off when its gate key is null (`TRANSITION` for the rim; `RING_ROLES` + `TRANSITION2` for the deeper ring); `healContract` keeps explicit nulls; ATLAS reads them from the file. Only gate keys are touched, so custom rim straights survive depth 1. Slope stamps stay two deep until §6.
 - **Fit-first deep roll (v6.86.1).** A core cell rolls only among pool entries that can be placed there; the primary always qualifies and at weight 0 is drawn only as the sole candidate. Unspread singles pools are byte-identical; spread/group pools move ~3–4% of core cells.
@@ -54,7 +55,13 @@ One contract with explicit, per-tileset properties instead of behaviour baked in
 | Edge variants | 3 per side + caps | Configurable count per side; caps separate |
 | Slopes | Surface + underlay stamps, ring logic beneath | Wedge stamps as deep as the border; no logic beneath; authored caps at each end |
 
-**Order of work:** ~~border depth~~ → edge run length → wedges → panels. Border depth first because the other three lean on it and because it can be tested on a real sheet in an afternoon.
+**Order of work:** ~~border depth~~ → edge run length → wedges → panels → backdrop pattern.
+
+### Backdrop pattern (James 2026-09-05)
+A repeating pattern drawn *behind* the terrain tiles, so any tile with transparent pixels reads as a frame over it — the NES/SNES interior technique (Mega Man X walls, Fusion panels). A second axis alongside variations, not a replacement: the pool decides which tile sits in a cell, the backdrop decides what shows through it.
+- **Data:** per project, in the contract. A pattern source (a block on the sheet, any size — larger than a tile is the point), tiled in **world** coordinates so it runs seamlessly across any shape; a scope switch (every solid cell, or core + rim only).
+- **No masking system (decided 2026-09-05).** The backdrop is laid per solid cell, never as a screen-wide layer; edge tiles are opaque within their cells, so that alone keeps it out of the air. Slope cells are the one exception: the exposed angle simply gets no backdrop — the slope's existing underlay does what it does today. Confirm on a real pattern when the item starts; the wedge work (§6) may make slope backdrops trivial anyway.
+- **Pipeline:** Level view renders it; rules file carries it; ATLAS draws it; the Godot exporter writes it as a second `TileMapLayer` beneath terrain. Grayscale, so it takes the zone gradient; on its own layer it can carry its own `PaletteOverride` (a step darker for depth) and, later, its own palette under the dual-palette plan. Border depth first because the other three lean on it and because it can be tested on a real sheet in an afternoon.
 
 ---
 
