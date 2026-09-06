@@ -1,13 +1,16 @@
 # Tessera Blueprint
 
-**Status:** agreed 2026-09-04; updated 2026-09-06 (Edges mode: Rim + Cadence merged into a ring tray, per-side edge counts). §3 border depth and edge variants are built; the rest of §3–§7 is not.
+**Status:** agreed 2026-09-04; updated 2026-09-06 (Edges mode: Rim + Cadence merged into a ring tray, per-side edge counts; §6 wedges closed — two-deep slope stamps kept as the universal baseline; §3 panels built as panel layout on the Variations pool, v6.96–v6.99.1, ATLAS v29.28 lifted). §3 border depth, edge variants and panels are built and §6 is settled as-is; §3 backdrop pattern, §4, §5 re-sort and §7 are not.
 **Purpose:** the single reference for where Tessera, ATLAS and the Godot terrain pipeline are going, so each arc starts from the same plan.
 
 ---
 
 ## 1. Where things stand
 
-### Tessera v6.95.0 (current stable)
+### Tessera v6.99.1 (current stable)
+- **Panel layout (v6.96–v6.99.1, James 2026-09-06).** §3 panels turned out to be mostly built already — the Variations pool takes multi-cell groups, keeps them from overlapping, and "Spread out" moats them — so the arc became the control that was missing: how a large group lands. Per pool entry, opt-in, in the rail's inline strip (the popover is gone; each row expands under its chevron or thumbnail): **Spread · Centre · Grid**, then **H gap / V gap** sliders (0–3) while Centre or Grid is on, then **Bias right / bottom**, rotation, Remove. *Centre* snaps the group to the middle of the free span on its row (recursively for the leftover spans) and centres it vertically only in a pocket with room for one; gaps are kept from other panels only — a 2-wide column takes a 2-wide panel flush, clearance from walls comes from centring when the span has room (the strict "ring must be core" reading was rendered and rejected). *Grid* lays the entry out as a block: as many across and down as the gaps allow in the open rectangle the scan reaches first, block centred, then each column continues below the rectangle on the same cadence while its cells stay open, so an L-shaped core reads as one grid (v6.99.1). *Bias* picks where an odd leftover tile goes. Gap rings and grid rectangles are reserved — plain singles only. Fields: `center` / `grid` (exclusive), `gapH`, `gapV`, `biasR`, `biasB`; an entry without them takes the untouched code path (all 11 projects byte-identical to v6.95.0 at every build). Art no longer needs baked-in margin: Tester 2's A14 4×3 became the inner 2×3. Known boundary: continuation only runs downward — a room narrow at the top and wide below gets side grids that centre on their own rows.
+- **Verification harness (2026-09-06).** The pure region runs under node from a project's `project.json` (fills, slopes, per-project contract, pool) and renders the room from the project sheet; every build was checked old-vs-new over all projects, against the agreed Tester 2 render, and on synthetic rectangular and L-shaped cores. Rebuild it from the file, not from memory, when the resolver moves again.
+
 - **Edges mode (v6.92.0, ring tray v6.93–6.94).** Rim and Cadence are one mode. The lower tray is a **true tile grid**, one 40 px cell per tile, laid out as the tiles sit on the sheet: the four convex corners (LOOKUP 28/112/7/193, dimmed and fixed) at the corners, the four edge cycles (`EDGE_VARIANTS[mask].cells`) along the outside, the four rim cycles (`RIM_VARIANTS[side]`) one cell in. The top/bottom rim rows have fixed **inner-corner slots** at their ends (`TRANSITION` iTL/iTR, iBL/iBR): dimmed when the corner tile is only a corner, lit and draggable when the same tile is also the cycle's first/last member (on the 5×5, B2/D2 are both), so the cycle's middle stays under the edge row's middle whichever way the corners go (v6.94.2). × on a lit corner sends it out of the cycle; tapping a dimmed slot puts the tile back at its end of the cycle, or moves it there if it's already in the cycle elsewhere (v6.94.3). **v6.95.0 generalises the ring to every band a format has:** edge strips take their end slots from `EDGE_CAPS` (7×7: B1/F1, A2/A6, …) so the cycle sits over its rim; a third ring (`TRANSITION2` corners around `RIM_VARIANTS2`, dimmed below depth 3) draws inside the rim; all slots share the same lit/dim/tap-home behaviour; rim edits take a bank (`RIM_VARIANTS` / `RIM_VARIANTS2`). The 5×5 has neither caps nor a third band and is laid out cell-for-cell as before. A cycle of N tiles takes N cells, so the grid grows with its longest strip (`W` = longest horizontal cycle, `H` = longest vertical cycle or side rim + 2). Every gap between cells is a 20 px track, and a strip's half-size + button sits in the gap right after its own last tile (right of a horizontal strip, below a vertical one), Template tab only; spacing is identical with and without them and the ring is always a square when the cycles are. The anchor and sides checkboxes are below the ring. Chips are 40 px thumbnails, side colour on the border; cell names appear on the thumbnail in the sheet's label style only while the A1 coordinates toggle is on; an unassigned side shows a dashed ghost of the tile the resolver falls back to. Drag reorders along the strip (vertical on Left/Right), × removes, + arms a sheet tap (Template tab only). Half the height of the stacked rows it replaced. A side may hold any count ≥ 1 — the resolver already cycled by list length, so the resolver's pure region is byte-identical to v6.91.1 and no ATLAS lift is needed. The run/origin anchor checkbox applies to every row. Modes are now Depth · Edges · Variations.
 - **Scope decisions (James 2026-09-06).** The inspirations (X, Fusion, Gravity Circuit) do not randomise edges; their variety is fixed-period cadence, interior panels and placed objects. So: *linked edge+rim stacks* (a variant that carries its rim cell) are **deferred** until a real sheet on a real room shows a rim landing wrong under its edge — if it does, it belongs with §6 wedges, which introduce the stack column anyway. A *layout-shaped tray* was first dropped, then built as the ring (v6.93.0) once the stacked rows proved too tall — it is a rearrangement of the same rows, not a free-form layout editor; the live level is still the only preview.
 - **Projects own their layout.** A project may carry its own copy of the contract (`tessera.ct`). Nothing is copied until the project edits the layout or imports a rules file whose layout differs from the template. Opening an old project writes nothing. Fields the template gains later are filled in additively; an explicit `CADENCE_ANCHOR: "origin"` survives that fill. Reset to template drops the copy.
@@ -15,14 +18,15 @@
 - **Variations is a rule (v6.87–v6.88.2).** Pool outlines/Draw/Erase on the sheet; a right-side rail (Variations mode, any tab) lists every entry with a live 0–100 weight slider, its share of picks, and a share bar; tap the thumbnail for spread/rotation/remove.
 - **Disable variations (v6.91).** A/B preview switch at the top of the Variations rail: core resolves to the primary alone; pool untouched; export unaffected; session-only.
 - **Rim (v6.89–v6.90.5).** Top/Bottom cycles plus optional Left/Right cycles on the 5×5 (unassigned = the ring's iL/iR straight, identical to before). Each row is the cycle in order; chips reorder by hold-and-drag. "Sides continue below corners" (`RIM_COLUMNS`): a corner cell used as a Top straight grows its assigned side beneath it through the core, picked by row as the wall is, until a rim row, edge or slope; leg cells leave the pool.
-- **Border depth (v6.86, first row of §3 built).** Per project, 1–3 bands as the format allows. Pure contract data: a band is off when its gate key is null (`TRANSITION` for the rim; `RING_ROLES` + `TRANSITION2` for the deeper ring); `healContract` keeps explicit nulls; ATLAS reads them from the file. Only gate keys are touched, so custom rim straights survive depth 1. Slope stamps stay two deep until §6.
+- **Border depth (v6.86, first row of §3 built).** Per project, 1–3 bands as the format allows. Pure contract data: a band is off when its gate key is null (`TRANSITION` for the rim; `RING_ROLES` + `TRANSITION2` for the deeper ring); `healContract` keeps explicit nulls; ATLAS reads them from the file. Only gate keys are touched, so custom rim straights survive depth 1. Slope stamps stay two deep at every border depth (settled 2026-09-06, see §6).
 - **Fit-first deep roll (v6.86.1).** A core cell rolls only among pool entries that can be placed there; the primary always qualifies and at weight 0 is drawn only as the sole candidate. Unspread singles pools are byte-identical; spread/group pools move ~3–4% of core cells.
 - **Resolver changes since July** (all gated on contract data no existing file carries; every existing contract and room byte-identical, 3,308 cells verified): fit-first deep roll (v6.86.1), optional sides read independently + `RIM_COLUMNS` (v6.90.3). Resolver region md5 `9259cf8b…`.
 - **Export** writes the project's layout onto the rules file. **Import** adopts a file's layout if it differs from the template.
 - **Project naming (v6.84.0–6.84.5).** A project's repo folder and file names are always its name (slugged). Reconciled at push time: if the folder it last lived in disagrees, the push writes under the name and removes the old folder (GitHub has no rename; move = write-new + delete-old, in one push). Duplicate asks for the name first. Delete removes the repo folder(s) too, repo first so a failure keeps the local record. Rename/Delete read the stored record, not the card's copy. Every write/delete retries on 409/5xx (3 attempts, 1.5 s / 3 s).
 
-### ATLAS v29.27
-- The embedded Tessera resolver is lifted from Tessera v6.90.3 (v29.24 from v6.86.1; v29.23 from v6.81.2; v29.25/26 withdrawn). Same three `[PORT]` lines. Verified by James 2026-09-05 on Lavune rooms after each lift.
+### ATLAS v29.28
+- The embedded Tessera resolver is lifted from Tessera v6.99.1 (v29.27 from v6.90.3; v29.24 from v6.86.1; v29.23 from v6.81.2; v29.25/26 withdrawn). Same three `[PORT]` lines. v29.28: old vs new `resolveRoom` over `tessera_test` + `tessera_test_2` (7,099 cells, 843 slope cells) — 0 diffs; positive control with a grid entry — 1,078 diffs. Verified by James 2026-09-05 on Lavune rooms after the v29.27 lift; v29.28 checked in-app 2026-09-06.
+- ATLAS resolves per room with a two-cell apron, so a core that spans two rooms is laid out as two rectangles — a Grid entry centres in each separately. Tessera resolves the whole level as one and cannot show this. Design item if a real seam asks for it.
 - ATLAS resolves each terrain from the **contract block inside its own rules file**, not from a built-in table. A per-project layout change in Tessera therefore reaches ATLAS through the file alone; no ATLAS edit is needed for new rules to take effect.
 - Consequences: run-anchored cadence works in ATLAS; 7×7 sheets can be used; any sheet size and any cell layout the file describes is accepted.
 - Verified zero-diff over every owned cell of `tessera_test` and `tessera_test_2` before shipping.
@@ -39,7 +43,7 @@
 
 - **Borders are thin.** One tile does the work: highlight line, shadow line and detail inside 16 px; corners get a dedicated piece. A second band is an option, not the norm. Three bands (the 7×7) is what made diagonal rings intractable — those games never solve that problem because they never create it.
 - **Interiors are a plain fill plus a few large panels**, not many small variants. Panels have their own corners, sit sparsely on the fill, never overlap. Placement is random, symmetric or hand-placed depending on the room.
-- **Slopes are wedges** exactly as deep as the border. Nothing beneath a wedge knows it is there. Where a wedge meets a flat edge, the cap is an authored tile.
+- **Slopes are stamped wedges**, two cells deep at every border depth (James 2026-09-06: the two-deep column is a good universal baseline; a one- or three-deep column was drawn out and rejected). Nothing beneath a wedge knows it is there. Where a wedge meets a flat edge, the cap is an authored tile.
 - **Anything with a silhouette is an object.** Pillars, pipes, girders, chains, spike blocks are ATLAS entities placed on or instead of terrain, never Tessera rules.
 - **The run tools stay.** Tessera and ATLAS keep drawing slopes as runs; the resolver places wedges.
 
@@ -53,16 +57,16 @@ One contract with explicit, per-tileset properties instead of behaviour baked in
 |---|---|---|
 | Border depth | **Built (v6.86):** 1–3 bands per project, contract-data only | Later maybe per side (thick floor rail, thin ceiling line) |
 | Core | Single cell (5×5) | Everything inside the rim |
-| Panels | Deep-variant groups, small, weighted | Multi-cell props at fixed sizes (2×2, 3×2, 3×3); sparsity; non-overlap; placement mode random / symmetric / hand-placed |
+| Panels | **Built (v6.96–v6.99.1):** multi-cell groups in the pool with Centre / Grid layout, H/V gaps, bias; non-overlap and reserved gap rings | Hand-placed panels are ATLAS entities (§2), not a Tessera rule; symmetric placement not requested |
 | Edge variants | **Built (v6.92):** any count ≥ 1 per side, ordered, from the Edges mode; caps stay the template's pair | Caps editable from the same rows, if ever needed |
-| Slopes | Surface + underlay stamps, ring logic beneath | Wedge stamps as deep as the border; no logic beneath; authored caps at each end |
+| Slopes | **Settled (2026-09-06):** surface + underlay stamps, two deep at every border depth; authored caps at each end | Unchanged — no depth-following column |
 
-**Order of work:** ~~border depth~~ → ~~edge run length~~ → wedges → panels → backdrop pattern.
+**Order of work:** ~~border depth~~ → ~~edge run length~~ → ~~wedges~~ → ~~panels~~ → backdrop pattern.
 
 ### Backdrop pattern (James 2026-09-05)
 A repeating pattern drawn *behind* the terrain tiles, so any tile with transparent pixels reads as a frame over it — the NES/SNES interior technique (Mega Man X walls, Fusion panels). A second axis alongside variations, not a replacement: the pool decides which tile sits in a cell, the backdrop decides what shows through it.
 - **Data:** per project, in the contract. A pattern source (a block on the sheet, any size — larger than a tile is the point), tiled in **world** coordinates so it runs seamlessly across any shape; a scope switch (every solid cell, or core + rim only).
-- **No masking system (decided 2026-09-05).** The backdrop is laid per solid cell, never as a screen-wide layer; edge tiles are opaque within their cells, so that alone keeps it out of the air. Slope cells are the one exception: the exposed angle simply gets no backdrop — the slope's existing underlay does what it does today. Confirm on a real pattern when the item starts; the wedge work (§6) may make slope backdrops trivial anyway.
+- **No masking system (decided 2026-09-05).** The backdrop is laid per solid cell, never as a screen-wide layer; edge tiles are opaque within their cells, so that alone keeps it out of the air. Slope cells are the one exception: the exposed angle simply gets no backdrop — the slope's existing underlay does what it does today. Confirm on a real pattern when the item starts.
 - **Pipeline:** Level view renders it; rules file carries it; ATLAS draws it; the Godot exporter writes it as a second `TileMapLayer` beneath terrain. Grayscale, so it takes the zone gradient; on its own layer it can carry its own `PaletteOverride` (a step darker for depth) and, later, its own palette under the dual-palette plan. Border depth first because the other three lean on it and because it can be tested on a real sheet in an afternoon.
 
 ---
@@ -91,12 +95,17 @@ Built like the Template tab so nothing has to be learned twice.
 
 ---
 
-## 6. Slope wedges (detail)
+## 6. Slope wedges — closed 2026-09-06
 
-- A wedge stamp column is exactly `border depth + 1` cells: the surface plus one cell per rim band. Below that is core.
-- Per slope kind (45°, 2:1, 3:1) and face (floor, ceiling); descending is the horizontal mirror.
-- Caps where a wedge meets a flat edge at its top and bottom are authored tiles, selected by the existing joint logic.
+**Decision (James 2026-09-06):** the slope column stays **two cells deep at every border depth** — surface plus one underlay. Rendering the alternative (one cell at depth 1, three at depth 3) against the current two-deep column showed the two-deep column is already a good universal baseline; neither the thinner nor the deeper wedge was worth its cost (a depth-1 column strands every end treatment that lives on the underlay; a depth-3 column needs a third authored stamp row). The depth-following column proposed on 2026-09-04 is withdrawn.
+
+What stands, unchanged from today:
+- Per slope kind (45°, 2:1, 3:1) and face (floor, ceiling); descending is the horizontal mirror (`MIRROR_SLOPES`).
+- Caps where a wedge meets a flat edge, wall, peak or open air are authored tiles selected by the existing end/joint logic (`SLOPE_CAPS`, `BASE_CAPS`, `TIP45_UNDERLAY`, `SLOPE_WALL_JOINTS`, the attach cells).
+- Nothing beneath the underlay knows the slope is there; it is core, or rim where the flat ground's band runs into it (`seamBand`).
 - Collision of a wedge is its outline (§7).
+
+No resolver change, no ATLAS lift. Gateway (depth 1) and Truce (depth 3) keep their two-deep slopes as-is.
 
 ---
 
@@ -136,6 +145,8 @@ Recorded because they apply directly to wedges.
 ---
 
 ## 10. Open items carried forward
+
+- **Opposite-facing slopes one row apart (ATLAS, noted 2026-09-06; predates the lift).** A floor wedge is its surface plus the row below, a ceiling wedge its surface plus the row above; with one row of fill between them both want the same underlay cell, and ATLAS's v22 overlap rule evicts the older run whole. Geometry constraint under two-deep wedges: two rows of solid between opposing surfaces. Fix wanted: ATLAS says so on commit instead of silently dropping the run. Own bugfix commit.
 
 - **One-column inner rims and convex inner corners have no authored tiles or rules (James 2026-09-05).** A 1-wide interior column between two walls, or a 1-tall interior row, resolves from whatever side/rim/edge straights the mask logic lands on — a random-looking mix. The 5×5 has no pinch tiles (the 7×7's JOINTS had pinchV/pinchH; the 5×5 never got them) and the inner ring only authors concave corners (the four `TRANSITION` slots), not convex ones. Take this on in full when the tile re-sort phase (§4) opens the sheet up: author pinch tiles for both axes and the four convex inner corners, and give the resolver a rule for each. Until then, avoid 1-wide interior gaps in level geometry.
 
