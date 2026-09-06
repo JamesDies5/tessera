@@ -131,7 +131,16 @@
   .vrow { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 6px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px; background: var(--panel); }
   .vrow.primary { border-left-color: #9be564; } .vrow.variant { border-left-color: #ffd24a; }
   .vrow canvas { grid-row: 1 / span 2; width: 40px; height: 40px; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
-  .vrow .vname { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vrow .vname { font-size: 12px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .vrow .vname .vtxt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .vrow .vname .vchev { margin-left: auto; color: var(--dim); cursor: pointer; padding: 0 4px; font-size: 11px; user-select: none; }
+  .vrow .vedit { grid-column: 1 / span 2; display: flex; flex-direction: column; gap: 7px; padding-top: 7px; margin-top: 3px; border-top: 1px dashed var(--line); font-size: 11px; color: #bbb; }
+  .vrow .vopts { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+  .vrow .vopts label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+  .vrow .vopts input[type=checkbox] { margin: 0; }
+  .vrow .vopts .vrm { margin-left: auto; color: #ff9a8a; cursor: pointer; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font: inherit; }
+  .vrow .vgap { display: grid; grid-template-columns: 3.4em 1fr 1.2em; gap: 8px; align-items: center; }
+  .vrow .vgap b { color: #ffd24a; font-weight: 600; text-align: right; }
   .vrow .vname .vval { color: var(--dim); margin-left: 6px; font-size: 11px; }
   .vrow input[type=range] { width: 100%; margin: 0; }
   .vrow .vshare { grid-column: 1 / span 2; height: 2px; margin-top: 3px; background: var(--line); border-radius: 1px; overflow: hidden; }
@@ -595,24 +604,6 @@
       <button class="ibtn" id="revClear" title="Remove the manual assignment" style="font-size:12px;padding:0 10px;width:auto">Clear</button>
       <button class="ibtn" id="revApply" title="Apply" style="font-size:12px;padding:0 10px;width:auto">Apply</button>
       <button class="ibtn" id="revClose" title="Close" style="font-size:12px;padding:0 10px;width:auto">Close</button>
-    </div>
-  </div>
-  <div id="varyPanel" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:60;display:none;background:rgba(18,18,18,.96);border:1px solid #454545;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5)">
-    <div id="varyTitle" style="font-size:12px;color:#9a9a9a;margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <label style="font-size:11px;color:#8a8a8a" for="varyWeight">Weight</label>
-      <input id="varyWeight" type="number" min="0" step="1" inputmode="numeric" style="width:4.2em;background:#111;border:1px solid #454545;border-radius:8px;color:#eee;padding:6px 8px;font:inherit;text-align:center">
-      <span id="varyPct" style="font-size:12px;color:#9be564"></span>
-    </div>
-    <label id="varySpacedRow" style="display:none;align-items:center;gap:7px;margin-top:8px;font-size:11px;color:#bbb;max-width:300px;cursor:pointer"><input type="checkbox" id="varySpaced" style="margin:0"> Spread out — keep a clear gap (its own size) from groups and other spread-out placements</label>
-    <div id="varyRotRow" style="display:none;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:#bbb">
-      <span>Also allow:</span>
-      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="varyRotCW" style="margin:0"> 90° CW</label>
-      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="varyRotCCW" style="margin:0"> 90° CCW</label>
-    </div>
-    <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">
-      <button class="ibtn" id="varyApply" title="Apply" style="font-size:12px;padding:0 10px;width:auto">Apply</button>
-      <button class="ibtn" id="varyClose" title="Close" style="font-size:12px;padding:0 10px;width:auto">Close</button>
     </div>
   </div>
   <div id="varyConfirm" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:61;display:none;background:rgba(18,18,18,.96);border:1px solid #454545;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5)">
@@ -1654,6 +1645,114 @@ function resolveAll(cells, ct) {
       }
       return true;
     };
+    /* v6.96 — CENTRE & SPACE (James 2026-09-06). Opt-in per entry: `center`
+       snaps the footprint to the middle of the free core span on its row
+       (and centres vertically in a pocket with room for only one), and
+       `gapH` / `gapV` keep that many clear cells sideways / above-below
+       between it and any other panel (v6.97; a legacy single `margin` reads
+       as both). `grid` (v6.98, exclusive with `center`) lays the entry out
+       as a block instead: in the open rectangle the scan reaches first, as
+       many across and down as the gaps allow, the block centred and the odd
+       slack sent right/bottom; the whole rectangle is then reserved.
+       `biasR` / `biasB` (v6.99) send the odd leftover tile of a centred
+       split to the right / bottom instead of the left / top, for Centre
+       and Grid alike. v6.99.1: a grid's columns CONTINUE below the
+       rectangle — each keeps stacking on the same cadence while its cells
+       stay open (through the rectangle's own slack row, then into a
+       narrower leg of the room), so an L-shaped core reads as one grid
+       instead of two centred ones with a seam between them.
+       Margin is RELAXED against the rim: a 2-wide column takes a 2-wide
+       panel flush; clearance from walls comes from centring when the span
+       has room. Placed in a pre-pass so the span is measured before the
+       ordinary scan consumes cells; the margin ring is RESERVED — singles
+       only, no groups, no spread placements. Entries without either field
+       never enter the pre-pass and resolve exactly as before (byte-identical
+       on every existing project, 11 verified). */
+    const reserved = new Set();
+    const layoutPool = pool.filter((e) => e !== primary && e.weight > 0 && (e.center || e.grid || e.gapH > 0 || e.gapV > 0 || e.margin > 0));
+    if (layoutPool.length) for (const [dc, dr] of order) for (let again = 0; again < 8; again++) {   // `again`: a centred placement to the right leaves a free segment at the scan cell — retry it
+      if (consumed.has(K(dc, dr))) break;
+      const free = (c, r) => deepSet.has(K(c, r)) && !consumed.has(K(c, r));   // spans are measured through gap rings (centring sees the whole room)
+      const open = (c, r) => free(c, r) && !reserved.has(K(c, r));               // footprints never enter another panel's ring
+      const fits = [], pos = [];
+      for (const e of layoutPool) {
+        const gw0 = e.w || 1, gh0 = e.h || 1;
+        const mx = e.gapH !== undefined ? e.gapH : (e.margin || 0), my = e.gapV !== undefined ? e.gapV : (e.margin || 0);   // world axes, not footprint axes
+        const halfH = e.biasR ? Math.ceil : Math.floor, halfV = e.biasB ? Math.ceil : Math.floor;   // v6.99: where an odd slack's extra tile goes
+        const oris = [0]; if (e.rotCW) oris.push(1); if (e.rotCCW) oris.push(3);
+        const start = oris.length > 1 ? Math.floor(terrHash01(dc + 31337, dr + 27183) * oris.length) : 0;
+        for (let oi = 0; oi < oris.length; oi++) {
+          const rot = oris[(start + oi) % oris.length];
+          const gw = rot ? gh0 : gw0, gh = rot ? gw0 : gh0;
+          if (e.grid) {   // v6.98: block layout in the open rectangle at the scan cell
+            if (!open(dc, dr)) continue;
+            let GL = dc, GR = dc; while (open(GL - 1, dr)) GL--; while (open(GR + 1, dr)) GR++;
+            const rowOpen = (r) => { for (let x = GL; x <= GR; x++) if (!open(x, r)) return false; return true; };
+            let GB = dr; while (rowOpen(GB + 1)) GB++;
+            const Wd = GR - GL + 1, Vd = GB - dr + 1;
+            const nx = Math.floor((Wd + mx) / (gw + mx)), ny = Math.floor((Vd + my) / (gh + my));
+            if (nx < 1 || ny < 1) continue;
+            const bw = nx * gw + (nx - 1) * mx, bh = ny * gh + (ny - 1) * my;
+            fits.push(e); pos.push({ rot, x0: GL + halfH((Wd - bw) / 2), y0: dr + halfV((Vd - bh) / 2), gw, gh, mx, my, nx, ny, rect: { L: GL, R: GR, B: GB } }); break;
+          }
+          let L = dc, R = dc; while (free(L - 1, dr)) L--; while (free(R + 1, dr)) R++;   // free span through (dc,dr)
+          const S = R - L + 1; if (S < gw) continue;
+          const x0 = e.center ? L + halfH((S - gw) / 2) : dc;
+          if (x0 + gw - 1 > R) continue;
+          const colsFree = (r) => { for (let x = x0; x < x0 + gw; x++) if (!free(x, r)) return false; return true; };
+          let B = dr; while (colsFree(B + 1)) B++;   // the pocket starts at the scan row: rows above were already scanned
+          const V = B - dr + 1; if (V < gh) continue;
+          let y0 = dr;
+          if (e.center && !colsFree(dr - 1) && V < 2 * gh + my) y0 = dr + halfV((V - gh) / 2);   // at a pocket's top with room for one only: centre it (never mid-pocket, or neighbouring spans staircase)
+          if (y0 + gh - 1 > B) continue;
+          let ok = true;
+          for (let dy = 0; dy < gh && ok; dy++) for (let dx = 0; dx < gw; dx++) if (!open(x0 + dx, y0 + dy)) { ok = false; break; }
+          for (let ry = y0 - my; ry <= y0 + gh - 1 + my && ok; ry++) for (let rx = x0 - mx; rx <= x0 + gw - 1 + mx; rx++) {
+            if (rx >= x0 && rx < x0 + gw && ry >= y0 && ry < y0 + gh) continue;
+            const kk = K(rx, ry);
+            if (consumed.has(kk) && !reserved.has(kk)) { ok = false; break; }   // another panel's cell
+          }
+          if (!ok) continue;
+          fits.push(e); pos.push({ rot, x0, y0, gw, gh, mx, my, nx: 1, ny: 1 }); break;
+        }
+      }
+      if (!fits.length) break;
+      const p = terrPickDeepEntry(dc, dr, fits), q = pos[fits.indexOf(p)];
+      const gw0 = p.w || 1, gh0 = p.h || 1;
+      const stamp = (px, py) => {
+        placed.push({ c: px, r: py, w: q.gw, h: q.gh });
+        for (let dy = 0; dy < q.gh; dy++) for (let dx = 0; dx < q.gw; dx++) {
+          let sx, sy;
+          if (q.rot === 0) { sx = dx; sy = dy; }
+          else if (q.rot === 1) { sx = dy; sy = gh0 - 1 - dx; }
+          else { sx = gw0 - 1 - dy; sy = dx; }
+          const kk = K(px + dx, py + dy);
+          out[kk] = q.rot ? { ax: p.ax + sx, ay: p.ay + sy, rot: q.rot } : { ax: p.ax + sx, ay: p.ay + sy };
+          consumed.add(kk);
+        }
+      };
+      const ring = (px, py) => {   // the gap cells around one panel take singles only
+        for (let ry = py - q.my; ry <= py + q.gh - 1 + q.my; ry++) for (let rx = px - q.mx; rx <= px + q.gw - 1 + q.mx; rx++) {
+          const kk = K(rx, ry); if (deepSet.has(kk) && !consumed.has(kk)) reserved.add(kk);
+        }
+      };
+      for (let iy = 0; iy < q.ny; iy++) for (let ix = 0; ix < q.nx; ix++) stamp(q.x0 + ix * (q.gw + q.mx), q.y0 + iy * (q.gh + q.my));   // nx×ny = 1×1 for centred entries, the block for grid entries
+      if (q.rect) {
+        const tails = [];   // v6.99.1: each column continues below the block while its cells (and the gap rows between) stay open
+        for (let ix = 0; ix < q.nx; ix++) {
+          const px = q.x0 + ix * (q.gw + q.mx);
+          for (let py = q.y0 + q.ny * (q.gh + q.my); ; py += q.gh + q.my) {
+            let ok = true;
+            for (let ry = py - q.my; ry < py + q.gh && ok; ry++) for (let rx = px; rx < px + q.gw; rx++) if (!open(rx, ry)) { ok = false; break; }
+            if (!ok) break;
+            stamp(px, py); tails.push([px, py]);
+          }
+        }
+        for (let ry = dr; ry <= q.rect.B; ry++) for (let rx = q.rect.L; rx <= q.rect.R; rx++) { const kk = K(rx, ry); if (!consumed.has(kk)) reserved.add(kk); }   // the rectangle's slack takes singles only
+        for (const [px, py] of tails) ring(px, py);
+      } else ring(q.x0, q.y0);
+      if (q.rect || q.x0 <= dc) break;   // placed at the scan cell itself (or the rectangle is taken): nothing left of it to revisit
+    }
     for (const [dc, dr] of order) {
       const k = K(dc, dr);
       if (consumed.has(k)) continue;
@@ -1673,7 +1772,7 @@ function resolveAll(cells, ct) {
           let fits = true;
           for (let dy = 0; dy < gh && fits; dy++) for (let dx = 0; dx < gw; dx++) {
             const kk = K(dc + dx, dr + dy);
-            if (!deepSet.has(kk) || consumed.has(kk)) { fits = false; break; }
+            if (!deepSet.has(kk) || consumed.has(kk) || reserved.has(kk)) { fits = false; break; }   // v6.96: groups stay out of margin rings
           }
           if (fits && e.spaced && !moatClear(dc, dr, gw, gh, gw, gh)) fits = false;
           if (fits) return rot;
@@ -1683,6 +1782,8 @@ function resolveAll(cells, ct) {
       const fitting = [], oriOf = [];
       for (const e of pool) {
         if (e !== primary && !(e.weight > 0)) continue;   // weightless entries never roll
+        if (layoutPool.includes(e)) continue;               // v6.96: placed by the pre-pass only
+        if (reserved.has(k) && ((e.w || 1) > 1 || (e.h || 1) > 1 || e.spaced)) continue;   // v6.96: margin ring takes plain singles only
         const o = fitOri(e); if (o >= 0) { fitting.push(e); oriOf.push(o); }
       }
       let p = primary, rot = 0;
@@ -5651,16 +5752,19 @@ function rulesDrawSide() {   // v6.88.1: one row per pool entry — thumbnail (t
     const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.fillStyle = "#1a1a1a"; mg.fillRect(0, 0, mini.width, mini.height);
     const sc = Math.min(mini.width / (gw * TILE), mini.height / (gh * TILE)), dw = gw * TILE * sc, dh = gh * TILE * sc;   // groups shrink to fit
     mg.drawImage(src, p.ax * TILE, p.ay * TILE, gw * TILE, gh * TILE, (mini.width - dw) / 2, (mini.height - dh) / 2, dw, dh);
-    mini.title = (i === 0 ? "Primary — " : "Variant — ") + "tap for spread, rotation and removal";
+    mini.title = (i === 0 ? "Primary — " : "Variant — ") + "tap to open its settings";
     mini.addEventListener("click", () => openVaryPanel(i));
     row.appendChild(mini);
     const nm = document.createElement("div"); nm.className = "vname";
-    const label = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " " + gw + "\u00d7" + gh : "") + (i === 0 ? " primary" : "") + (p.spaced ? " \u25e6" : "");
+    const gH = p.gapH !== undefined ? p.gapH : (p.margin || 0), gV = p.gapV !== undefined ? p.gapV : (p.margin || 0);
+    const label = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " " + gw + "\u00d7" + gh : "") + (i === 0 ? " primary" : "") + (p.spaced ? " \u25e6" : "") + (p.center || p.grid ? " " + (p.grid ? "\u25a6" : "\u229e") + (gH || gV ? gH + "\u00b7" + gV : "") : "");   // ⊞ = centre, ▦ = grid, h·v = gaps (v6.97/6.98)
     const val = document.createElement("span"); val.className = "vval";
     const bar = document.createElement("div"); bar.className = "vshare"; const fill = document.createElement("i"); bar.appendChild(fill);
     const showVal = (w) => { const t = total(), pct = t > 0 ? 100 * w / t : 0; val.textContent = w + " \u00b7 " + pct.toFixed(0) + "%"; fill.style.width = pct.toFixed(1) + "%"; };
     row._show = showVal;   // v6.88.2: the share bar + % redraw together; other rows refresh through this on any drag
-    nm.textContent = label; nm.appendChild(val); showVal(p.weight);
+    const txt = document.createElement("span"); txt.className = "vtxt"; txt.textContent = label; txt.appendChild(val); showVal(p.weight);
+    const chev = document.createElement("span"); chev.className = "vchev"; chev.textContent = varyOpenIdx === i ? "\u25be" : "\u25b8"; chev.title = "Settings"; chev.addEventListener("click", () => openVaryPanel(i));
+    nm.appendChild(txt); nm.appendChild(chev);
     row.appendChild(nm);
     const sl = document.createElement("input"); sl.type = "range"; sl.min = 0; sl.max = Math.max(100, p.weight); sl.step = 1; sl.value = p.weight;
     sl.title = "Weight — 0 keeps it out of the roll" + (i === 0 ? " (the primary still fills any cell nothing else fits)" : "");
@@ -5675,8 +5779,73 @@ function rulesDrawSide() {   // v6.88.1: one row per pool entry — thumbnail (t
     sl.addEventListener("change", () => { persistDeepVars(); const w = poolOf(CT)[i].weight; status(cellName(p.ax, p.ay) + " weight \u2192 " + w + " (" + varyPct(w, i).toFixed(1) + "% of deep picks)."); });
     row.appendChild(sl);
     row.appendChild(bar);
+    if (varyOpenIdx === i) row.appendChild(varyBuildEditor(i));   // v6.97: inline settings strip
     host.appendChild(row);
   });
+}
+/* v6.97 — INLINE ENTRY EDITOR (James 2026-09-06). The popover is gone: a
+   rail row expands (chevron or thumbnail tap) into a terse strip beneath
+   it — Spread · Centre, then H/V gap sliders while Centre is on, then
+   rotation and Remove. Every control applies at once, like the weight
+   slider (one resolve per frame while dragging, persist on release); the
+   long explanations live in tooltips. Opening an entry that still carries
+   a single `margin` splits it into gapH/gapV once and drops the old key. */
+let varyOpenIdx = null;
+function varyBuildEditor(i) {
+  let e = materializeDeepVars()[i];
+  if (e.margin !== undefined) { if (e.gapH === undefined && e.margin > 0) e.gapH = e.margin; if (e.gapV === undefined && e.margin > 0) e.gapV = e.margin; delete e.margin; persistDeepVars(); }
+  const ed = document.createElement("div"); ed.className = "vedit";
+  const commit = () => { persistDeepVars(); rebuild(); renderPreview(); blit(); drawGrid(); rulesDrawSide(); };
+  const chk = (text, on, title, fn) => {
+    const l = document.createElement("label"); l.title = title;
+    const c = document.createElement("input"); c.type = "checkbox"; c.checked = on; c.addEventListener("change", () => fn(c.checked));
+    l.appendChild(c); l.appendChild(document.createTextNode(text)); return l;
+  };
+  const flag = (key) => (on) => { const q = materializeDeepVars()[i]; if (on) q[key] = true; else delete q[key]; commit(); };
+  if (i > 0) {
+    const r1 = document.createElement("div"); r1.className = "vopts";
+    r1.appendChild(chk("Spread", !!e.spaced, "Keep a clear gap (its own size) from groups and other spread placements", flag("spaced")));
+    r1.appendChild(chk("Centre", !!e.center, "Land in the middle of the free span instead of the first cell that fits; H/V gap = clear tiles kept from other panels", (on) => {
+      const q = materializeDeepVars()[i];
+      if (on) { q.center = true; delete q.grid; } else { delete q.center; delete q.gapH; delete q.gapV; delete q.biasR; delete q.biasB; }
+      commit();
+    }));
+    r1.appendChild(chk("Grid", !!e.grid, "Lay out as a block: as many across and down as the gaps allow, centred in the open rectangle (v6.98)", (on) => {   // exclusive with Centre
+      const q = materializeDeepVars()[i];
+      if (on) { q.grid = true; delete q.center; } else { delete q.grid; delete q.gapH; delete q.gapV; delete q.biasR; delete q.biasB; }
+      commit();
+    }));
+    ed.appendChild(r1);
+    if (e.center || e.grid) {
+      const gap = (key, text, title) => {
+        const w = document.createElement("div"); w.className = "vgap"; w.title = title;
+        const lab = document.createElement("span"); lab.textContent = text;
+        const s = document.createElement("input"); s.type = "range"; s.min = 0; s.max = 3; s.step = 1; s.value = e[key] || 0;
+        const v = document.createElement("b"); v.textContent = s.value;
+        s.addEventListener("input", () => {
+          const q = materializeDeepVars()[i], n = Math.min(3, Math.max(0, Math.floor(Number(s.value) || 0)));
+          v.textContent = n; if (n > 0) q[key] = n; else delete q[key];
+          if (rulesSideRaf) return;
+          rulesSideRaf = requestAnimationFrame(() => { rulesSideRaf = 0; rebuild(); renderPreview(); blit(); drawGrid(); });
+        });
+        s.addEventListener("change", () => { persistDeepVars(); rulesDrawSide(); });   // label shows the new h·v
+        w.appendChild(lab); w.appendChild(s); w.appendChild(v); return w;
+      };
+      ed.appendChild(gap("gapH", "H gap", "Clear tiles kept to the left and right of other panels"));
+      ed.appendChild(gap("gapV", "V gap", "Clear tiles kept above and below other panels"));
+      const r3 = document.createElement("div"); r3.className = "vopts";   // v6.99: odd-slack bias
+      const bl = document.createElement("span"); bl.textContent = "Bias"; bl.style.color = "var(--dim)"; r3.appendChild(bl);
+      r3.appendChild(chk("right", !!e.biasR, "When the leftover space is odd, put the extra tile on the right instead of the left", flag("biasR")));
+      r3.appendChild(chk("bottom", !!e.biasB, "When the leftover space is odd, put the extra tile at the bottom instead of the top", flag("biasB")));
+      ed.appendChild(r3);
+    }
+  }
+  const r2 = document.createElement("div"); r2.className = "vopts";
+  r2.appendChild(chk("90\u00b0 CW", !!e.rotCW, "Also allow this entry turned a quarter clockwise", flag("rotCW")));
+  r2.appendChild(chk("90\u00b0 CCW", !!e.rotCCW, "Also allow this entry turned a quarter counter-clockwise", flag("rotCCW")));
+  if (i > 0) { const rm = document.createElement("button"); rm.className = "vrm"; rm.textContent = "Remove"; rm.title = "Remove from the pool (asks first)"; rm.addEventListener("click", () => openVaryConfirm(i)); r2.appendChild(rm); }
+  ed.appendChild(r2);
+  return ed;
 }
 function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; called from drawGrid while the tab is open
   const box = (x, y, col, lw, inset, dash) => {
@@ -6222,7 +6391,6 @@ $("revApply").addEventListener("click", () => {
    Tap an outlined pool cell with the vary tool -> weight editor with a
    live pick-share readout. Apply materializes the override pool (baked
    copied on first edit) so index i always addresses the same entry. */
-let varyIdx = null;
 function varyHitTest(cx, cy) {
   const pool = poolOf(CT);
   for (let i = 0; i < pool.length; i++) {
@@ -6330,56 +6498,13 @@ function syncVarybar() {   // v6.87: the Draw/Erase buttons live in the Rules lo
 }
 $("btnVaryDraw").addEventListener("click", () => { varyMode = varyMode === "draw" ? "inspect" : "draw"; closeVaryPanel(); closeVaryConfirm(); syncVarybar(); rulesRender(); });
 $("btnVaryErase").addEventListener("click", () => { varyMode = varyMode === "erase" ? "inspect" : "erase"; closeVaryPanel(); closeVaryConfirm(); syncVarybar(); rulesRender(); });
-function openVaryPanel(i) {
-  varyIdx = i;
-  const p = poolOf(CT)[i];
-  const gw = p.w || 1, gh = p.h || 1;
-  $("varyTitle").textContent = cellName(p.ax, p.ay) + (gw > 1 || gh > 1 ? " (" + gw + "\u00d7" + gh + " group)" : "") +
-    (i === 0 ? " \u2014 PRIMARY deep tile" : " \u2014 variant");
-  $("varyWeight").value = p.weight;
-  $("varySpacedRow").style.display = i === 0 ? "none" : "flex";   // every non-primary entry can spread (v6.38)
-  $("varySpaced").checked = !!p.spaced;
-  $("varyRotRow").style.display = "flex";   // singles rotate too (v6.35)
-  $("varyRotCW").checked = !!p.rotCW;
-  $("varyRotCCW").checked = !!p.rotCCW;
-  syncVaryPct();
-  $("varyPanel").style.display = "";
+function openVaryPanel(i) {   // v6.97: toggles the row's inline settings; the name survives from the popover days
+  varyOpenIdx = varyOpenIdx === i ? null : i;
+  rulesDrawSide();
+  const rows = $("rulesSideList").querySelectorAll(".vrow");
+  if (varyOpenIdx !== null && rows[i] && rows[i].scrollIntoView) rows[i].scrollIntoView({ block: "nearest" });
 }
-function syncVaryPct() {
-  if (varyIdx === null) return;
-  const w = Math.max(0, Math.floor(Number($("varyWeight").value) || 0));
-  if (w === 0) { $("varyPct").textContent = "0% \u2014 OFF (kept in the pool)"; return; }
-  const pool = poolOf(CT), me = pool[varyIdx];
-  let tW = 0, tA = 0;
-  for (let i = 0; i < pool.length; i++) {
-    const p = pool[i], pw = i === varyIdx ? w : p.weight;
-    tW += pw; tA += pw * (p.w || 1) * (p.h || 1);
-  }
-  const myArea = (me.w || 1) * (me.h || 1);
-  $("varyPct").textContent = (100 * w / tW).toFixed(1) + "% of picks" +
-    (tA !== tW ? " \u00b7 \u2248" + (100 * w * myArea / tA).toFixed(1) + "% of deep area" : "");
-}
-function closeVaryPanel() { if (varyIdx === null) return; $("varyPanel").style.display = "none"; varyIdx = null; }
-$("varyWeight").addEventListener("input", syncVaryPct);
-$("varyClose").addEventListener("click", closeVaryPanel);
-$("varyApply").addEventListener("click", () => {
-  if (varyIdx === null) return;
-  const w = Math.max(0, Math.floor(Number($("varyWeight").value) || 0));
-  const pool = materializeDeepVars();
-  pool[varyIdx].weight = w;
-  if (varyIdx !== 0) {
-    if ($("varySpaced").checked) pool[varyIdx].spaced = true; else delete pool[varyIdx].spaced;
-  }
-  if ($("varyRotCW").checked) pool[varyIdx].rotCW = true; else delete pool[varyIdx].rotCW;
-  if ($("varyRotCCW").checked) pool[varyIdx].rotCCW = true; else delete pool[varyIdx].rotCCW;
-  persistDeepVars();
-  rebuild(); renderPreview(); blit(); drawGrid();
-  const p = pool[varyIdx];
-  status(cellName(p.ax, p.ay) + (w === 0 ? " switched OFF (weight 0 \u2014 still in the pool)."
-    : " weight \u2192 " + w + " (" + varyPct(w, varyIdx).toFixed(1) + "% of deep picks)."));
-  $("varyPanel").style.display = "none"; varyIdx = null;
-  rulesRender();   // v6.88: chips show weights
-});
+function closeVaryPanel() { varyOpenIdx = null; }
 /* Layout+rules export: share sheet on capable devices (pick AirDrop / Save
    to Files / etc.), classic download elsewhere — same pattern as the PNG
    export. Blob built synchronously to stay inside WebKit's activation
@@ -7505,7 +7630,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.95.0";
+const APP_VERSION = "6.99.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
