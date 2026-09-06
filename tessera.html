@@ -5701,6 +5701,7 @@ function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; cal
     for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) box(T[k][0], T[k][1], "rgba(255,255,255,0.4)", 1, 3.5);
     for (const key of RIM_KEYS) for (const [x, y] of edgeCells(key)) box(x, y, RIM_COLORS[key], 2, 1.5);
     for (const key of RIM_KEYS) for (const [x, y] of rimCells(key)) box(x, y, RIM_COLORS[key], 2, 4.5);
+    for (const key of RIM_KEYS) for (const [x, y] of rimCells(key, "RIM_VARIANTS2")) box(x, y, RIM_COLORS[key], 2, 7.5);
     const caps = CT.EDGE_CAPS || {};
     for (const side of RIM_KEYS) for (const [x, y] of (caps[side] || [])) box(x, y, RIM_COLORS[side], 1.5, 2.5, [4, 3]);
   }
@@ -5711,7 +5712,7 @@ function rulesTap(cx, cy) {   // a tap on the sheet, in template cells
   if (rulesMode === "edges") {
     if (!rulesArmed) { status("Tap “+ add” on a row first, then tap a cell."); return; }
     const [lane, key] = rulesArmed.split(":");
-    if (lane === "edge") rulesEdgeAdd(key, cx, cy); else rulesRimAdd(key, cx, cy);
+    if (lane === "edge") rulesEdgeAdd(key, cx, cy); else rulesRimAdd(key, cx, cy, RIM_BANKS[lane].bank);
     return;
   }
 }
@@ -5736,8 +5737,9 @@ function rulesSetDepth(d) {
   rulesCommit("Border depth set to " + d + (d === 1 ? " band." : " bands."));
 }
 const RIM_SIDE = { left: true, right: true };   // v6.90.2: sides are optional — no cells means the wall keeps the ring's single straight and grows no legs
-function rimHasRow(key) { const T = CT.TRANSITION; return !!(CT.RIM_VARIANTS && (CT.RIM_VARIANTS[key] || (RIM_SIDE[key] && T && T.iL))); }
-function rimCells(key) { const rv = CT.RIM_VARIANTS; return (rv && rv[key]) || []; }
+const RIM_BANKS = { rim: { bank: "RIM_VARIANTS", ring: "TRANSITION", d: 1 }, rim2: { bank: "RIM_VARIANTS2", ring: "TRANSITION2", d: 2 } };   // v6.95: lane -> where its cycles and corners live, and how many cells in it sits
+function rimHasRow(key, bank = "RIM_VARIANTS") { const T = CT[bank === "RIM_VARIANTS" ? "TRANSITION" : "TRANSITION2"]; return !!(CT[bank] && (CT[bank][key] || (RIM_SIDE[key] && T && T.iL))); }
+function rimCells(key, bank = "RIM_VARIANTS") { const rv = CT[bank]; return (rv && rv[key]) || []; }
 /* v6.92 — EDGES MODE (James 2026-09-06): Rim and Cadence folded into one
    mode. Per side, an EDGE row (EDGE_VARIANTS[mask].cells — the tiles that
    cycle along the outside of a run) sits over its RIM row (RIM_VARIANTS[side]
@@ -5747,7 +5749,7 @@ function rimCells(key) { const rv = CT.RIM_VARIANTS; return (rv && rv[key]) || [
    rows of every side. */
 function rulesDrawChips() {
   const host = $("rulesRim"); host.innerHTML = "";
-  const src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 40, depthOn = ctDepth(CT) >= 2;
+  const src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 40, depth = ctDepth(CT), tpl = CONTRACTS[CT.id];
   const coords = $("btnCoords").classList.contains("on");   // v6.93.1: cell names follow the A1 toggle, drawn like the sheet's labels
   const ring = document.createElement("div"); ring.className = "ringGrid"; host.appendChild(ring);
   const thumb = (x, y, key) => {   // tile thumbnail; side colour on the border (corners: neutral)
@@ -5763,34 +5765,49 @@ function rulesDrawChips() {
     return mini;
   };
   /* v6.94 — TRUE TILE GRID (James 2026-09-06). The ring is laid out exactly as
-     the tiles sit on the sheet: corners at the four corners, edge cycles along
-     the outside, rim cycles one cell in. A cycle of N tiles takes N cells, so
-     the ring grows with its longest strip. Tracks: [corner] [W inner] [+] [corner]
-     across, [corner] [H inner] [+] [corner] down; the + column/row is 20 px and
-     only exists on the Template tab. */
-  const L = {};
-  const T = CT.TRANSITION || CONTRACTS[CT.id].TRANSITION || null;   // v6.94.4: at depth 1 the gate key is null, so the ring's slots come from the template
+     the tiles sit on the sheet: outer corners at the four corners, the edge
+     cycles along the outside, each rim cycle one cell further in. A cycle of N
+     tiles takes N cells, so the ring grows with its longest strip.
+     v6.95 — N RINGS. Every strip is the same thing: an optional fixed SLOT at
+     each end, the cycle between. Edge strips get their slots from EDGE_CAPS
+     (7×7), horizontal rim strips from that ring's TRANSITION corners; vertical
+     rim strips have none (their corners belong to the rows above and below).
+     A slot LIGHTS when its tile is also first/last in the cycle; otherwise it is
+     dimmed and tapping it puts the tile home. 5×5 has no caps and no third ring,
+     so it draws exactly as before.
+     Tile coords (1-based): ring d's horizontal strips sit on row 1+d (top) and
+     lastRow-d (bottom), starting at col 2 (edge/rim) or 1+d (deeper); vertical
+     strips on col 1+d / lastCol-d, starting at row 2+d. */
+  const same = (a, b) => !!(a && b && a[0] === b[0] && a[1] === b[1]);
+  const strips = [];
+  const lane = (o) => {   // o: { key, laneName, d, vert, cells, head, tail, fallback, remove, move, home, title, off }
+    const c = o.cells, headOn = c.length > 0 && same(c[0], o.head), tailOn = c.length > 1 && same(c[c.length - 1], o.tail);
+    const headSlot = o.head && !headOn ? 1 : 0, tailSlot = o.tail && !tailOn ? 1 : 0;
+    const n = Math.max(c.length, !c.length && o.fallback ? 1 : 0);   // an unassigned side shows its fallback as a ghost
+    const start = o.vert ? 2 + o.d : (o.d === 0 ? 2 : 1 + o.d);       // first tile of the strip (slot or cycle) along its axis
+    strips.push({ ...o, headOn, tailOn, headSlot, tailSlot, n, start, end: start + headSlot + n + tailSlot - 1 });
+  };
+  const T1 = CT.TRANSITION || tpl.TRANSITION || null, T2 = CT.TRANSITION2 || tpl.TRANSITION2 || null;   // v6.94.4: at depth 1/2 a gate key is null; slots come from the template
+  const caps = CT.EDGE_CAPS || tpl.EDGE_CAPS || null;
   for (const key of RIM_KEYS) {
-    const lu = CT.LOOKUP && CT.LOOKUP[SIDE_EDGE[key]];
-    const rimOk = !!CT.RIM_VARIANTS && rimHasRow(key), vert = key === "left" || key === "right";
-    L[key] = {
-      edge: { cells: edgeCells(key), fallback: lu ? [lu.ax, lu.ay] : null, remove: rulesEdgeRemove, move: rulesEdgeMove, title: "Add an edge tile to the " + key + " cycle — tap this, then tap a cell on the sheet" },
-      rim: rimOk ? { cells: rimCells(key), fallback: vert && T ? (key === "left" ? T.iL : T.iR) || null : null, remove: rulesRimRemove, move: rulesRimMove, title: "Add a straight to the " + key + " rim — tap this, then tap a cell on the sheet" } : null,
-    };
-    /* v6.94.2: the inner corners are fixed slots at the ends of the top/bottom rim rows (from the
-       template's TRANSITION so they still show, dimmed, at depth 1). A slot LIGHTS when the same
-       tile is also the cycle's first/last member — on the 5×5 B2/D2 are both — so the cycle's
-       middle stays under the edge row's middle whether or not the corners are in the cycle. */
-    if (L[key].rim && !vert && T) {
-      const same = (a, b) => !!(a && b && a[0] === b[0] && a[1] === b[1]);
-      const c = L[key].rim.cells, head = key === "top" ? T.iTL : T.iBL, tail = key === "top" ? T.iTR : T.iBR;
-      const headOn = c.length > 0 && same(c[0], head), tailOn = c.length > 1 && same(c[c.length - 1], tail);
-      L[key].rim.corners = { head, tail, headOn, tailOn, mid: c.slice(headOn ? 1 : 0, tailOn ? c.length - 1 : c.length) };
+    const vert = key === "left" || key === "right", lu = CT.LOOKUP && CT.LOOKUP[SIDE_EDGE[key]], cp = caps && caps[key];
+    lane({ key, laneName: "edge", d: 0, vert, cells: edgeCells(key), head: cp ? cp[0] : null, tail: cp ? cp[1] : null, fallback: lu ? [lu.ax, lu.ay] : null, off: false,
+      remove: rulesEdgeRemove, move: rulesEdgeMove, home: rulesEdgeHome, title: "Add an edge tile to the " + key + " cycle — tap this, then tap a cell on the sheet" });
+    for (const ln of ["rim", "rim2"]) {
+      const B = RIM_BANKS[ln], T = B.d === 1 ? T1 : T2;
+      if (!(CT[B.bank] || tpl[B.bank]) || !T || !rimHasRow(key, B.bank)) continue;
+      const head = vert ? null : (key === "top" ? T.iTL : T.iBL), tail = vert ? null : (key === "top" ? T.iTR : T.iBR);
+      lane({ key, laneName: ln, d: B.d, vert, cells: rimCells(key, B.bank), head, tail, fallback: vert ? ((key === "left" ? T.iL : T.iR) || null) : null, off: depth < B.d + 1,
+        remove: (k, i) => rulesRimRemove(k, i, B.bank), move: (k, f, t) => rulesRimMove(k, f, t, B.bank), home: (k, cell, h) => rulesRimHome(k, cell, h, B.bank),
+        title: "Add a straight to the " + key + " " + (B.d === 2 ? "deeper ring" : "rim") + " — tap this, then tap a cell on the sheet" });
     }
   }
-  const span = (lane) => lane && lane.corners ? lane.corners.mid.length + 2 : Math.max(lane ? lane.cells.length : 0, lane && !lane.cells.length && lane.fallback ? 1 : 0);
-  const W = Math.max(1, span(L.top.edge), span(L.top.rim), span(L.bottom.rim), span(L.bottom.edge));
-  const H = Math.max(1, span(L.left.edge), span(L.right.edge), span(L.left.rim) + 2, span(L.right.rim) + 2);
+  const dmax = Math.max(...strips.map((o) => o.d));
+  /* inner cols are 2..W+1, inner rows 2..H+1. A strip must end before the ring outside it: a horizontal strip
+     of ring d (its own corner slots included) ends at or before col lastCol-max(1,d); a vertical strip of ring d
+     (no slots of its own) at or before row lastRow-1-d. */
+  const W = Math.max(2 * dmax + 1, ...strips.filter((o) => !o.vert).map((o) => o.end - 1 + Math.max(0, o.d - 1)));
+  const H = Math.max(2 * dmax + 1, ...strips.filter((o) => o.vert).map((o) => o.end - 1 + o.d));
   const canAdd = rulesEngaged;   // v6.88: adding needs the sheet
   const lastCol = W + 2, lastRow = H + 2;
   /* v6.94.1: tracks alternate tile (40px) and gap (20px). Tile col t sits on grid line 2t-1; the gap after it is line 2t. */
@@ -5798,47 +5815,38 @@ function rulesDrawChips() {
   ring.style.gridTemplateColumns = tracks(lastCol); ring.style.gridTemplateRows = tracks(lastRow);
   const place = (el, col, row) => { el.style.gridColumn = 2 * col - 1; el.style.gridRow = 2 * row - 1; ring.appendChild(el); };
   const placeGap = (el, col, row, vert) => { el.style.gridColumn = vert ? 2 * col - 1 : 2 * col; el.style.gridRow = vert ? 2 * row : 2 * row - 1; ring.appendChild(el); };   // the gap AFTER tile (col,row) along the strip's axis
-  /* one strip: chips along an axis from (c0,r0); + in the gap after the last chip */
-  const strip = (lane, key, laneName, c0, r0, vert) => {
-    if (!lane) return;
-    const armKey = laneName + ":" + key, off = laneName === "rim" && !depthOn, chips = [], K = lane.corners;
-    const slot = (K && !K.headOn) ? 1 : 0;   // a dimmed head corner pushes the cycle one cell along; a lit one IS cycle member 0 in that cell
-    const cornerSlot = (cell, atHead, col) => {   // v6.94.3: a dimmed corner slot is the tile's home — tap it to put the tile back at its end of the cycle
+  for (const o of strips) {
+    const { key, laneName, d, vert, cells, off } = o, armKey = laneName + ":" + key, chips = [];
+    const fixed = vert ? (key === "left" ? 1 + d : lastCol - d) : (key === "top" ? 1 + d : lastRow - d);   // the strip's row (horizontal) or col (vertical)
+    const at = (i) => vert ? [fixed, o.start + i] : [o.start + i, fixed];   // i-th tile along the strip -> [col, row]
+    const put = (el, i) => place(el, ...at(i));
+    const slot = (cell, atHead, i) => {   // v6.94.3: a dimmed slot is the tile's home — tap it to put the tile back at its end of the cycle
       const g = document.createElement("button"); g.type = "button"; g.className = "ringChip fixed home" + (off ? " off" : "");
-      g.title = cellName(cell[0], cell[1]) + " — inner corner. Tap to put it back at the " + (atHead ? "start" : "end") + " of the " + key + " rim cycle";
-      g.appendChild(thumb(cell[0], cell[1], key)); g.addEventListener("click", () => rulesRimHome(key, cell, atHead)); place(g, col, r0);
+      g.title = cellName(cell[0], cell[1]) + " — " + (laneName === "edge" ? "run end" : "inner corner") + ". Tap to put it back at the " + (atHead ? "start" : "end") + " of the " + key + " " + laneName + " cycle";
+      g.appendChild(thumb(cell[0], cell[1], key)); g.addEventListener("click", () => o.home(key, cell, atHead)); put(g, i);
     };
-    if (K && !K.headOn) cornerSlot(K.head, true, c0);
-    lane.cells.forEach(([x, y], i) => {
+    if (o.headSlot) slot(o.head, true, 0);
+    cells.forEach(([x, y], i) => {
       const chip = document.createElement("button"); chip.className = "ringChip" + (off ? " off" : ""); chip.type = "button"; chip.dataset.rim = key; chip.dataset.lane = laneName; chip.dataset.cell = cellName(x, y);
-      chip.title = cellName(x, y) + " — " + key + " " + laneName + " " + (i + 1) + " of " + lane.cells.length + "; hold and drag to reorder, × removes";
+      chip.title = cellName(x, y) + " — " + key + " " + laneName + " " + (i + 1) + " of " + cells.length + "; hold and drag to reorder, × removes";
       chip.appendChild(thumb(x, y, key));
       const xx = document.createElement("span"); xx.className = "ringX"; xx.textContent = "×"; xx.title = "Remove " + cellName(x, y) + " from the " + key + " " + laneName; chip.appendChild(xx);
-      xx.addEventListener("click", (e) => { e.stopPropagation(); lane.remove(key, i); });
-      place(chip, vert ? c0 : c0 + slot + i, vert ? r0 + i : r0); chips.push(chip);
+      xx.addEventListener("click", (e) => { e.stopPropagation(); o.remove(key, i); });
+      put(chip, o.headSlot + i); chips.push(chip);
     });
-    if (K && !K.tailOn) cornerSlot(K.tail, false, c0 + slot + lane.cells.length);
-    chips.forEach((chip, i) => rulesChipDrag(chip, chips, key, i, lane.move, vert));   // v6.90.5 drag along the strip; v6.94: siblings passed explicitly
-    if (!lane.cells.length && lane.fallback) {   // unassigned: a ghost of the tile the resolver falls back to
-      const g = document.createElement("div"); g.className = "ringChip ghost" + (off ? " off" : ""); g.title = "unassigned \u2014 the " + (laneName === "rim" ? "wall" : "edge") + " keeps " + cellName(lane.fallback[0], lane.fallback[1]);
-      g.appendChild(thumb(lane.fallback[0], lane.fallback[1], key)); place(g, c0, r0);
+    chips.forEach((chip, i) => rulesChipDrag(chip, chips, key, i, o.move, vert));   // v6.90.5 drag along the strip; v6.94: siblings passed explicitly
+    if (!cells.length && o.fallback) {   // unassigned: a ghost of the tile the resolver falls back to
+      const g = document.createElement("div"); g.className = "ringChip ghost" + (off ? " off" : ""); g.title = "unassigned \u2014 the " + (laneName === "edge" ? "edge" : "wall") + " keeps " + cellName(o.fallback[0], o.fallback[1]);
+      g.appendChild(thumb(o.fallback[0], o.fallback[1], key)); put(g, o.headSlot);
     }
+    if (o.tailSlot) slot(o.tail, false, o.headSlot + o.n);
     if (canAdd) {
       const add = document.createElement("button"); add.type = "button"; add.className = "ringAdd " + (vert ? "v" : "h") + (rulesArmed === armKey ? " armed" : "") + (off ? " off" : ""); add.dataset.rimAdd = armKey;
-      add.textContent = rulesArmed === armKey ? "\u2026" : "+"; add.title = rulesArmed === armKey ? "Tap a cell on the sheet" : lane.title;
+      add.textContent = rulesArmed === armKey ? "\u2026" : "+"; add.title = rulesArmed === armKey ? "Tap a cell on the sheet" : o.title;
       add.addEventListener("click", () => { rulesArmed = rulesArmed === armKey ? null : armKey; rulesRender(); });
-      const n = Math.max(lane.cells.length, lane.fallback ? 1 : 0);   // the ghost counts as the last tile
-      placeGap(add, vert ? c0 : c0 + slot + n - 1, vert ? r0 + n - 1 : r0, vert);   // right after the last cycle member (before a dimmed tail corner)
+      placeGap(add, ...at(o.headSlot + o.n - 1), vert);   // right after the last cycle member (before a dimmed tail slot)
     }
-  };
-  strip(L.top.edge,     "top",    "edge", 2, 1,       false);
-  strip(L.top.rim,      "top",    "rim",  2, 2,       false);
-  strip(L.bottom.rim,   "bottom", "rim",  2, H + 1,   false);
-  strip(L.bottom.edge,  "bottom", "edge", 2, lastRow, false);
-  strip(L.left.edge,    "left",   "edge", 1, 2,       true);
-  strip(L.left.rim,     "left",   "rim",  2, 3,       true);
-  strip(L.right.rim,    "right",  "rim",  W + 1, 3,   true);
-  strip(L.right.edge,   "right",  "edge", lastCol, 2, true);
+  }
   /* v6.93.1: the four convex corners complete the ring. Not rules — the resolver picks them from LOOKUP — so they are fixed, dimmed chips. */
   const CORNER = { 28: [1, 1], 112: [lastCol, 1], 7: [1, lastRow], 193: [lastCol, lastRow] };   // mask -> [col, row]: TL, TR, BL, BR
   for (const m of Object.keys(CORNER)) {
@@ -5864,16 +5872,27 @@ function rulesEdgeMove(key, from, to) {
   const L = CT.EDGE_VARIANTS[SIDE_EDGE[key]].cells; const [cell] = L.splice(from, 1); L.splice(to, 0, cell);
   rulesCommit(cellName(cell[0], cell[1]) + " is now " + (to + 1) + " of " + L.length + " in the " + key + " edge cycle.");
 }
+function rulesEdgeHome(key, cell, atHead) {   // v6.95: a cap slot is the cap's home in the edge cycle — insert or move it there
+  if (!rulesEngaged) { status("Cap tiles are put back on the Template tab."); return; }
+  materializeContract();
+  if (!CT.EDGE_VARIANTS) CT.EDGE_VARIANTS = {};
+  const m = SIDE_EDGE[key]; if (!CT.EDGE_VARIANTS[m]) CT.EDGE_VARIANTS[m] = { axis: SIDE_AXIS[key], cells: [] };
+  const L = CT.EDGE_VARIANTS[m].cells, at = L.findIndex(([a, b]) => a === cell[0] && b === cell[1]);
+  if (at >= 0) L.splice(at, 1);
+  if (atHead) L.unshift([cell[0], cell[1]]); else L.push([cell[0], cell[1]]);
+  rulesCommit(cellName(cell[0], cell[1]) + (at >= 0 ? " moved to the " : " back at the ") + (atHead ? "start" : "end") + " of the " + key + " edge.");
+}
 function rulesEdgeRemove(key, i) {
   if (edgeCells(key).length <= 1) { status("Keep at least one tile in the " + key + " edge."); return; }   // an empty side has no straight to fall back on
   materializeContract();
   const [x, y] = CT.EDGE_VARIANTS[SIDE_EDGE[key]].cells.splice(i, 1)[0];
   rulesCommit(cellName(x, y) + " removed from the " + key + " edge.");
 }
-function rulesRimAdd(key, x, y) {
+function rulesRimAdd(key, x, y, bank = "RIM_VARIANTS") {
   materializeContract();
-  if (!CT.RIM_VARIANTS[key]) CT.RIM_VARIANTS[key] = [];   // v6.90.2: a side starts empty
-  const list = CT.RIM_VARIANTS[key];
+  if (!CT[bank]) CT[bank] = {};
+  if (!CT[bank][key]) CT[bank][key] = [];   // v6.90.2: a side starts empty
+  const list = CT[bank][key];
   if (list.some(([a, b]) => a === x && b === y)) { rulesArmed = null; rulesRender(); status(cellName(x, y) + " is already in the " + key + " rim."); return; }
   list.push([x, y]); rulesArmed = null;
   rulesCommit(cellName(x, y) + " added to the " + key + " rim.");
@@ -5918,26 +5937,27 @@ function rulesChipDrag(chip, row, key, i, onMove, vert) {   // v6.92: onMove is 
   };
   chip.addEventListener("pointerup", end); chip.addEventListener("pointercancel", end);
 }
-function rulesRimMove(key, from, to) {   // reorder the cycle: the row's order is the rule
-  const list = CT.RIM_VARIANTS[key]; if (!list || from === to || to < 0 || to >= list.length) return;
+function rulesRimMove(key, from, to, bank = "RIM_VARIANTS") {   // reorder the cycle: the row's order is the rule
+  const list = CT[bank] && CT[bank][key]; if (!list || from === to || to < 0 || to >= list.length) return;
   materializeContract();
-  const L = CT.RIM_VARIANTS[key]; const [cell] = L.splice(from, 1); L.splice(to, 0, cell);
+  const L = CT[bank][key]; const [cell] = L.splice(from, 1); L.splice(to, 0, cell);
   rulesCommit(cellName(cell[0], cell[1]) + " is now " + (to + 1) + " of " + L.length + " in the " + key + " cycle.");
 }
-function rulesRimHome(key, cell, atHead) {   // v6.94.3: put a corner tile at its end of the cycle — insert it if absent, move it if present
+function rulesRimHome(key, cell, atHead, bank = "RIM_VARIANTS") {   // v6.94.3: put a corner tile at its end of the cycle — insert it if absent, move it if present
   if (!rulesEngaged) { status("Corner tiles are put back on the Template tab."); return; }
   materializeContract();
-  if (!CT.RIM_VARIANTS[key]) CT.RIM_VARIANTS[key] = [];
-  const L = CT.RIM_VARIANTS[key], at = L.findIndex(([a, b]) => a === cell[0] && b === cell[1]);
+  if (!CT[bank]) CT[bank] = {};
+  if (!CT[bank][key]) CT[bank][key] = [];
+  const L = CT[bank][key], at = L.findIndex(([a, b]) => a === cell[0] && b === cell[1]);
   if (at >= 0) L.splice(at, 1);
   if (atHead) L.unshift([cell[0], cell[1]]); else L.push([cell[0], cell[1]]);
   rulesCommit(cellName(cell[0], cell[1]) + (at >= 0 ? " moved to the " : " back at the ") + (atHead ? "start" : "end") + " of the " + key + " rim.");
 }
-function rulesRimRemove(key, i) {
-  if (!RIM_SIDE[key] && (CT.RIM_VARIANTS[key] || []).length <= 1) { status("Keep at least one straight in the " + key + " rim."); return; }   // top/bottom keep one; sides may empty
+function rulesRimRemove(key, i, bank = "RIM_VARIANTS") {
+  if (!RIM_SIDE[key] && (CT[bank][key] || []).length <= 1) { status("Keep at least one straight in the " + key + " rim."); return; }   // top/bottom keep one; sides may empty
   materializeContract();
-  const [x, y] = CT.RIM_VARIANTS[key].splice(i, 1)[0];
-  if (RIM_SIDE[key] && !CT.RIM_VARIANTS[key].length) delete CT.RIM_VARIANTS[key];   // v6.90.2: empty side = unassigned = off
+  const [x, y] = CT[bank][key].splice(i, 1)[0];
+  if (RIM_SIDE[key] && !CT[bank][key].length) delete CT[bank][key];   // v6.90.2: empty side = unassigned = off
   rulesCommit(cellName(x, y) + " removed from the " + key + " rim.");
 }
 function rulesSetAnchor(on) {
@@ -7485,7 +7505,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.94.6";
+const APP_VERSION = "6.95.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
