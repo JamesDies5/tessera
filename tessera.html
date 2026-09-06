@@ -161,7 +161,7 @@
   #rulesbot { display: none; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); font-size: 12px; color: var(--text); }
   #rulesbot .rulesChip canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 4px; }
-  #rail.rules .tool, #rail.rules #btnUndo, #rail.rules #btnRedo, #rail.rules .hsep { display: none; }   /* no drawing on the Rules tab; view + grid controls stay */
+  #rail.rules .tool, #rail.rules #btnUndo, #rail.rules #btnRedo { opacity: .28; pointer-events: none; }   /* v6.94.6: no drawing while rules own the sheet — tools stay put, greyed, so nothing drifts */
   .rulesRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .rulesLab { text-transform: capitalize; margin-right: 2px; min-width: 3.4em; }
   .rulesChip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -171,6 +171,27 @@
   .rulesChip[data-rim] { transition: transform .12s; user-select: none; -webkit-user-select: none; }
   .rulesChip.dragging { transition: none; position: relative; z-index: 3; border-color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
   .rulesAdd.armed { color: var(--accent); border-color: var(--accent); }
+  /* v6.93: the Edges tray is a RING — outer strips are the edge cycles, inner strips the rim cycles, checkboxes in the middle */
+  .ringGrid { display: inline-grid; gap: 0; align-items: start; justify-items: start; }   /* v6.94.1: 40px tile tracks with 20px gap tracks between; + buttons live in the gaps */
+  .ringChip.off, .ringAdd.off { opacity: .45; }
+  .ringChip { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0; background: none; border: 0;
+    color: var(--dim); font: inherit; font-size: 11px; line-height: 1; cursor: pointer; user-select: none; -webkit-user-select: none; transition: transform .12s; }
+  .ringChip canvas { image-rendering: pixelated; display: block; width: 40px; height: 40px; box-sizing: border-box; border: 2px solid var(--line); border-radius: 6px; }
+  .ringChip.ghost { opacity: .5; cursor: default; }
+  .ringChip.ghost canvas { border-style: dashed; }
+  .ringChip.fixed { opacity: .4; cursor: default; }
+  .ringChip.fixed.home { cursor: pointer; }
+  .ringChip.fixed.home:hover { opacity: .7; }
+  .ringChip .ringX { position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line);
+    color: var(--dim); font-size: 12px; line-height: 14px; text-align: center; }
+  .ringChip.dragging { transition: none; z-index: 3; }
+  .ringChip.dragging canvas { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+  .ringAdd { width: 40px; height: 40px; box-sizing: border-box; flex: none; border: 1px dashed var(--line); border-radius: 6px; background: none;
+    color: var(--dim); font: inherit; font-size: 14px; line-height: 1; padding: 0; cursor: pointer; }
+  .ringAdd.h { width: 18px; justify-self: center; }    /* in the gap after a horizontal strip: half as wide, 1px air each side */
+  .ringAdd.v { height: 18px; align-self: center; }     /* in the gap under a vertical strip: half as tall */
+  .ringAdd.armed { color: var(--accent); border-color: var(--accent); }
+  #rulesCenter { display: flex; flex-direction: column; gap: 6px; }
   .rulesCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
   .rulesNote { color: var(--dim); line-height: 1.4; }
   #rulesState { color: var(--dim); font-size: 11px; }
@@ -438,8 +459,7 @@
 <div id="rulesbar">
   <span class="vlbl">RULES</span>
   <button class="optline rulesMode on" data-v="depth" title="Border depth — how many bands of tiles make up the border before the core begins">Depth</button>
-  <button class="optline rulesMode" data-v="rim" title="Inner rim — the straight tiles the resolver cycles through along each side of the inner rim ring">Rim</button>
-  <button class="optline rulesMode" data-v="cadence" title="Edge cadence — where the edge tiles start counting: from each corner of a run, or from the room origin">Cadence</button>
+  <button class="optline rulesMode" data-v="edges" title="Edges — per side, the edge tiles that cycle along the outside and the rim tiles that cycle beneath them; plus where the cycles start counting">Edges</button>
   <button class="optline rulesMode" data-v="vary" title="Variations — the core pool: the primary tile plus weighted variants and multi-cell groups, with spread and rotation per entry">Variations</button>
   <span class="spacer"></span>
   <span id="rulesState"></span>
@@ -552,7 +572,7 @@
     <div class="hsep"></div>
     <button class="ibtn on" id="btnFinger" data-icon="hand" title="Finger drawing — when off: one finger hold-picks color, two fingers pan/zoom (auto-disabled when an Apple Pencil is detected)"></button>
     <div class="hsep"></div>
-    <button class="ibtn" id="btnRules" data-icon="rules" title="Rules — show the rule trays. On the Template tab: pick a rule and tap cells on the sheet to assign them. On the Level tab: tune the same rules (depth, cadence, pool weights) against the live level. Stays on while you switch tabs."></button>
+    <button class="ibtn" id="btnRules" data-icon="rules" title="Rules — show the rule trays. On the Template tab: pick a rule and tap cells on the sheet to assign them. On the Level tab: tune the same rules (depth, edge and rim cycles, pool weights) against the live level. Stays on while you switch tabs."></button>
     <div class="hsep"></div>
     <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
     <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
@@ -641,10 +661,12 @@
 <div id="rulesbot">
   <div class="rulesRow" id="rulesDepthRow" style="display:none"><span class="rulesLab">Border depth</span><span id="rulesDepthBtns" style="display:contents"></span></div>
   <div id="rulesRim" style="display:contents"></div>
+  <div id="rulesCenter"><!-- v6.93: moved into the middle of the Edges ring while that mode is up -->
   <div class="rulesRow" id="rulesSidesRow" style="display:none"><label class="rulesCheck"><input type="checkbox" id="rulesSidesCol"> Sides continue below corners</label></div>
   <div class="rulesRow" id="rulesCadRow" style="display:none">
     <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count edge tiles from each corner</label>
     <span class="rulesNote" id="rulesCadNote"></span>
+  </div>
   </div>
   <div class="rulesRow" id="rulesVaryRow" style="display:none"><span class="rulesLab">Pool</span>
   <button class="ibtn" id="btnVaryDraw" data-icon="sqplus" title="Draw — tap a free template cell to add it to the variation pool (weight 4; tap it afterwards to adjust). Cells the ruleset already draws from are blocked."></button>
@@ -5515,8 +5537,11 @@ document.addEventListener("gesturechange", (e) => e.preventDefault());
    button, a lower-tray row, a highlight painter and a tap handler. */
 const RIM_KEYS = ["top", "bottom", "left", "right"];
 const RIM_COLORS = { top: "#6fd3ff", bottom: "#ffb060", left: "#c9a6ff", right: "#9cf59c" };
-const EDGE_SIDE = { 124: "top", 199: "bottom", 31: "left", 241: "right" };   // EDGE_VARIANTS mask -> side (cadence highlights)
-const RULES_MODES = ["depth", "rim", "cadence", "vary"];   // v6.87: the variation pool is a rule too
+const EDGE_SIDE = { 124: "top", 199: "bottom", 31: "left", 241: "right" };   // EDGE_VARIANTS mask -> side
+const SIDE_EDGE = { top: 124, bottom: 199, left: 31, right: 241 };            // side -> EDGE_VARIANTS mask
+const SIDE_AXIS = { top: "x", bottom: "x", left: "y", right: "y" };
+const RULES_MODES = ["depth", "edges", "vary"];   // v6.92: Rim + Cadence folded into Edges — one mode per side, edge row over rim row
+const armedSide = (a) => a ? a.split(":")[1] : null;   // rulesArmed is "edge:top" / "rim:left"
 const DEPTH_COLORS = { 2: "#9be564", 3: "#ffd24a" };   // band outlines on the sheet (band 1, the edge, is never optional)
 /* v6.88 — RULES ARE A TOGGLE, NOT A TAB (James 2026-09-05). rulesOn is the
    rail switch, persisted; while on, the two trays stay up on every tab.
@@ -5577,36 +5602,35 @@ function rulesRender() {
     : "Using the " + CT.label + " template layout. Editing anything here gives this project its own copy; other projects are unaffected.";
   $("btnRulesLayoutReset").style.display = own ? "" : "none";
   $("rulesDepthRow").style.display = rulesMode === "depth" ? "flex" : "none";
-  $("rulesRim").style.display = rulesMode === "rim" ? "contents" : "none";
-  $("rulesSidesRow").style.display = rulesMode === "rim" && CT.TRANSITION && CT.TRANSITION.iL ? "flex" : "none";   // v6.90: only formats with sides
+  $("rulesRim").style.display = rulesMode === "edges" ? "contents" : "none";
+  $("rulesSidesRow").style.display = rulesMode === "edges" && CT.TRANSITION && CT.TRANSITION.iL ? "flex" : "none";   // v6.90: only formats with sides
   $("rulesSidesCol").checked = !!CT.RIM_COLUMNS;
-  $("rulesCadRow").style.display = rulesMode === "cadence" ? "flex" : "none";
+  $("rulesCadRow").style.display = rulesMode === "edges" ? "flex" : "none";
   $("rulesVaryRow").style.display = rulesMode === "vary" ? "flex" : "none";
   if (rulesMode === "vary") { syncVarybar(); $("btnVaryDraw").style.display = onSheet ? "" : "none"; $("btnVaryErase").style.display = onSheet ? "" : "none"; rulesDrawSide(); }
   rulesSyncSide();
   if (rulesMode === "depth") rulesDrawDepth();
-  if (rulesMode === "rim") rulesDrawChips();
-  if (rulesMode === "cadence") {
+  if (rulesMode === "edges") {
+    rulesDrawChips();
     $("rulesAnchor").checked = CT.CADENCE_ANCHOR === "run";
     $("rulesCadNote").textContent = CT.CADENCE_ANCHOR === "run"
       ? "Edge tiles restart their cycle at each corner, so every run starts on the same tile."
       : "Edge tiles cycle from the room origin, so a run's first tile depends on where it sits.";
   }
   const depth = ctDepth(CT), maxD = ctMaxDepth(CT.id);
-  $("rulesHint").textContent = rulesMode === "depth"
+  const hint = rulesMode === "depth"
     ? (maxD === 1 ? "This format's border is the edge tile alone; there is no inner band to switch."
       : "Solid outlines are the bands in use; dashed ones are switched off. " + (depth === 1 ? "Everything behind the edge tile is core." : depth === 2 ? "Edge, one rim ring, then core." : "Edge, rim ring, deeper ring, then core."))
-    : rulesMode === "rim"
-    ? (depth < 2 ? "Border depth is 1, so the inner rim is switched off — these straights are kept for when it comes back. "
-        : "") + (!onSheet ? "Tap a chip to remove a straight; add cells on the Template tab."
-        : rulesArmed ? "Tap a cell on the sheet to add it to the " + rulesArmed + " rim." : "Each row is a cycle, in order left to right — keep Top and Bottom in the same order so their tiles line up. Hold and drag a chip to reorder; × removes; “+ add” then a sheet cell appends.")
+    : rulesMode === "edges"
+    ? ""   // v6.94.5: the ring explains itself; the status line carries the rest
     : rulesMode === "vary"
     ? (!onSheet ? "Drag a weight on the right and watch the level; tap a tile for spread and rotation. Add or remove entries on the Template tab."
       : varyMode === "draw" ? "Tap a free cell to add it to the pool at weight 4; drag across cells to add a group. Tap a pooled cell to edit it."
       : varyMode === "erase" ? "Tap a yellow-outlined variant to remove it from the pool (asks first). The green primary stays; set its weight to 0 instead."
       : "Green outline is the primary, yellow are its variants and groups. Weights are the sliders on the right; tap a tile or an outlined cell for spread and rotation. Draw adds, Erase removes.")
-    : "Outlined cells are the edge tiles that cycle along each side; dashed cells are the fixed run ends.";
-  viewport.style.boxShadow = onSheet && rulesArmed ? "inset 0 0 0 2px " + RIM_COLORS[rulesArmed] : "";
+    : "";
+  $("rulesHint").textContent = hint; $("rulesHint").style.display = hint ? "" : "none";
+  viewport.style.boxShadow = onSheet && rulesArmed ? "inset 0 0 0 2px " + RIM_COLORS[armedSide(rulesArmed)] : "";
   drawGrid();
 }
 function rulesSyncSide() {   // the Variations rail shows only for that rule, on any tab
@@ -5672,13 +5696,11 @@ function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; cal
     };
     if (t.TRANSITION) band(2, t.TRANSITION, CT.RIM_VARIANTS || t.RIM_VARIANTS);
     if (t.TRANSITION2) band(3, t.TRANSITION2, CT.RIM_VARIANTS2 || t.RIM_VARIANTS2);
-  } else if (rulesMode === "rim") {
+  } else if (rulesMode === "edges") {   // v6.92: edge cells outer box, rim cells inner box, caps dashed, rim corners faint
     const T = CT.TRANSITION || {};
     for (const k of ["iTL", "iTR", "iBL", "iBR"]) if (T[k]) box(T[k][0], T[k][1], "rgba(255,255,255,0.4)", 1, 3.5);
-    for (const key of RIM_KEYS) for (const [x, y] of rimCells(key)) box(x, y, RIM_COLORS[key], 2, 1.5);
-  } else if (rulesMode === "cadence") {
-    const ev = CT.EDGE_VARIANTS || {};
-    for (const m of Object.keys(ev)) { const side = EDGE_SIDE[m]; if (!side) continue; for (const [x, y] of (ev[m].cells || [])) box(x, y, RIM_COLORS[side], 2, 1.5); }
+    for (const key of RIM_KEYS) for (const [x, y] of edgeCells(key)) box(x, y, RIM_COLORS[key], 2, 1.5);
+    for (const key of RIM_KEYS) for (const [x, y] of rimCells(key)) box(x, y, RIM_COLORS[key], 2, 4.5);
     const caps = CT.EDGE_CAPS || {};
     for (const side of RIM_KEYS) for (const [x, y] of (caps[side] || [])) box(x, y, RIM_COLORS[side], 1.5, 2.5, [4, 3]);
   }
@@ -5686,12 +5708,12 @@ function rulesDrawHighlights(v, r) {   // overlay, template space -> screen; cal
 function rulesTap(cx, cy) {   // a tap on the sheet, in template cells
   if (cx < 0 || cy < 0 || cx >= TW / TILE || cy >= TH / TILE) return;
   if (rulesMode === "depth") { status("Border depth is set with the buttons below."); return; }
-  if (rulesMode === "rim") {
-    if (!rulesArmed) { status("Tap “+ add” on a rim row first, then tap a cell."); return; }
-    rulesRimAdd(rulesArmed, cx, cy);
+  if (rulesMode === "edges") {
+    if (!rulesArmed) { status("Tap “+ add” on a row first, then tap a cell."); return; }
+    const [lane, key] = rulesArmed.split(":");
+    if (lane === "edge") rulesEdgeAdd(key, cx, cy); else rulesRimAdd(key, cx, cy);
     return;
   }
-  status("Cadence has no cells to assign — it's the checkbox below.");
 }
 function rulesSetMode(m) { rulesMode = m; rulesArmed = null; varyMode = "inspect"; closeVaryPanel(); closeVaryConfirm(); rulesRender(); }
 function rulesDrawDepth() {
@@ -5716,39 +5738,137 @@ function rulesSetDepth(d) {
 const RIM_SIDE = { left: true, right: true };   // v6.90.2: sides are optional — no cells means the wall keeps the ring's single straight and grows no legs
 function rimHasRow(key) { const T = CT.TRANSITION; return !!(CT.RIM_VARIANTS && (CT.RIM_VARIANTS[key] || (RIM_SIDE[key] && T && T.iL))); }
 function rimCells(key) { const rv = CT.RIM_VARIANTS; return (rv && rv[key]) || []; }
+/* v6.92 — EDGES MODE (James 2026-09-06): Rim and Cadence folded into one
+   mode. Per side, an EDGE row (EDGE_VARIANTS[mask].cells — the tiles that
+   cycle along the outside of a run) sits over its RIM row (RIM_VARIANTS[side]
+   — the tiles that cycle beneath it). Same chips, same drag, same ×. The
+   resolver already cycles by list length, so a side may hold any count ≥ 1;
+   nothing in the resolver changes. The anchor checkbox below applies to both
+   rows of every side. */
 function rulesDrawChips() {
   const host = $("rulesRim"); host.innerHTML = "";
-  const rv = CT.RIM_VARIANTS;
-  if (!rv) { const n = document.createElement("div"); n.className = "rulesNote"; n.textContent = "This format has no inner rim variants."; host.appendChild(n); return; }
-  const src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 36;
-  for (const key of RIM_KEYS) {
-    if (!rimHasRow(key)) continue;
-    const cells = rimCells(key);   // v6.90.2: a side may be empty
-    const row = document.createElement("div"); row.className = "rulesRow";
-    const lab = document.createElement("span"); lab.className = "rulesLab"; lab.textContent = key; lab.style.color = RIM_COLORS[key]; row.appendChild(lab);
-    cells.forEach(([x, y], i) => {
-      const chip = document.createElement("button"); chip.className = "rulesChip"; chip.type = "button"; chip.dataset.rim = key; chip.dataset.cell = cellName(x, y);
-      chip.title = cellName(x, y) + " — hold and drag to reorder the cycle; × removes";
-      const mini = document.createElement("canvas"); mini.width = TS * dpr; mini.height = TS * dpr; mini.style.width = TS + "px"; mini.style.height = TS + "px";
-      const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.fillStyle = "#1a1a1a"; mg.fillRect(0, 0, mini.width, mini.height);
-      mg.drawImage(src, x * TILE, y * TILE, TILE, TILE, 0, 0, mini.width, mini.height);
-      chip.appendChild(mini);
-      const t = document.createElement("span"); t.textContent = cellName(x, y); chip.appendChild(t);
-      const xx = document.createElement("span"); xx.className = "rulesX"; xx.textContent = "×"; xx.title = "Remove " + cellName(x, y) + " from the " + key + " rim"; chip.appendChild(xx);
-      xx.addEventListener("click", (e) => { e.stopPropagation(); rulesRimRemove(key, i); });
-      rulesChipDrag(chip, row, key, i);   // v6.90.5: hold and drag along the row — the row IS the cycle
-      row.appendChild(chip);
-    });
-    if (!cells.length) { const n = document.createElement("span"); n.className = "rulesNote"; n.textContent = rulesEngaged ? "unassigned \u2014 the wall keeps " + cellName(...(key === "left" ? CT.TRANSITION.iL : CT.TRANSITION.iR)) : "unassigned"; row.appendChild(n); }
-    if (rulesEngaged) {   // v6.88: adding needs the sheet; on Level the row is remove-only
-      const add = document.createElement("button"); add.type = "button"; add.className = "rulesChip rulesAdd" + (rulesArmed === key ? " armed" : ""); add.dataset.rimAdd = key;
-      add.textContent = rulesArmed === key ? "tap a cell…" : "+ add";
-      add.title = "Add a straight to the " + key + " rim — tap this, then tap a cell on the sheet";
-      add.addEventListener("click", () => { rulesArmed = rulesArmed === key ? null : key; rulesRender(); });
-      row.appendChild(add);
+  const src = edDisplay(), dpr = window.devicePixelRatio || 1, TS = 40, depthOn = ctDepth(CT) >= 2;
+  const coords = $("btnCoords").classList.contains("on");   // v6.93.1: cell names follow the A1 toggle, drawn like the sheet's labels
+  const ring = document.createElement("div"); ring.className = "ringGrid"; host.appendChild(ring);
+  const thumb = (x, y, key) => {   // tile thumbnail; side colour on the border (corners: neutral)
+    const mini = document.createElement("canvas"); mini.width = TS * dpr; mini.height = TS * dpr;
+    const mg = mini.getContext("2d"); mg.imageSmoothingEnabled = false; mg.fillStyle = "#1a1a1a"; mg.fillRect(0, 0, mini.width, mini.height);
+    mg.drawImage(src, x * TILE, y * TILE, TILE, TILE, 0, 0, mini.width, mini.height);
+    if (coords) {
+      const nm = cellName(x, y); mg.font = "600 " + 9 * dpr + "px ui-monospace, monospace"; mg.textBaseline = "top";
+      mg.fillStyle = "rgba(0,0,0,0.65)"; mg.fillRect(1 * dpr, 1 * dpr, mg.measureText(nm).width + 3 * dpr, 11 * dpr);
+      mg.fillStyle = "#8ecbff"; mg.fillText(nm, 2 * dpr, 2 * dpr);
     }
-    host.appendChild(row);
+    if (key) mini.style.borderColor = RIM_COLORS[key];
+    return mini;
+  };
+  /* v6.94 — TRUE TILE GRID (James 2026-09-06). The ring is laid out exactly as
+     the tiles sit on the sheet: corners at the four corners, edge cycles along
+     the outside, rim cycles one cell in. A cycle of N tiles takes N cells, so
+     the ring grows with its longest strip. Tracks: [corner] [W inner] [+] [corner]
+     across, [corner] [H inner] [+] [corner] down; the + column/row is 20 px and
+     only exists on the Template tab. */
+  const L = {};
+  const T = CT.TRANSITION || CONTRACTS[CT.id].TRANSITION || null;   // v6.94.4: at depth 1 the gate key is null, so the ring's slots come from the template
+  for (const key of RIM_KEYS) {
+    const lu = CT.LOOKUP && CT.LOOKUP[SIDE_EDGE[key]];
+    const rimOk = !!CT.RIM_VARIANTS && rimHasRow(key), vert = key === "left" || key === "right";
+    L[key] = {
+      edge: { cells: edgeCells(key), fallback: lu ? [lu.ax, lu.ay] : null, remove: rulesEdgeRemove, move: rulesEdgeMove, title: "Add an edge tile to the " + key + " cycle — tap this, then tap a cell on the sheet" },
+      rim: rimOk ? { cells: rimCells(key), fallback: vert && T ? (key === "left" ? T.iL : T.iR) || null : null, remove: rulesRimRemove, move: rulesRimMove, title: "Add a straight to the " + key + " rim — tap this, then tap a cell on the sheet" } : null,
+    };
+    /* v6.94.2: the inner corners are fixed slots at the ends of the top/bottom rim rows (from the
+       template's TRANSITION so they still show, dimmed, at depth 1). A slot LIGHTS when the same
+       tile is also the cycle's first/last member — on the 5×5 B2/D2 are both — so the cycle's
+       middle stays under the edge row's middle whether or not the corners are in the cycle. */
+    if (L[key].rim && !vert && T) {
+      const same = (a, b) => !!(a && b && a[0] === b[0] && a[1] === b[1]);
+      const c = L[key].rim.cells, head = key === "top" ? T.iTL : T.iBL, tail = key === "top" ? T.iTR : T.iBR;
+      const headOn = c.length > 0 && same(c[0], head), tailOn = c.length > 1 && same(c[c.length - 1], tail);
+      L[key].rim.corners = { head, tail, headOn, tailOn, mid: c.slice(headOn ? 1 : 0, tailOn ? c.length - 1 : c.length) };
+    }
   }
+  const span = (lane) => lane && lane.corners ? lane.corners.mid.length + 2 : Math.max(lane ? lane.cells.length : 0, lane && !lane.cells.length && lane.fallback ? 1 : 0);
+  const W = Math.max(1, span(L.top.edge), span(L.top.rim), span(L.bottom.rim), span(L.bottom.edge));
+  const H = Math.max(1, span(L.left.edge), span(L.right.edge), span(L.left.rim) + 2, span(L.right.rim) + 2);
+  const canAdd = rulesEngaged;   // v6.88: adding needs the sheet
+  const lastCol = W + 2, lastRow = H + 2;
+  /* v6.94.1: tracks alternate tile (40px) and gap (20px). Tile col t sits on grid line 2t-1; the gap after it is line 2t. */
+  const tracks = (n) => Array.from({ length: n }, () => "40px").join(" 20px ");
+  ring.style.gridTemplateColumns = tracks(lastCol); ring.style.gridTemplateRows = tracks(lastRow);
+  const place = (el, col, row) => { el.style.gridColumn = 2 * col - 1; el.style.gridRow = 2 * row - 1; ring.appendChild(el); };
+  const placeGap = (el, col, row, vert) => { el.style.gridColumn = vert ? 2 * col - 1 : 2 * col; el.style.gridRow = vert ? 2 * row : 2 * row - 1; ring.appendChild(el); };   // the gap AFTER tile (col,row) along the strip's axis
+  /* one strip: chips along an axis from (c0,r0); + in the gap after the last chip */
+  const strip = (lane, key, laneName, c0, r0, vert) => {
+    if (!lane) return;
+    const armKey = laneName + ":" + key, off = laneName === "rim" && !depthOn, chips = [], K = lane.corners;
+    const slot = (K && !K.headOn) ? 1 : 0;   // a dimmed head corner pushes the cycle one cell along; a lit one IS cycle member 0 in that cell
+    const cornerSlot = (cell, atHead, col) => {   // v6.94.3: a dimmed corner slot is the tile's home — tap it to put the tile back at its end of the cycle
+      const g = document.createElement("button"); g.type = "button"; g.className = "ringChip fixed home" + (off ? " off" : "");
+      g.title = cellName(cell[0], cell[1]) + " — inner corner. Tap to put it back at the " + (atHead ? "start" : "end") + " of the " + key + " rim cycle";
+      g.appendChild(thumb(cell[0], cell[1], key)); g.addEventListener("click", () => rulesRimHome(key, cell, atHead)); place(g, col, r0);
+    };
+    if (K && !K.headOn) cornerSlot(K.head, true, c0);
+    lane.cells.forEach(([x, y], i) => {
+      const chip = document.createElement("button"); chip.className = "ringChip" + (off ? " off" : ""); chip.type = "button"; chip.dataset.rim = key; chip.dataset.lane = laneName; chip.dataset.cell = cellName(x, y);
+      chip.title = cellName(x, y) + " — " + key + " " + laneName + " " + (i + 1) + " of " + lane.cells.length + "; hold and drag to reorder, × removes";
+      chip.appendChild(thumb(x, y, key));
+      const xx = document.createElement("span"); xx.className = "ringX"; xx.textContent = "×"; xx.title = "Remove " + cellName(x, y) + " from the " + key + " " + laneName; chip.appendChild(xx);
+      xx.addEventListener("click", (e) => { e.stopPropagation(); lane.remove(key, i); });
+      place(chip, vert ? c0 : c0 + slot + i, vert ? r0 + i : r0); chips.push(chip);
+    });
+    if (K && !K.tailOn) cornerSlot(K.tail, false, c0 + slot + lane.cells.length);
+    chips.forEach((chip, i) => rulesChipDrag(chip, chips, key, i, lane.move, vert));   // v6.90.5 drag along the strip; v6.94: siblings passed explicitly
+    if (!lane.cells.length && lane.fallback) {   // unassigned: a ghost of the tile the resolver falls back to
+      const g = document.createElement("div"); g.className = "ringChip ghost" + (off ? " off" : ""); g.title = "unassigned \u2014 the " + (laneName === "rim" ? "wall" : "edge") + " keeps " + cellName(lane.fallback[0], lane.fallback[1]);
+      g.appendChild(thumb(lane.fallback[0], lane.fallback[1], key)); place(g, c0, r0);
+    }
+    if (canAdd) {
+      const add = document.createElement("button"); add.type = "button"; add.className = "ringAdd " + (vert ? "v" : "h") + (rulesArmed === armKey ? " armed" : "") + (off ? " off" : ""); add.dataset.rimAdd = armKey;
+      add.textContent = rulesArmed === armKey ? "\u2026" : "+"; add.title = rulesArmed === armKey ? "Tap a cell on the sheet" : lane.title;
+      add.addEventListener("click", () => { rulesArmed = rulesArmed === armKey ? null : armKey; rulesRender(); });
+      const n = Math.max(lane.cells.length, lane.fallback ? 1 : 0);   // the ghost counts as the last tile
+      placeGap(add, vert ? c0 : c0 + slot + n - 1, vert ? r0 + n - 1 : r0, vert);   // right after the last cycle member (before a dimmed tail corner)
+    }
+  };
+  strip(L.top.edge,     "top",    "edge", 2, 1,       false);
+  strip(L.top.rim,      "top",    "rim",  2, 2,       false);
+  strip(L.bottom.rim,   "bottom", "rim",  2, H + 1,   false);
+  strip(L.bottom.edge,  "bottom", "edge", 2, lastRow, false);
+  strip(L.left.edge,    "left",   "edge", 1, 2,       true);
+  strip(L.left.rim,     "left",   "rim",  2, 3,       true);
+  strip(L.right.rim,    "right",  "rim",  W + 1, 3,   true);
+  strip(L.right.edge,   "right",  "edge", lastCol, 2, true);
+  /* v6.93.1: the four convex corners complete the ring. Not rules — the resolver picks them from LOOKUP — so they are fixed, dimmed chips. */
+  const CORNER = { 28: [1, 1], 112: [lastCol, 1], 7: [1, lastRow], 193: [lastCol, lastRow] };   // mask -> [col, row]: TL, TR, BL, BR
+  for (const m of Object.keys(CORNER)) {
+    const lu = CT.LOOKUP && CT.LOOKUP[m]; if (!lu) continue;
+    const g = document.createElement("div"); g.className = "ringChip fixed"; g.title = cellName(lu.ax, lu.ay) + " — corner, fixed";
+    g.appendChild(thumb(lu.ax, lu.ay, null)); place(g, CORNER[m][0], CORNER[m][1]);
+  }
+}
+function edgeCells(key) { const ev = CT.EDGE_VARIANTS && CT.EDGE_VARIANTS[SIDE_EDGE[key]]; return (ev && ev.cells) || []; }
+function rulesEdgeAdd(key, x, y) {
+  materializeContract();
+  if (!CT.EDGE_VARIANTS) CT.EDGE_VARIANTS = {};
+  const m = SIDE_EDGE[key];
+  if (!CT.EDGE_VARIANTS[m]) CT.EDGE_VARIANTS[m] = { axis: SIDE_AXIS[key], cells: [] };
+  const list = CT.EDGE_VARIANTS[m].cells;
+  if (list.some(([a, b]) => a === x && b === y)) { rulesArmed = null; rulesRender(); status(cellName(x, y) + " is already in the " + key + " edge."); return; }
+  list.push([x, y]); rulesArmed = null;
+  rulesCommit(cellName(x, y) + " added to the " + key + " edge (" + list.length + " in the cycle).");
+}
+function rulesEdgeMove(key, from, to) {
+  const list = edgeCells(key); if (!list.length || from === to || to < 0 || to >= list.length) return;
+  materializeContract();
+  const L = CT.EDGE_VARIANTS[SIDE_EDGE[key]].cells; const [cell] = L.splice(from, 1); L.splice(to, 0, cell);
+  rulesCommit(cellName(cell[0], cell[1]) + " is now " + (to + 1) + " of " + L.length + " in the " + key + " edge cycle.");
+}
+function rulesEdgeRemove(key, i) {
+  if (edgeCells(key).length <= 1) { status("Keep at least one tile in the " + key + " edge."); return; }   // an empty side has no straight to fall back on
+  materializeContract();
+  const [x, y] = CT.EDGE_VARIANTS[SIDE_EDGE[key]].cells.splice(i, 1)[0];
+  rulesCommit(cellName(x, y) + " removed from the " + key + " edge.");
 }
 function rulesRimAdd(key, x, y) {
   materializeContract();
@@ -5764,36 +5884,37 @@ function rulesRimAdd(key, x, y) {
    wherever its centre sits when released. A plain tap does nothing (× is
    the remove). */
 let rimDrag = null;
-function rulesChipDrag(chip, row, key, i) {
+function rulesChipDrag(chip, row, key, i, onMove, vert) {   // v6.92: onMove is the lane's reorder; v6.93: vert = the strip runs top to bottom
   chip.style.touchAction = "none";
+  const P = vert ? { c: "clientY", a: "top", n: "height", t: "translateY" } : { c: "clientX", a: "left", n: "width", t: "translateX" };
   chip.addEventListener("pointerdown", (e) => {
-    if (e.target.classList.contains("rulesX")) return;
+    if (e.target.classList.contains("rulesX") || e.target.classList.contains("ringX")) return;
     e.preventDefault(); e.stopPropagation();
-    const chips = [...row.querySelectorAll(".rulesChip[data-rim]")];
-    rimDrag = { key, i, chip, chips, rects: chips.map((c) => c.getBoundingClientRect()), x0: e.clientX, dx: 0, live: false, to: i };
+    const chips = Array.isArray(row) ? row : [...row.querySelectorAll("[data-rim]")];   // v6.94: the grid has no strip container, so siblings come in as a list
+    rimDrag = { key, i, chip, chips, rects: chips.map((c) => c.getBoundingClientRect()), x0: e[P.c], dx: 0, live: false, to: i };
     chip.setPointerCapture(e.pointerId);
   });
   chip.addEventListener("pointermove", (e) => {
     const d = rimDrag; if (!d || d.chip !== chip) return;
-    d.dx = e.clientX - d.x0;
+    d.dx = e[P.c] - d.x0;
     if (!d.live) { if (Math.abs(d.dx) < 6) return; d.live = true; chip.classList.add("dragging"); }
-    chip.style.transform = "translateX(" + d.dx + "px)";
-    const me = d.rects[d.i], center = me.left + d.dx + me.width / 2;
+    chip.style.transform = P.t + "(" + d.dx + "px)";
+    const me = d.rects[d.i], center = me[P.a] + d.dx + me[P.n] / 2, gap = 20;   // v6.94.1: the ring's gap track
     let to = d.i;
     d.chips.forEach((c, k) => {
       if (k === d.i) return;
-      const rc = d.rects[k], cC = rc.left + rc.width / 2;
+      const rc = d.rects[k], cC = rc[P.a] + rc[P.n] / 2;
       let shift = 0;
-      if (k < d.i && center < cC) { shift = me.width + 8; to = Math.min(to, k); }        // passed leftward over it -> it slides right
-      else if (k > d.i && center > cC) { shift = -(me.width + 8); to = Math.max(to, k); }   // passed rightward -> it slides left
-      c.style.transform = shift ? "translateX(" + shift + "px)" : "";
+      if (k < d.i && center < cC) { shift = me[P.n] + gap; to = Math.min(to, k); }        // passed backward over it -> it slides forward
+      else if (k > d.i && center > cC) { shift = -(me[P.n] + gap); to = Math.max(to, k); }   // passed forward -> it slides back
+      c.style.transform = shift ? P.t + "(" + shift + "px)" : "";
     });
     d.to = to;
   });
   const end = () => {
     const d = rimDrag; if (!d || d.chip !== chip) return; rimDrag = null;
     d.chips.forEach((c) => { c.style.transform = ""; c.classList.remove("dragging"); });
-    if (d.live && d.to !== d.i) rulesRimMove(key, d.i, d.to); else if (d.live) rulesRender();
+    if (d.live && d.to !== d.i) (onMove || rulesRimMove)(key, d.i, d.to); else if (d.live) rulesRender();
   };
   chip.addEventListener("pointerup", end); chip.addEventListener("pointercancel", end);
 }
@@ -5802,6 +5923,15 @@ function rulesRimMove(key, from, to) {   // reorder the cycle: the row's order i
   materializeContract();
   const L = CT.RIM_VARIANTS[key]; const [cell] = L.splice(from, 1); L.splice(to, 0, cell);
   rulesCommit(cellName(cell[0], cell[1]) + " is now " + (to + 1) + " of " + L.length + " in the " + key + " cycle.");
+}
+function rulesRimHome(key, cell, atHead) {   // v6.94.3: put a corner tile at its end of the cycle — insert it if absent, move it if present
+  if (!rulesEngaged) { status("Corner tiles are put back on the Template tab."); return; }
+  materializeContract();
+  if (!CT.RIM_VARIANTS[key]) CT.RIM_VARIANTS[key] = [];
+  const L = CT.RIM_VARIANTS[key], at = L.findIndex(([a, b]) => a === cell[0] && b === cell[1]);
+  if (at >= 0) L.splice(at, 1);
+  if (atHead) L.unshift([cell[0], cell[1]]); else L.push([cell[0], cell[1]]);
+  rulesCommit(cellName(cell[0], cell[1]) + (at >= 0 ? " moved to the " : " back at the ") + (atHead ? "start" : "end") + " of the " + key + " rim.");
 }
 function rulesRimRemove(key, i) {
   if (!RIM_SIDE[key] && (CT.RIM_VARIANTS[key] || []).length <= 1) { status("Keep at least one straight in the " + key + " rim."); return; }   // top/bottom keep one; sides may empty
@@ -7355,7 +7485,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.91.1";
+const APP_VERSION = "6.94.6";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
