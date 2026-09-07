@@ -1211,6 +1211,77 @@ function resolveAll(cells, ct) {
     };
     RING_E2 = erode(RING_E1); RING_E3 = erode(RING_E2);
   }
+  /* v6.106 — PILLARS FIRST (James 2026-09-07, red set). "Sides continue
+     below corners" (RIM_COLUMNS) used to grow its legs in a pass AFTER the
+     per-cell loop, into cells that had resolved as core. Two problems once
+     joints are on: a bend or hook claims a leg cell first and the column
+     stops there; and nothing beside a head or leg sees it as a wall, so the
+     cell next to it can't be a cap or a hooked side. Now the columns are
+     decided here, from geometry alone: a plain top straight whose cadence
+     pick is a corner (or side-cycle) cell is a HEAD; its LEG runs down
+     through cells with no cardinal edge until a rim row, edge or slope
+     (exactly the old stop rule); a plain bottom straight whose pick is a
+     bottom corner is a FOOT. Legs resolve by side-cycle cadence before any
+     joint can claim them; with Rim joints on, every pillar cell counts as a
+     wall for the cell on its outer face (right pillar → its east neighbour
+     sees an edge to the west). Joints off: legs identical to v6.90, no
+     wall reading. The old post-loop pass is retired. */
+  const pillar = {};
+  if (ct.RIM_COLUMNS && ct.TRANSITION && ct.RIM_VARIANTS) {
+    const T = ct.TRANSITION, rv = ct.RIM_VARIANTS;
+    const wtA = ct.RIM_WEDGES === "terminate";
+    const pe = (c, r, dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wtA && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85))); };
+    const cN = (c, r) => { if (pe(c, r, 0, -1)) return true; const a = cells[K(c, r - 1)]; return !wtA && !!(a && a.kind === "slope" && a.face !== "c" && a.seamBand); };
+    const cS = (c, r) => { if (pe(c, r, 0, 1)) return true; const b = cells[K(c, r + 1)]; return !wtA && !!(b && b.kind === "slope" && b.face === "c" && b.seamBand); };
+    const left = rv.left && rv.left.length ? rv.left : null, right = rv.right && rv.right.length ? rv.right : null;
+    const sideOf = {}, footOf = {};
+    if (left) { if (T.iTL) sideOf[T.iTL[0] + "," + T.iTL[1]] = "left"; for (const q of left) sideOf[q[0] + "," + q[1]] = "left"; if (T.iBL) footOf[T.iBL[0] + "," + T.iBL[1]] = "left"; }
+    if (right) { if (T.iTR) sideOf[T.iTR[0] + "," + T.iTR[1]] = "right"; for (const q of right) sideOf[q[0] + "," + q[1]] = "right"; if (T.iBR) footOf[T.iBR[0] + "," + T.iBR[1]] = "right"; }
+    /* What a rim cell resolves to on the non-joint path, as "ax,ay" (null for
+       core or a joint claim). Mirrors the TRANSITION path and the joint rules
+       that pre-empt it, so a head is exactly a cell the old pass would have
+       found a side-cycle tile in. */
+    const claimed = (c, r, eN, eS, eW, eE) => {
+      if (!jointsOn(ct)) return false;
+      const n = (eN?1:0)+(eS?1:0)+(eW?1:0)+(eE?1:0);
+      if (n >= 3) return true;                                             // caps, dot
+      if (n === 2 && ((eN && eS) || (eW && eE))) return true;               // pinches
+      let hk = null;
+      if (n === 1) { const [x, y, base, na, nb] = eN ? [pe(c,r,-1,1), pe(c,r,1,1), "iT", "SW", "SE"] : eS ? [pe(c,r,-1,-1), pe(c,r,1,-1), "iB", "NW", "NE"] : eW ? [pe(c,r,1,-1), pe(c,r,1,1), "iL", "NE", "SE"] : [pe(c,r,-1,-1), pe(c,r,-1,1), "iR", "NW", "SW"]; if (x || y) hk = base + "_" + (x ? na : "") + (y ? nb : ""); }
+      else if (n === 2) hk = eN && eW && pe(c,r,1,1) ? "iTL_SE" : eN && eE && pe(c,r,-1,1) ? "iTR_SW" : eS && eW && pe(c,r,1,-1) ? "iBL_NE" : eS && eE && pe(c,r,-1,-1) ? "iBR_NW" : null;
+      return !!(hk && ct.JOINTS[hk]);
+    };
+    const pickOf = (c, r, eN, eS, eW, eE) => {
+      if (claimed(c, r, eN, eS, eW, eE)) return null;
+      const row = eN && !eS ? "T" : eS && !eN ? "B" : "", col = eW && !eE ? "L" : eE && !eW ? "R" : "";
+      let vc = null;
+      if (row && !col) { const cyc = rv[row === "T" ? "top" : "bottom"]; vc = cyc && cyc.length ? cadPick(cyc, c, c, r, "x", 2) : T["i" + row]; }
+      else if (col && !row) { const cyc = rv[col === "L" ? "left" : "right"]; vc = cyc && cyc.length ? cadPick(cyc, r, c, r, "y", 2) : T["i" + col]; }
+      else if (row && col) vc = T["i" + row + col];
+      return vc ? vc[0] + "," + vc[1] : null;
+    };
+    for (const k of Object.keys(cells)) {
+      const v = cells[k]; if (v.kind === "slope" || masks[k] !== 255) continue;
+      const [c, r] = k.split(",").map(Number);
+      const eN = cN(c, r), eS = cS(c, r), eW = pe(c, r, -1, 0), eE = pe(c, r, 1, 0);
+      if (!eN && !eS && !eW && !eE) continue;                              // core (or an ncard-0 joint): never a head
+      const pk = pickOf(c, r, eN, eS, eW, eE); if (!pk) continue;
+      const side = sideOf[pk];
+      if (side) {
+        pillar[k] = { side, head: true };
+        for (let rr = r + 1; ; rr++) {                                      // legs: down through cells with no cardinal edge, as the old pass grew into core
+          const kk = K(c, rr), n = cells[kk];
+          if (!n || n.kind === "slope" || masks[kk] !== 255) break;
+          const lN = cN(c, rr), lS = cS(c, rr), lW = pe(c, rr, -1, 0), lE = pe(c, rr, 1, 0);
+          const bare = !lN && !lS && !lW && !lE;
+          const sandwich = (lN === lS) && (lW === lE) && !bare;             // opposite pairs: core when joints are off, a pinch/dot when on
+          if (!(bare || (sandwich && !jointsOn(ct)))) break;
+          if (pillar[kk]) break;
+          pillar[kk] = { side, leg: true };
+        }
+      } else if (footOf[pk] && eS && !eN) pillar[k] = { side: footOf[pk], foot: true };
+    }
+  }
   for (const k of Object.keys(cells)) {
     const v = cells[k];
     if (v.kind === "slope") {
@@ -1391,11 +1462,17 @@ function resolveAll(cells, ct) {
            unchanged. */
         const wedgeTerm = ct.RIM_WEDGES === "terminate";
         const wedgeAt = (dc, dr) => { const n = cells[K(c + dc, r + dr)]; return !!(n && n.kind === "slope"); };
-        const isEdge = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wedgeTerm && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85)   /* v6.103.2: BASE underlay only — the open-end underlay also sees air beside its surface and must not stand in for a wall */)); };
+        /* v6.106: a pillar LEG is a side straight whose wall is the pillar itself — it
+           sees a synthetic edge on its own side, then takes the normal path (side
+           cadence, or a hooked side when a far corner meets an edge). Beside a pillar,
+           with Rim joints on, the pillar's outer face is a wall to the neighbour. */
+        const pillarWall = (dc, dr) => { const q = pillar[K(c + dc, r + dr)]; return !!(q && dr === 0 && jointsOn(ct) && ((q.side === "right" && dc === -1) || (q.side === "left" && dc === 1))); };
+        const isEdge = (dc, dr) => { if (pillarWall(dc, dr)) return true; const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wedgeTerm && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85)   /* v6.103.2: BASE underlay only — the open-end underlay also sees air beside its surface and must not stand in for a wall */)); };
         const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
         const eN = isEdge(0,-1) || (!wedgeTerm && !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand));
         const eS = isEdge(0, 1) || (!wedgeTerm && !!(below && below.kind === "slope" && below.face === "c" && below.seamBand));
-        const eW = isEdge(-1,0), eE = isEdge(1,0);
+        const leg = pillar[k] && pillar[k].leg ? pillar[k].side : null;
+        const eW = leg ? leg === "left" : isEdge(-1,0), eE = leg ? leg === "right" : isEdge(1,0);   // v6.106: a leg reads only its own side sideways
         /* v6.52 — tier-1 JOINTS (7×7 only): degenerate contact patterns.
            3 cardinals → cap; 4 → dot; opposite pair → pinch (3-wide
            corridors change from edge/core/edge to edge/ring-line/edge in v4;
@@ -1660,30 +1737,7 @@ function resolveAll(cells, ct) {
      whenever a group or a spread tile won the roll there. Singles-only
      pools without spread roll over the same candidates as before and
      resolve byte-identically. */
-  /* v6.90 — SIDES CONTINUE BELOW CORNERS (James 2026-09-05). With RIM_COLUMNS
-     on, a corner cell used as a Top straight grows its side beneath it:
-     below the ring's top-left corner the Left cycle runs down, below the
-     top-right corner the Right cycle, each picked by row exactly as the
-     side rim itself is (cadPick on the y axis, so an interior leg stays in
-     step with the wall beside it), until the column meets a rim row, an
-     edge or a slope. Column cells continue themselves. Column cells leave
-     the deep pool. Off, or a side with no cells assigned: nothing grows. */
-  if (ct.RIM_COLUMNS && ct.TRANSITION && deepKeys.length) {
-    const T = ct.TRANSITION, rv = ct.RIM_VARIANTS || {};
-    const left = rv.left && rv.left.length ? rv.left : null, right = rv.right && rv.right.length ? rv.right : null;   // v6.90.2: sides are optional — unassigned means no legs
-    const sideOf = {};   // "ax,ay" -> the cycle that runs beneath it
-    if (left) { if (T.iTL) sideOf[T.iTL[0] + "," + T.iTL[1]] = left; for (const q of left) sideOf[q[0] + "," + q[1]] = left; }
-    if (right) { if (T.iTR) sideOf[T.iTR[0] + "," + T.iTR[1]] = right; for (const q of right) sideOf[q[0] + "," + q[1]] = right; }
-    const keep = [];
-    const top = deepKeys.slice().sort((a, b) => { const [ac, ar] = a.split(",").map(Number), [bc, br] = b.split(",").map(Number); return ar - br || ac - bc; });
-    for (const k of top) {
-      const [c, r] = k.split(",").map(Number);
-      const ak = K(c, r - 1), above = cells[ak], t = out[ak];
-      const cyc = above && above.kind !== "slope" && t ? sideOf[t.ax + "," + t.ay] : null;
-      if (cyc) { const vc = cadPick(cyc, r, c, r, "y", 2); out[k] = { ax: vc[0], ay: vc[1] }; } else keep.push(k);
-    }
-    deepKeys.length = 0; for (const k of keep) deepKeys.push(k);
-  }
+  /* v6.90 SIDES CONTINUE BELOW CORNERS post-loop pass retired in v6.106 — pillars are decided before the loop (see PILLARS FIRST). */
   if (deepKeys.length) {
     const pool = effDeepVariants(ct);
     const primary = pool[0];
@@ -2322,6 +2376,14 @@ const APP_MODE = (() => { try { return localStorage.getItem(PROJ_TYPE_KEY) === "
 const projType = (rec) => (rec && (rec.type === "bg" || (rec.keys && rec.keys[PROJ_TYPE_KEY] === "bg"))) ? "bg" : "tiles";
 const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const PROJ_ACTIVE = "tessera.activeProject";
+/* v6.106 — exports carry the project's name (James 2026-09-07): <slug>.png,
+   <slug>.rules.json, <slug>.room.json — the same names the GitHub sync uses,
+   instead of the format's generic autotile_template / tessera_v3 names. */
+let projExportSlug = null;
+function exportName(kind) {
+  const base = projExportSlug || (kind === "png" ? CT.filename.replace(/\.png$/, "") : "tessera_" + CT.id);
+  return kind === "png" ? base + ".png" : kind === "rules" ? base + ".rules.json" : base + ".room.json";
+}
 
 function projDB() {
   return new Promise((res, rej) => {
@@ -2386,6 +2448,7 @@ if (!activeProjectId) {
   try { localStorage.setItem(PROJ_ACTIVE, rec.id); } catch (e) {}
   projPut(rec).catch(() => {});
 }
+projGet(activeProjectId).then((rec) => { if (rec && rec.name) projExportSlug = projSlug(rec); }).catch(() => {});   // v6.106: exports carry the project name
 
 /* Snapshot insurance: iPad Safari can kill background tabs, so bank the
    open project whenever the page goes hidden. Best-effort, async. */
@@ -6639,7 +6702,7 @@ function shareJSON(json, filename) {
   status("Saved " + filename + ".");
 }
 $("btnRulesExport").addEventListener("click", () => {
-  shareJSON(JSON.stringify(rulesPayload()), "tessera_" + CT.id + ".rules.json");
+  shareJSON(JSON.stringify(rulesPayload()), exportName("rules"));
 });
 $("btnRoomExport").addEventListener("click", () => {
   if (layoutMode !== "field") { status("Rooms export from the Level tab."); return; }
@@ -6648,7 +6711,7 @@ $("btnRoomExport").addEventListener("click", () => {
     rulesHash: rulesHash(),
     gcols: fieldCols, grows: fieldRows, fills, slopes: userSlopes,
     resolved,   // baked layer: the deterministic resolver's output for this geometry
-  }), "tessera_room.json");
+  }), exportName("room"));
 });
 function importRules(data) {
   const touched = [];
@@ -7005,7 +7068,7 @@ function sharePng(url, filename) {   // v6.63: shared by sheet export, flat back
 }
 $("btnSave").addEventListener("click", () => {
   if (APP_MODE === "bg") { if (float) floatFlatten(); sharePng(bgComposite().toDataURL("image/png"), CT.filename); return; }   // flattened stack
-  sharePng(ed.toDataURL("image/png"), CT.filename);
+  sharePng(ed.toDataURL("image/png"), exportName("png"));
 });
 function persistPng() {
   if (APP_MODE === "bg") { bgPersist(); return; }
@@ -7703,7 +7766,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.105.0";
+const APP_VERSION = "6.106.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
