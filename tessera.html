@@ -1365,7 +1365,14 @@ function resolveAll(cells, ct) {
       }
       if (ct.TRANSITION) {
         const T = ct.TRANSITION;
-        const isEdge = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && n.kind !== "slope" && masks[kk] !== 255); };
+        /* v6.102 — RIM MEETS WEDGE (James 2026-09-07): the rim straights terminate
+           INTO a wedge rather than hooking around it. With Rim joints on, a
+           seam underlay (the wedge's base column) counts as an edge for the rim
+           cell BESIDE it, so a side rim runs one cell further and stops on the
+           diagonal; open-column underlays and surfaces stay invisible, so the
+           cell behind them is core as before ("nothing beneath a wedge knows
+           it is there"). Off, or on the 7×7: unchanged. */
+        const isEdge = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (jointsOn(ct) && n.seamBand && dc !== 0))); };
         const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
         const eN = isEdge(0,-1) || !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand);
         const eS = isEdge(0, 1) || !!(below && below.kind === "slope" && below.face === "c" && below.seamBand);
@@ -1388,7 +1395,7 @@ function resolveAll(cells, ct) {
           const mouth = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk], mm = masks[kk]; return !!(n && n.kind !== "slope" && mm !== undefined && mm !== 255 && (mm & 85) === 85); };
           const mNE = mouth(1,-1), mNW = mouth(-1,-1), mSE = mouth(1,1), mSW = mouth(-1,1);
           const nm = (mNE?1:0) + (mNW?1:0) + (mSE?1:0) + (mSW?1:0);
-          const dNE = isEdge(1,-1), dNW = isEdge(-1,-1), dSE = isEdge(1,1), dSW = isEdge(-1,1);   // v6.101: hoisted (were inside the ncard === 0 branch)
+          const dNE = mouth(1,-1), dNW = mouth(-1,-1), dSE = mouth(1,1), dSW = mouth(-1,1);   // v6.102: a diagonal contact is a CONCAVE corner (mouth), not any edge — a straight edge seen through a wedge gap (the chamfer case) is not a bend or a hook. v6.101 used isEdge; the 7×7 and every fixture read identically.
           const nd = (dNE?1:0) + (dNW?1:0) + (dSE?1:0) + (dSW?1:0);
           /* v6.101 — HOOKED STRAIGHTS AND CORNERS (James 2026-09-07, Tech 3):
              a rim straight whose FAR diagonal(s) — the corners away from its
@@ -7666,7 +7673,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.101.0";
+const APP_VERSION = "6.102.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
