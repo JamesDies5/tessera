@@ -1439,6 +1439,7 @@ function resolveAll(cells, ct) {
           else if (ncard === 2 && eW && eE) jk = "pinchV";
           else if (ncard === 0) {
             if (nd === 4 && ct.JOINTS.cross) jk = "cross";   // v6.101: two thin walls crossing — four mouths, no cardinal edge (was "chamber center = core")
+            else if (nm === 3 && ct.JOINTS[!mNW ? "iB_NE" : !mNE ? "iB_NW" : !mSW ? "iT_SE" : "iT_SW"]) jk = !mNW ? "iB_NE" : !mNE ? "iB_NW" : !mSW ? "iT_SE" : "iT_SW";   /* v6.104 — TRIPLE BEND (James 2026-09-07): three concave corners and no flat edge — a crossing with one solid quadrant, or a thin wall meeting a jog. Read as the hooked STRAIGHT along the face the two adjacent mouths share, hook at the third; the horizontal face wins (the vertical reading is equally connected — a preference rule if a room wants it). Was core. */
             else if (nd === 1) jk = bNE ? "bendNE" : bNW ? "bendNW" : bSE ? "bendSE" : "bendSW";
             else if (nd === 2 && bNE && bSW) jk = "diagA";
             else if (nd === 2 && bNW && bSE) jk = "diagB";
@@ -7682,7 +7683,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.103.4";
+const APP_VERSION = "6.104.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
