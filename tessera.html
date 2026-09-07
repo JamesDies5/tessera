@@ -1237,15 +1237,30 @@ function resolveAll(cells, ct) {
     const sideOf = {}, footOf = {};
     if (left) { if (T.iTL) sideOf[T.iTL[0] + "," + T.iTL[1]] = "left"; for (const q of left) sideOf[q[0] + "," + q[1]] = "left"; if (T.iBL) footOf[T.iBL[0] + "," + T.iBL[1]] = "left"; }
     if (right) { if (T.iTR) sideOf[T.iTR[0] + "," + T.iTR[1]] = "right"; for (const q of right) sideOf[q[0] + "," + q[1]] = "right"; if (T.iBR) footOf[T.iBR[0] + "," + T.iBR[1]] = "right"; }
-    /* What a rim cell resolves to on the non-joint path, as "ax,ay" (null for
-       core or a joint claim). Mirrors the TRANSITION path and the joint rules
-       that pre-empt it, so a head is exactly a cell the old pass would have
-       found a side-cycle tile in. */
+    /* v6.107 — WALLS, PILLARS AND STRIPS SETTLE TOGETHER (James 2026-09-07). A
+       wall beside a cell is a real edge, or (Rim joints on) the outer face of a
+       pillar head/leg/foot, or either face of a thin STRIP. A strip is a run of
+       pinch cells — walls on both sides, none above/below — and it keeps going
+       while ONE of its side walls continues and the cell on the side that lost
+       its wall is itself a rim cell (it has an edge of its own): that cell then
+       sees the strip as a wall and closes its ring with a corner. Where BOTH
+       walls end at once (an arm entering a mass) the strip stops, so the T
+       rules are untouched. Heads and legs are read with these walls, so a
+       pinch beside a pillar is never mistaken for a side rim. Iterated to a
+       fixed point (bounded). Joints off: real edges only, identical to v6.90. */
+    const jo = jointsOn(ct);
+    const wallAt = (c, r, dc, dr) => {
+      if (pe(c, r, dc, dr)) return true;
+      if (!jo || dr !== 0) return false;
+      const q = pillar[K(c + dc, r + dr)]; if (!q) return false;
+      if (q.strip) return true;
+      return (q.side === "right" && dc === -1) || (q.side === "left" && dc === 1);
+    };
     const claimed = (c, r, eN, eS, eW, eE) => {
-      if (!jointsOn(ct)) return false;
+      if (!jo) return false;
       const n = (eN?1:0)+(eS?1:0)+(eW?1:0)+(eE?1:0);
-      if (n >= 3) return true;                                             // caps, dot
-      if (n === 2 && ((eN && eS) || (eW && eE))) return true;               // pinches
+      if (n >= 3) return true;
+      if (n === 2 && ((eN && eS) || (eW && eE))) return true;
       let hk = null;
       if (n === 1) { const [x, y, base, na, nb] = eN ? [pe(c,r,-1,1), pe(c,r,1,1), "iT", "SW", "SE"] : eS ? [pe(c,r,-1,-1), pe(c,r,1,-1), "iB", "NW", "NE"] : eW ? [pe(c,r,1,-1), pe(c,r,1,1), "iL", "NE", "SE"] : [pe(c,r,-1,-1), pe(c,r,-1,1), "iR", "NW", "SW"]; if (x || y) hk = base + "_" + (x ? na : "") + (y ? nb : ""); }
       else if (n === 2) hk = eN && eW && pe(c,r,1,1) ? "iTL_SE" : eN && eE && pe(c,r,-1,1) ? "iTR_SW" : eS && eW && pe(c,r,1,-1) ? "iBL_NE" : eS && eE && pe(c,r,-1,-1) ? "iBR_NW" : null;
@@ -1260,33 +1275,54 @@ function resolveAll(cells, ct) {
       else if (row && col) vc = T["i" + row + col];
       return vc ? vc[0] + "," + vc[1] : null;
     };
-    for (const k of Object.keys(cells)) {
-      const v = cells[k]; if (v.kind === "slope" || masks[k] !== 255) continue;
-      const [c, r] = k.split(",").map(Number);
-      const eN = cN(c, r), eS = cS(c, r), eW = pe(c, r, -1, 0), eE = pe(c, r, 1, 0);
-      if (!eN && !eS && !eW && !eE) continue;                              // core (or an ncard-0 joint): never a head
-      const pk = pickOf(c, r, eN, eS, eW, eE); if (!pk) continue;
-      const side = sideOf[pk];
-      if (side) {
-        pillar[k] = { side, head: true };
-        for (let rr = r + 1; ; rr++) {                                      // legs: down through cells with no cardinal edge, as the old pass grew into core
-          const kk = K(c, rr), n = cells[kk];
-          if (!n || n.kind === "slope" || masks[kk] !== 255) break;
-          const lN = cN(c, rr), lS = cS(c, rr), lW = pe(c, rr, -1, 0), lE = pe(c, rr, 1, 0);
-          const bare = !lN && !lS && !lW && !lE;
-          const sandwich = (lN === lS) && (lW === lE) && !bare;             // opposite pairs: core when joints are off, a pinch/dot when on
-          if (!(bare || (sandwich && !jointsOn(ct)))) {
-            /* v6.106.1 — FOOT (James 2026-09-07): the bottom rim cell the column lands on
-               closes the ring with the column's corner (D4 under a right column, B4 under a
-               left one) instead of the bottom cadence's pick. It resolves as a bottom straight
-               that also sees the pillar's wall down its own side. Rim joints on only. */
-            if (jointsOn(ct) && lS && !lN && !pillar[kk]) pillar[kk] = { side, foot: true, wall: true };
-            break;
+    const keys = Object.keys(cells).filter((k) => cells[k].kind !== "slope" && masks[k] === 255)
+      .map((k) => k.split(",").map(Number)).sort((p, q) => p[1] - q[1] || p[0] - q[0]);
+    for (let pass = 0; pass < 8; pass++) {
+      const before = JSON.stringify(pillar);
+      for (const kk of Object.keys(pillar)) if (!pillar[kk].strip) delete pillar[kk];   // pillars are rebuilt each pass; strips accumulate
+      for (const [c, r] of keys) {
+        const k = K(c, r); if (pillar[k]) continue;
+        const eN = cN(c, r), eS = cS(c, r), eW = wallAt(c, r, -1, 0), eE = wallAt(c, r, 1, 0);
+        if (!eN && !eS && !eW && !eE) continue;
+        const pk = pickOf(c, r, eN, eS, eW, eE); if (!pk) continue;
+        const side = sideOf[pk];
+        if (side) {
+          pillar[k] = { side, head: true };
+          for (let rr = r + 1; ; rr++) {
+            const k2 = K(c, rr), n = cells[k2];
+            if (!n || n.kind === "slope" || masks[k2] !== 255) break;
+            const lN = cN(c, rr), lS = cS(c, rr), lW = wallAt(c, rr, -1, 0), lE = wallAt(c, rr, 1, 0);
+            const bare = !lN && !lS && !lW && !lE;
+            const sandwich = (lN === lS) && (lW === lE) && !bare;
+            if (!(bare || (sandwich && !jo))) {
+              if (jo && lS && !lN && !pillar[k2]) pillar[k2] = { side, foot: true, wall: true };   // v6.106.1: the foot closes the ring
+              break;
+            }
+            if (pillar[k2]) break;
+            pillar[k2] = { side, leg: true };
           }
-          if (pillar[kk]) break;
-          pillar[kk] = { side, leg: true };
-        }
-      } else if (footOf[pk] && eS && !eN) pillar[k] = { side: footOf[pk], foot: true };
+        } else if (footOf[pk] && eS && !eN) pillar[k] = { side: footOf[pk], foot: true };
+      }
+      if (jo) for (const [c, r] of keys) {
+        const k = K(c, r); if (pillar[k] && !pillar[k].strip) continue;
+        const eN = cN(c, r), eS = cS(c, r); if (eN || eS) continue;
+        const wW = wallAt(c, r, -1, 0), wE = wallAt(c, r, 1, 0);
+        if (wW && wE) { pillar[k] = { strip: true }; continue; }
+        if (!(wW || wE)) continue;
+        const up = pillar[K(c, r - 1)], dn = pillar[K(c, r + 1)];
+        if (!((up && up.strip) || (dn && dn.strip))) continue;
+        const lost = wW ? 1 : -1, nk = K(c + lost, r), nc = cells[nk];
+        if (!nc || nc.kind === "slope" || masks[nk] !== 255) continue;
+        const nN = cN(c + lost, r), nS = cS(c + lost, r);
+        if (!(nN || nS)) continue;                                        // the neighbour must be a rim cell of its own
+        /* the corner it will take has a second line running away from its edge — down from a
+           top rim, up from a bottom rim — and that line needs somewhere to go: an edge, a rim
+           cell, or a pillar/strip wall there. Into core it would dangle, so no continuation. */
+        const dy = nN ? 1 : -1, tk = K(c + lost, r + dy), tc = cells[tk];
+        const landing = !!(tc && (tc.kind === "slope" || masks[tk] !== 255 || cN(c + lost, r + dy) || cS(c + lost, r + dy) || wallAt(c + lost, r + dy, -1, 0) || wallAt(c + lost, r + dy, 1, 0)));
+        if (landing) pillar[k] = { strip: true };
+      }
+      if (JSON.stringify(pillar) === before) break;
     }
   }
   for (const k of Object.keys(cells)) {
@@ -1473,13 +1509,13 @@ function resolveAll(cells, ct) {
            sees a synthetic edge on its own side, then takes the normal path (side
            cadence, or a hooked side when a far corner meets an edge). Beside a pillar,
            with Rim joints on, the pillar's outer face is a wall to the neighbour. */
-        const pillarWall = (dc, dr) => { const q = pillar[K(c + dc, r + dr)]; return !!(q && dr === 0 && jointsOn(ct) && ((q.side === "right" && dc === -1) || (q.side === "left" && dc === 1))); };
+        const pillarWall = (dc, dr) => { const q = pillar[K(c + dc, r + dr)]; return !!(q && dr === 0 && jointsOn(ct) && (q.strip || (q.side === "right" && dc === -1) || (q.side === "left" && dc === 1))); };   // v6.107: a strip walls both its neighbours
         const isEdge = (dc, dr) => { if (pillarWall(dc, dr)) return true; const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wedgeTerm && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85)   /* v6.103.2: BASE underlay only — the open-end underlay also sees air beside its surface and must not stand in for a wall */)); };
         const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
         const eN = isEdge(0,-1) || (!wedgeTerm && !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand));
         const eS = isEdge(0, 1) || (!wedgeTerm && !!(below && below.kind === "slope" && below.face === "c" && below.seamBand));
-        const leg = pillar[k] && pillar[k].leg ? pillar[k].side : null, foot = pillar[k] && pillar[k].wall ? pillar[k].side : null;
-        const eW = leg ? leg === "left" : (isEdge(-1,0) || foot === "left"), eE = leg ? leg === "right" : (isEdge(1,0) || foot === "right");   // v6.106: a leg reads only its own side sideways; a foot adds the pillar's side to what it really sees
+        const leg = pillar[k] && pillar[k].leg ? pillar[k].side : null, foot = pillar[k] && pillar[k].wall ? pillar[k].side : null, strip = !!(pillar[k] && pillar[k].strip);
+        const eW = strip ? true : leg ? leg === "left" : (isEdge(-1,0) || foot === "left"), eE = strip ? true : leg ? leg === "right" : (isEdge(1,0) || foot === "right");   // v6.107: a strip cell is walled on both sides   // v6.106: a leg reads only its own side sideways; a foot adds the pillar's side to what it really sees
         /* v6.52 — tier-1 JOINTS (7×7 only): degenerate contact patterns.
            3 cardinals → cap; 4 → dot; opposite pair → pinch (3-wide
            corridors change from edge/core/edge to edge/ring-line/edge in v4;
@@ -7773,7 +7809,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.106.1";
+const APP_VERSION = "6.107.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
