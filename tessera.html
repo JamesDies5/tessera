@@ -1405,7 +1405,7 @@ function resolveAll(cells, ct) {
           const bNE = isEdge(1,-1), bNW = isEdge(-1,-1), bSE = isEdge(1,1), bSW = isEdge(-1,1);   // v6.103.3: hooks, bends, diagonals and the cross all read ANY edge diagonally (back to v6.101). v6.102 had limited hooks to concave corners to stop a hook through the 45° chamfer gap; the base-column stand-in (v6.103.2) closes that gap properly, and an attach cell where a slope meets a wall must be a hook's contact (James's B14 at the slope-top junction).
           const dNE = bNE, dNW = bNW, dSE = bSE, dSW = bSW;
           const nd = (bNE?1:0) + (bNW?1:0) + (bSE?1:0) + (bSW?1:0);
-          const wCard = wedgeTerm && (wedgeAt(0,-1) || wedgeAt(0,1) || wedgeAt(-1,0) || wedgeAt(1,0));
+          /* v6.103.4: the v6.103 "beside a wedge with no flat edge = core" guard is withdrawn — wedges are not edges, so those cells were core already, and the guard blocked a real bend: the ring turning under a wedge's end into a jogged wall (James's I16). */
           /* v6.101 — HOOKED STRAIGHTS AND CORNERS (James 2026-09-07, Tech 3):
              a rim straight whose FAR diagonal(s) — the corners away from its
              edge — meet a concave edge keeps its line and grows a hook there:
@@ -1438,8 +1438,7 @@ function resolveAll(cells, ct) {
           else if (ncard === 2 && eN && eS) jk = "pinchH";
           else if (ncard === 2 && eW && eE) jk = "pinchV";
           else if (ncard === 0) {
-            if (wCard) { /* v6.103: beside or beneath a wedge with no flat edge — core */ }
-            else if (nd === 4 && ct.JOINTS.cross) jk = "cross";   // v6.101: two thin walls crossing — four mouths, no cardinal edge (was "chamber center = core")
+            if (nd === 4 && ct.JOINTS.cross) jk = "cross";   // v6.101: two thin walls crossing — four mouths, no cardinal edge (was "chamber center = core")
             else if (nd === 1) jk = bNE ? "bendNE" : bNW ? "bendNW" : bSE ? "bendSE" : "bendSW";
             else if (nd === 2 && bNE && bSW) jk = "diagA";
             else if (nd === 2 && bNW && bSE) jk = "diagB";
@@ -7683,7 +7682,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.103.3";
+const APP_VERSION = "6.103.4";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
