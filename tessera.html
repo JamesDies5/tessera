@@ -1365,17 +1365,24 @@ function resolveAll(cells, ct) {
       }
       if (ct.TRANSITION) {
         const T = ct.TRANSITION;
-        /* v6.102 — RIM MEETS WEDGE (James 2026-09-07): the rim straights terminate
-           INTO a wedge rather than hooking around it. With Rim joints on, a
-           seam underlay (the wedge's base column) counts as an edge for the rim
-           cell BESIDE it, so a side rim runs one cell further and stops on the
-           diagonal; open-column underlays and surfaces stay invisible, so the
-           cell behind them is core as before ("nothing beneath a wedge knows
-           it is there"). Off, or on the 7×7: unchanged. */
-        const isEdge = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (jointsOn(ct) && n.seamBand && dc !== 0))); };
+        /* v6.103 — RIM MEETS WEDGE (James 2026-09-07, five slope rooms marked up):
+           with RIM_WEDGES "terminate" the rim comes from FLAT edges only. A
+           cell whose only contact is a wedge is core (the seam-underlay
+           edge-above/below rule of July is off in this mode); a straight runs
+           alongside a wedge unchanged and simply stops; a rim CORNER against a
+           wedge stays a plain corner (v6.103.1 — the hooked corner was tried
+           and read wrong at size). One stand-in: a wedge underlay sitting in the wall's own
+           column (a cardinal neighbour is air) counts as that wall for the rim
+           cell beside it, so the side rim reaches the 45° chamfer instead of
+           stopping a cell short. v6.102's seam-beside rule (tuned on the 45°
+           case, wrong for 2:1 and 3:1) is withdrawn. Absent key, or the 7×7:
+           unchanged. */
+        const wedgeTerm = ct.RIM_WEDGES === "terminate";
+        const wedgeAt = (dc, dr) => { const n = cells[K(c + dc, r + dr)]; return !!(n && n.kind === "slope"); };
+        const isEdge = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wedgeTerm && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85)   /* v6.103.2: BASE underlay only — the open-end underlay also sees air beside its surface and must not stand in for a wall */)); };
         const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
-        const eN = isEdge(0,-1) || !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand);
-        const eS = isEdge(0, 1) || !!(below && below.kind === "slope" && below.face === "c" && below.seamBand);
+        const eN = isEdge(0,-1) || (!wedgeTerm && !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand));
+        const eS = isEdge(0, 1) || (!wedgeTerm && !!(below && below.kind === "slope" && below.face === "c" && below.seamBand));
         const eW = isEdge(-1,0), eE = isEdge(1,0);
         /* v6.52 — tier-1 JOINTS (7×7 only): degenerate contact patterns.
            3 cardinals → cap; 4 → dot; opposite pair → pinch (3-wide
@@ -1395,8 +1402,10 @@ function resolveAll(cells, ct) {
           const mouth = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk], mm = masks[kk]; return !!(n && n.kind !== "slope" && mm !== undefined && mm !== 255 && (mm & 85) === 85); };
           const mNE = mouth(1,-1), mNW = mouth(-1,-1), mSE = mouth(1,1), mSW = mouth(-1,1);
           const nm = (mNE?1:0) + (mNW?1:0) + (mSE?1:0) + (mSW?1:0);
-          const dNE = mouth(1,-1), dNW = mouth(-1,-1), dSE = mouth(1,1), dSW = mouth(-1,1);   // v6.102: a diagonal contact is a CONCAVE corner (mouth), not any edge — a straight edge seen through a wedge gap (the chamfer case) is not a bend or a hook. v6.101 used isEdge; the 7×7 and every fixture read identically.
-          const nd = (dNE?1:0) + (dNW?1:0) + (dSE?1:0) + (dSW?1:0);
+          const bNE = isEdge(1,-1), bNW = isEdge(-1,-1), bSE = isEdge(1,1), bSW = isEdge(-1,1);   // v6.103.3: hooks, bends, diagonals and the cross all read ANY edge diagonally (back to v6.101). v6.102 had limited hooks to concave corners to stop a hook through the 45° chamfer gap; the base-column stand-in (v6.103.2) closes that gap properly, and an attach cell where a slope meets a wall must be a hook's contact (James's B14 at the slope-top junction).
+          const dNE = bNE, dNW = bNW, dSE = bSE, dSW = bSW;
+          const nd = (bNE?1:0) + (bNW?1:0) + (bSE?1:0) + (bSW?1:0);
+          const wCard = wedgeTerm && (wedgeAt(0,-1) || wedgeAt(0,1) || wedgeAt(-1,0) || wedgeAt(1,0));
           /* v6.101 — HOOKED STRAIGHTS AND CORNERS (James 2026-09-07, Tech 3):
              a rim straight whose FAR diagonal(s) — the corners away from its
              edge — meet a concave edge keeps its line and grows a hook there:
@@ -1413,7 +1422,7 @@ function resolveAll(cells, ct) {
             const [a, b, base, na, nb] = eN ? [dSW, dSE, "iT", "SW", "SE"] : eS ? [dNW, dNE, "iB", "NW", "NE"] : eW ? [dNE, dSE, "iL", "NE", "SE"] : [dNW, dSW, "iR", "NW", "SW"];
             if (a || b) hk = base + "_" + (a ? na : "") + (b ? nb : "");
           } else if (ncard === 2 && !(eN && eS) && !(eW && eE)) {
-            hk = eN && eW && dSE ? "iTL_SE" : eN && eE && dSW ? "iTR_SW" : eS && eW && dNE ? "iBL_NE" : eS && eE && dNW ? "iBR_NW" : null;
+            hk = eN && eW && dSE ? "iTL_SE" : eN && eE && dSW ? "iTR_SW" : eS && eW && dNE ? "iBL_NE" : eS && eE && dNW ? "iBR_NW" : null;   // v6.103.1: a corner against a wedge is a PLAIN corner (B4/D4) — its line runs straight into the underlay; the hooked corner read wrong at size (James 2026-09-07)
           }
           if (hk && ct.JOINTS[hk]) jk = hk;
           else if (ncard === 4) jk = "dot";
@@ -1429,10 +1438,11 @@ function resolveAll(cells, ct) {
           else if (ncard === 2 && eN && eS) jk = "pinchH";
           else if (ncard === 2 && eW && eE) jk = "pinchV";
           else if (ncard === 0) {
-            if (nd === 4 && ct.JOINTS.cross) jk = "cross";   // v6.101: two thin walls crossing — four mouths, no cardinal edge (was "chamber center = core")
-            else if (nd === 1) jk = dNE ? "bendNE" : dNW ? "bendNW" : dSE ? "bendSE" : "bendSW";
-            else if (nd === 2 && dNE && dSW) jk = "diagA";
-            else if (nd === 2 && dNW && dSE) jk = "diagB";
+            if (wCard) { /* v6.103: beside or beneath a wedge with no flat edge — core */ }
+            else if (nd === 4 && ct.JOINTS.cross) jk = "cross";   // v6.101: two thin walls crossing — four mouths, no cardinal edge (was "chamber center = core")
+            else if (nd === 1) jk = bNE ? "bendNE" : bNW ? "bendNW" : bSE ? "bendSE" : "bendSW";
+            else if (nd === 2 && bNE && bSW) jk = "diagA";
+            else if (nd === 2 && bNW && bSE) jk = "diagB";
           }
           if (jk) { const jc = ct.JOINTS[jk]; out[k] = { ax: jc[0], ay: jc[1] }; continue; }
         }
@@ -7673,7 +7683,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.102.0";
+const APP_VERSION = "6.103.3";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
