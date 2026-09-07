@@ -1275,7 +1275,14 @@ function resolveAll(cells, ct) {
           const lN = cN(c, rr), lS = cS(c, rr), lW = pe(c, rr, -1, 0), lE = pe(c, rr, 1, 0);
           const bare = !lN && !lS && !lW && !lE;
           const sandwich = (lN === lS) && (lW === lE) && !bare;             // opposite pairs: core when joints are off, a pinch/dot when on
-          if (!(bare || (sandwich && !jointsOn(ct)))) break;
+          if (!(bare || (sandwich && !jointsOn(ct)))) {
+            /* v6.106.1 — FOOT (James 2026-09-07): the bottom rim cell the column lands on
+               closes the ring with the column's corner (D4 under a right column, B4 under a
+               left one) instead of the bottom cadence's pick. It resolves as a bottom straight
+               that also sees the pillar's wall down its own side. Rim joints on only. */
+            if (jointsOn(ct) && lS && !lN && !pillar[kk]) pillar[kk] = { side, foot: true, wall: true };
+            break;
+          }
           if (pillar[kk]) break;
           pillar[kk] = { side, leg: true };
         }
@@ -1471,8 +1478,8 @@ function resolveAll(cells, ct) {
         const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
         const eN = isEdge(0,-1) || (!wedgeTerm && !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand));
         const eS = isEdge(0, 1) || (!wedgeTerm && !!(below && below.kind === "slope" && below.face === "c" && below.seamBand));
-        const leg = pillar[k] && pillar[k].leg ? pillar[k].side : null;
-        const eW = leg ? leg === "left" : isEdge(-1,0), eE = leg ? leg === "right" : isEdge(1,0);   // v6.106: a leg reads only its own side sideways
+        const leg = pillar[k] && pillar[k].leg ? pillar[k].side : null, foot = pillar[k] && pillar[k].wall ? pillar[k].side : null;
+        const eW = leg ? leg === "left" : (isEdge(-1,0) || foot === "left"), eE = leg ? leg === "right" : (isEdge(1,0) || foot === "right");   // v6.106: a leg reads only its own side sideways; a foot adds the pillar's side to what it really sees
         /* v6.52 — tier-1 JOINTS (7×7 only): degenerate contact patterns.
            3 cardinals → cap; 4 → dot; opposite pair → pinch (3-wide
            corridors change from edge/core/edge to edge/ring-line/edge in v4;
@@ -7766,7 +7773,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.106.0";
+const APP_VERSION = "6.106.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
