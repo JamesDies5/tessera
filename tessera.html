@@ -654,6 +654,7 @@
   <div id="rulesRim" style="display:contents"></div>
   <div id="rulesCenter"><!-- v6.93: moved into the middle of the Edges ring while that mode is up -->
   <div class="rulesRow" id="rulesSidesRow" style="display:none"><label class="rulesCheck"><input type="checkbox" id="rulesSidesCol"> Sides continue below corners</label></div>
+  <div class="rulesRow" id="rulesJointsRow" style="display:none"><label class="rulesCheck"><input type="checkbox" id="rulesJoints"> Rim joints</label><span class="rulesNote" id="rulesJointsNote"></span></div><!-- v6.100 -->
   <div class="rulesRow" id="rulesCadRow" style="display:none">
     <label class="rulesCheck"><input type="checkbox" id="rulesAnchor"> Count edge tiles from each corner</label>
     <span class="rulesNote" id="rulesCadNote"></span>
@@ -974,6 +975,7 @@ const CONTRACTS = {
     "JOINTS2": {"capN":[7,7],"capS":[7,8],"capW":[8,6],"capE":[9,6],"dot":[10,6],"diagA":[11,6],"diagB":[12,6],"pinchV":[2,3],"pinchH":[3,2],"bendNE":[2,4],"bendNW":[4,4],"bendSE":[2,2],"bendSW":[4,2],"tN":[11,8],"tS":[11,7],"tE":[9,8],"tW":[10,8],"cnvNE":[4,2],"cnvNW":[2,2],"cnvSE":[4,4],"cnvSW":[2,4],"closeW":[4,3],"closeE":[2,3],"closeN":[3,4],"closeS":[3,2]},
     "ZOO_ROWS": 94,
     "CADENCE_ANCHOR": "run",
+    "RIM_JOINTS": true,   // v6.100: joints are a per-project switch; absent = off. The 7×7 template ships on.
   },
 };
 
@@ -1128,6 +1130,13 @@ function addSlopeSupports(cells) {
    passes so interior cells can see their neighbours' masks (the LDtk-style
    distance-2 rule; skipped when the contract has no rim). Slope cells were
    stamped at expansion time and are never re-resolved. */
+/* v6.100 — RIM JOINTS SWITCH (James 2026-09-07): a contract may carry a
+   JOINTS table without using it. The resolver and the zoo read the switch,
+   never the table's presence, so the day the 5×5 template ships a JOINTS
+   table, projects that never opted in (Lavune Cave…) resolve exactly as
+   before. Written explicitly true/false by the Edges tray, like
+   CADENCE_ANCHOR, so an explicit off survives the additive template fill. */
+const jointsOn = (ct) => !!ct.JOINTS && ct.RIM_JOINTS === true;
 function resolveAll(cells, ct) {
   const masks = {};
   for (const k of Object.keys(cells)) {
@@ -1368,7 +1377,7 @@ function resolveAll(cells, ct) {
            1 diagonal → concave bend (reuses convex-corner art); 0 cardinals
            + opposite diagonals → stairstep diagonal. Everything else falls
            through to the existing band/corner/tier-2 flow unchanged. */
-        if (ct.JOINTS) {
+        if (jointsOn(ct)) {
           const ncard = (eN?1:0) + (eS?1:0) + (eW?1:0) + (eE?1:0);
           /* v6.54 — T-joints fire on the MOUTH-CORNER diagonal pair (concave
              corner cells: all cardinals filled, a diagonal open) whenever the
@@ -1447,7 +1456,7 @@ function resolveAll(cells, ct) {
              deliberately point at the same cells the old top/west-wins
              sandwich produced, so 5-wide corridors render identically —
              only the semantics got honest. */
-          if (ct.JOINTS2) {
+          if (ct.JOINTS2 && jointsOn(ct)) {
             const nc2 = (e2N?1:0) + (e2S?1:0) + (e2W?1:0) + (e2E?1:0);
             /* v6.55 — three mouth-pair signatures at the deeper tier
                (probe-derived from the zoo sentinels, James 2026-07-28):
@@ -2086,7 +2095,7 @@ function buildZooCells(ct) {
      3-wide corridor T (chamber center — James judges the straight-with-both-
      bars rendering here), 45° staircase mass (bends + diagonals, both tiers),
      5-wide tower and 5×5 blob (deeper caps/pinch/dot). */
-  if (ct.JOINTS) {
+  if (jointsOn(ct)) {
     rect(1, 37, 3, 44);                                    // 3-wide tower
     rect(6, 40, 16, 42);                                   // 3-tall beam
     rect(19, 40, 21, 42);                                  // 3x3 blob
@@ -4994,7 +5003,7 @@ function pickAt(x, y) {
 
 /* ---- preview render (lazy when hidden) ---- */
 function rebuild() {
-  const wc = layoutMode === "zoo" ? (CT.ZOO_COLS || 44) : fieldCols, wr = layoutMode === "zoo" ? (CT.ZOO_ROWS || 26) : fieldRows;
+  const wc = layoutMode === "zoo" ? (CT.ZOO_COLS || 44) : fieldCols, wr = layoutMode === "zoo" ? (CT.ZOO_ROWS || (jointsOn(CT) ? 94 : 26)) : fieldRows;
   GCOLS = wc; GROWS = wr;
   if (pv.width !== wc * TILE || pv.height !== wr * TILE) {
     pv.width = wc * TILE; pv.height = wr * TILE;   // resize resets ctx state
@@ -5706,6 +5715,9 @@ function rulesRender() {
   $("rulesRim").style.display = rulesMode === "edges" ? "contents" : "none";
   $("rulesSidesRow").style.display = rulesMode === "edges" && CT.TRANSITION && CT.TRANSITION.iL ? "flex" : "none";   // v6.90: only formats with sides
   $("rulesSidesCol").checked = !!CT.RIM_COLUMNS;
+  $("rulesJointsRow").style.display = rulesMode === "edges" && CT.JOINTS ? "flex" : "none";   // v6.100: only layouts that carry a JOINTS table
+  $("rulesJoints").checked = jointsOn(CT);
+  $("rulesJointsNote").textContent = jointsOn(CT) ? "Pinches, caps, bends and T-joints use their own tiles." : "One-tile rims and inner bends fall back to the straights.";
   $("rulesCadRow").style.display = rulesMode === "edges" ? "flex" : "none";
   $("rulesVaryRow").style.display = rulesMode === "vary" ? "flex" : "none";
   if (rulesMode === "vary") { syncVarybar(); $("btnVaryDraw").style.display = onSheet ? "" : "none"; $("btnVaryErase").style.display = onSheet ? "" : "none"; rulesDrawSide(); }
@@ -6148,6 +6160,11 @@ $("rulesSidesCol").addEventListener("change", (e) => {   // v6.90
   materializeContract();
   if (e.target.checked) CT.RIM_COLUMNS = true; else delete CT.RIM_COLUMNS;   // absent = off, so an untouched layout stays template-equal
   rulesCommit(e.target.checked ? "Sides now continue down below the corners in the Top cycle." : "Sides stop at the rim.");
+});
+$("rulesJoints").addEventListener("change", (e) => {   // v6.100
+  materializeContract();
+  CT.RIM_JOINTS = !!e.target.checked;   // never deleted: an explicit off must survive the additive template fill
+  rulesCommit(e.target.checked ? "Rim joints on: one-tile rims and inner bends take their joint tiles." : "Rim joints off: the straights stand in.");
 });
 $("btnRulesLayoutReset").addEventListener("click", () => { if (confirm("Reset this project's layout to the " + CT.label + " template? Rim and edge settings go back to the defaults.")) rulesReset(); });
 
@@ -7630,7 +7647,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.99.1";
+const APP_VERSION = "6.100.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
