@@ -1388,8 +1388,28 @@ function resolveAll(cells, ct) {
           const mouth = (dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk], mm = masks[kk]; return !!(n && n.kind !== "slope" && mm !== undefined && mm !== 255 && (mm & 85) === 85); };
           const mNE = mouth(1,-1), mNW = mouth(-1,-1), mSE = mouth(1,1), mSW = mouth(-1,1);
           const nm = (mNE?1:0) + (mNW?1:0) + (mSE?1:0) + (mSW?1:0);
+          const dNE = isEdge(1,-1), dNW = isEdge(-1,-1), dSE = isEdge(1,1), dSW = isEdge(-1,1);   // v6.101: hoisted (were inside the ncard === 0 branch)
+          const nd = (dNE?1:0) + (dNW?1:0) + (dSE?1:0) + (dSW?1:0);
+          /* v6.101 — HOOKED STRAIGHTS AND CORNERS (James 2026-09-07, Tech 3):
+             a rim straight whose FAR diagonal(s) — the corners away from its
+             edge — meet a concave edge keeps its line and grows a hook there:
+             a thin wall leaving a thick one. Key = the straight it extends
+             plus the hooked corner(s): iT_SW, iT_SE, iT_SWSE, iB_NW…, iL_NE…,
+             iR_NW…; a rim corner with its opposite diagonal hooked is
+             iTL_SE / iTR_SW / iBL_NE / iBR_NW. Checked BEFORE the T rules so
+             a straight with an edge behind it never loses its line to a T.
+             Each fires only when the table carries the key, so a table without
+             them (the 7×7) resolves exactly as before. */
           let jk = null;
-          if (ncard === 4) jk = "dot";
+          let hk = null;
+          if (ncard === 1) {
+            const [a, b, base, na, nb] = eN ? [dSW, dSE, "iT", "SW", "SE"] : eS ? [dNW, dNE, "iB", "NW", "NE"] : eW ? [dNE, dSE, "iL", "NE", "SE"] : [dNW, dSW, "iR", "NW", "SW"];
+            if (a || b) hk = base + "_" + (a ? na : "") + (b ? nb : "");
+          } else if (ncard === 2 && !(eN && eS) && !(eW && eE)) {
+            hk = eN && eW && dSE ? "iTL_SE" : eN && eE && dSW ? "iTR_SW" : eS && eW && dNE ? "iBL_NE" : eS && eE && dNW ? "iBR_NW" : null;
+          }
+          if (hk && ct.JOINTS[hk]) jk = hk;
+          else if (ncard === 4) jk = "dot";
           /* lateral-open guards (v6.54): the mouth pair is visible from both
              sides — the ARM side has the corridor's side walls as flanks and
              must keep its line (pinch); only the MASS side, with open flanks,
@@ -1402,9 +1422,8 @@ function resolveAll(cells, ct) {
           else if (ncard === 2 && eN && eS) jk = "pinchH";
           else if (ncard === 2 && eW && eE) jk = "pinchV";
           else if (ncard === 0) {
-            const dNE = isEdge(1,-1), dNW = isEdge(-1,-1), dSE = isEdge(1,1), dSW = isEdge(-1,1);
-            const nd = (dNE?1:0) + (dNW?1:0) + (dSE?1:0) + (dSW?1:0);
-            if (nd === 1) jk = dNE ? "bendNE" : dNW ? "bendNW" : dSE ? "bendSE" : "bendSW";
+            if (nd === 4 && ct.JOINTS.cross) jk = "cross";   // v6.101: two thin walls crossing — four mouths, no cardinal edge (was "chamber center = core")
+            else if (nd === 1) jk = dNE ? "bendNE" : dNW ? "bendNW" : dSE ? "bendSE" : "bendSW";
             else if (nd === 2 && dNE && dSW) jk = "diagA";
             else if (nd === 2 && dNW && dSE) jk = "diagB";
           }
@@ -7647,7 +7666,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.100.0";
+const APP_VERSION = "6.101.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
