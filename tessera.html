@@ -1301,7 +1301,14 @@ function resolveAll(cells, ct) {
             if (pillar[k2]) break;
             pillar[k2] = { side, leg: true };
           }
-        } else if (footOf[pk] && eS && !eN) pillar[k] = { side: footOf[pk], foot: true };
+        } else if (footOf[pk] && eS && !eN) {
+          /* v6.107.1 — CADENCE CORNERS NEED A PILLAR (James 2026-09-07, "count from each
+             corner"): a bottom cycle can land corner art where no column comes down (the top
+             and bottom runs are out of phase). That cell is not a foot and must not wall its
+             neighbour into a cap; with Rim joints on it is demoted to the plain bottom straight.
+             Real feet are set by the column above before this cell is reached. */
+          if (jo) pillar[k] = { demote: true }; else pillar[k] = { side: footOf[pk], foot: true };
+        }
       }
       if (jo) for (const [c, r] of keys) {
         const k = K(c, r); if (pillar[k] && !pillar[k].strip) continue;
@@ -1582,7 +1589,7 @@ function resolveAll(cells, ct) {
         const col = eW && !eE ? "L" : eE && !eW ? "R" : "";
         if (row && !col && ct.RIM_VARIANTS) {
           const rv = ct.RIM_VARIANTS[row === "T" ? "top" : "bottom"];
-          const vc = cadPick(rv, c, c, r, "x", 2);
+          const vc = (pillar[k] && pillar[k].demote && T.iB) ? T.iB : cadPick(rv, c, c, r, "x", 2);   // v6.107.1: a cadence corner with no pillar above is the plain straight
           out[k] = { ax: vc[0], ay: vc[1] };
           continue;
         }
@@ -7809,7 +7816,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.107.0";
+const APP_VERSION = "6.107.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
