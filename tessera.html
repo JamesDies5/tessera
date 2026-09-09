@@ -116,9 +116,11 @@
   #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
     border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
     display: none; pointer-events: none; transform: translate(-50%, -115%); }
-  #btnConvert, #btnDeselect, #btnCopy, #btnCopyAll, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
-    height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto; }
-  #btnConvert:active, #btnDeselect:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active { background: var(--line); }
+  #btnConvert, #btnDeselect, #btnCut, #btnCopy, #btnCopyAll, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+    height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto;
+    display: inline-flex; align-items: center; gap: 6px; }
+  #btnCut svg, #btnCopy svg, #btnCopyAll svg, #btnPaste svg { width: 14px; height: 14px; }   /* v6.109: clipboard icons */
+  #btnConvert:active, #btnDeselect:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
@@ -637,9 +639,10 @@
     <span class="vsep"></span>
     <button id="btnDeselect" title="Clear the selection (and any in-progress polygon)">DESELECT</button>
     <span class="vsep"></span>
-    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard (Cmd/Ctrl+C)">COPY</button>
-    <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none">COPY ALL</button>
-    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)">PASTE</button>
+    <button id="btnCut" title="Cut the selected pixels on this layer to the clipboard — the selection stays, so Paste puts them back in place (Cmd/Ctrl+X)"><span data-icon="scissors"></span>CUT</button>
+    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard (Cmd/Ctrl+C)"><span data-icon="copy"></span>COPY</button>
+    <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none"><span data-icon="copy"></span>COPY ALL</button>
+    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)"><span data-icon="paste"></span>PASTE</button>
   </div>
   <div class="selrow" id="selrowMove" style="display:none">
     <button class="optItem" id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span><span class="olbl">Flip H</span></button>
@@ -2308,6 +2311,9 @@ window.addEventListener("error", (e) => { try { status("Error: " + (e.message ||
 window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + (e.reason && e.reason.message || e.reason || "unhandled rejection")); } catch (err) {} });
 
 const ICONS = {
+  scissors: '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  paste: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14h6"/><path d="M9 18h4"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   rules: '<path d="M4 6h16"/><path d="M4 12h9"/><path d="M4 18h5"/><circle cx="16.5" cy="12" r="2"/><circle cx="12.5" cy="18" r="2"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
@@ -5046,6 +5052,31 @@ function doCopy(all) {   // v6.72.1: all === true copies the merged, visible ima
   clip = { cv, mask: fm, w, h, x: x0, y: y0 };
   status("Copied " + w + "\u00d7" + h + " px" + (all === true && APP_MODE === "bg" ? " from all visible layers." : "."));
 }
+function doCut() {   // v6.109: copy, then clear the selected pixels; the selection stays so a paste lands back in place
+  if (activeTab !== "ed") { status("Cut works on the Template tab for now."); return; }
+  if (float) {   // a float was already lifted out of the layer: keep it on the clipboard, drop it from the canvas
+    clip = { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y };
+    float = null; floatHist = []; floatRedoHist = []; floatGen++;
+    selMask = null; selEdges = null; selPoly = null;
+    setTool("marquee");
+    blit(); drawGrid();
+    status("Cut the floating selection.");
+    return;
+  }
+  if (!selMask) { status("Nothing selected to cut."); return; }
+  if (APP_MODE === "bg" && !bgLayerEditable()) return;
+  if (bgAlphaLocked()) { status("This layer is alpha-locked \u2014 unlock it to cut."); return; }
+  const before = clip;
+  doCopy(false);
+  if (clip === before) return;   // nothing copied (empty selection): nothing to clear
+  snapshot();
+  const img = edCtx.getImageData(0, 0, TW, TH), d = img.data;
+  for (let i = 0; i < selMask.length; i++) if (selMask[i]) d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 0;
+  edCtx.putImageData(img, 0, 0);
+  templateChanged(); persistPng(); refreshFileSwatches();
+  blit(); drawGrid();
+  status("Cut " + clip.w + "\u00d7" + clip.h + " px \u2014 the selection stays; Paste puts it back.");
+}
 function doPaste() {
   if (!clip) { status("Clipboard is empty \u2014 copy a selection first."); return; }
   if (activeTab !== "ed") { status("Paste works on the Template tab for now."); return; }
@@ -6444,6 +6475,8 @@ document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", ()
   const t = b.dataset.tool;
   if (t === "fill" && tool === "fill") { if ($("fillPop").style.display === "flex") closeFillPop(); else openFillPop(); return; }
   if (t === "gradient" && tool === "gradient") { if ($("gradPop").style.display === "flex") closeGradPop(); else openGradPop(); return; }
+  if (t === "marquee" && tool === "marquee") { selClear(true); setTool("pencil"); status("Deselected."); return; }   // v6.109: second tap = deselect + back to the pencil (Procreate)
+  if (t === "selmove" && tool === "selmove") { setTool("pencil"); return; }   // v6.109: second tap commits the transform and returns to the pencil
   setTool((t === tool && (t === "slopeF" || t === "slopeC")) ? "pencil" : t);   // slope tools toggle off
 }));
 document.querySelectorAll(".ptool").forEach((b) => b.addEventListener("click", () => {
@@ -6469,6 +6502,7 @@ document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click",
   document.querySelectorAll(".selmode").forEach((q) => q.classList.toggle("on", q === b));
 }));
 $("btnDeselect").addEventListener("click", () => { selClear(true); status("Selection cleared."); });
+$("btnCut").addEventListener("click", doCut);
 $("btnCopy").addEventListener("click", () => doCopy(false));
 $("btnCopyAll").addEventListener("click", () => doCopy(true));
 $("btnPaste").addEventListener("click", doPaste);
@@ -6901,6 +6935,7 @@ $("btnResetArt").addEventListener("click", () => {
 });
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "x") { e.preventDefault(); doCut(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { e.preventDefault(); doCopy(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { e.preventDefault(); doPaste(); return; }
   if (e.metaKey || e.ctrlKey) return;
@@ -7840,7 +7875,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.108.0";
+const APP_VERSION = "6.109.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

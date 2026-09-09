@@ -1,13 +1,14 @@
 # Tessera Blueprint
 
-**Status:** agreed 2026-09-04; updated 2026-09-06 (Edges mode: Rim + Cadence merged into a ring tray, per-side edge counts; §6 wedges closed — two-deep slope stamps kept as the universal baseline; §3 panels built as panel layout on the Variations pool, v6.96–v6.99.1, ATLAS v29.28 lifted). §3 border depth, edge variants and panels are built and §6 is settled as-is; §3 backdrop pattern, §4, §5 re-sort and §7 are not.
+**Status:** agreed 2026-09-04; updated 2026-09-09 (v6.108.0 Export Room PNG; §6a rim-under-slopes investigated and shelved — see §6a for the reopen conditions); updated 2026-09-06 (Edges mode: Rim + Cadence merged into a ring tray, per-side edge counts; §6 wedges closed — two-deep slope stamps kept as the universal baseline; §3 panels built as panel layout on the Variations pool, v6.96–v6.99.1, ATLAS v29.28 lifted). §3 border depth, edge variants and panels are built and §6 is settled as-is; §3 backdrop pattern, §4, §5 re-sort and §7 are not.
 **Purpose:** the single reference for where Tessera, ATLAS and the Godot terrain pipeline are going, so each arc starts from the same plan.
 
 ---
 
 ## 1. Where things stand
 
-### Tessera v6.99.1 (current stable)
+### Tessera v6.108.0 (current stable)
+- **Export Room PNG (v6.108.0, James 2026-09-09).** The wrench Export follows the tab: Template and Zoo save the sheet, a background project saves the flattened stack, the Level tab saves the room as one flat PNG (`<slug>.room.png`, GCOLS×GROWS at 1:1, grayscale, no palette, no door/spawn decor). The preview's tile blit is now `blitResolved(ctx)`, shared by the preview and the export; the resolver is untouched. Purpose: mark up the resolved room in a paint tool and diff it cell by cell against the resolver (that is how §6a was measured).
 - **Panel layout (v6.96–v6.99.1, James 2026-09-06).** §3 panels turned out to be mostly built already — the Variations pool takes multi-cell groups, keeps them from overlapping, and "Spread out" moats them — so the arc became the control that was missing: how a large group lands. Per pool entry, opt-in, in the rail's inline strip (the popover is gone; each row expands under its chevron or thumbnail): **Spread · Centre · Grid**, then **H gap / V gap** sliders (0–3) while Centre or Grid is on, then **Bias right / bottom**, rotation, Remove. *Centre* snaps the group to the middle of the free span on its row (recursively for the leftover spans) and centres it vertically only in a pocket with room for one; gaps are kept from other panels only — a 2-wide column takes a 2-wide panel flush, clearance from walls comes from centring when the span has room (the strict "ring must be core" reading was rendered and rejected). *Grid* lays the entry out as a block: as many across and down as the gaps allow in the open rectangle the scan reaches first, block centred, then each column continues below the rectangle on the same cadence while its cells stay open, so an L-shaped core reads as one grid (v6.99.1). *Bias* picks where an odd leftover tile goes. Gap rings and grid rectangles are reserved — plain singles only. Fields: `center` / `grid` (exclusive), `gapH`, `gapV`, `biasR`, `biasB`; an entry without them takes the untouched code path (all 11 projects byte-identical to v6.95.0 at every build). Art no longer needs baked-in margin: Tester 2's A14 4×3 became the inner 2×3. Known boundary: continuation only runs downward — a room narrow at the top and wide below gets side grids that centre on their own rows.
 - **Verification harness (2026-09-06).** The pure region runs under node from a project's `project.json` (fills, slopes, per-project contract, pool) and renders the room from the project sheet; every build was checked old-vs-new over all projects, against the agreed Tester 2 render, and on synthetic rectangular and L-shaped cores. Rebuild it from the file, not from memory, when the resolver moves again.
 
@@ -36,6 +37,7 @@
 
 ### Shelved
 - The 7×7 three-band-ring model and its diagonal-ring slope work (v6.83.0). Kept out of the working build. The lessons are recorded in §8 because they inform the wedge design.
+- **Rim under slopes** (2026-09-09): the inner rim row continuing along wedges. Investigated, counted, researched, shelved — §6a holds the findings, the smallest viable design and the conditions to reopen.
 
 ---
 
@@ -92,6 +94,7 @@ Built like the Template tab so nothing has to be learned twice.
 - **No sample block** (decided 2026-09-05): Level view already gives live feedback after a change.
 - The sheet draws on the real `#screen` viewport (zoom, pan, grid and `A1` toggles are the existing ones); the separate `#rulesSheet` canvas goes away. Upper tray = the bar between header and stage (where Shapes/Gradient/Outline live); lower tray = the `#selbar` slot under the stage.
 - Built. Modes today: Depth · Edges (edge + rim rows per side, anchor checkbox) · Variations.
+- **Planned: a Slopes mode** (James 2026-09-09) holding every slope switch in one tray — `MIRROR_SLOPES`, `SLOPE_SIDE_AIR`, `RIM_WEDGES` (July / terminate / the planned "joints bend around slopes"), and the shelved §6a `SLOPE_TRANSITION` when it returns. Build it as the first tray of the §5 restructure rather than a one-off, so the next slope rule has a home.
 
 ---
 
@@ -106,6 +109,30 @@ What stands, unchanged from today:
 - Collision of a wedge is its outline (§7).
 
 No resolver change, no ATLAS lift. Gateway (depth 1) and Truce (depth 3) keep their two-deep slopes as-is.
+
+---
+
+## 6a. Rim under slopes — investigated and shelved 2026-09-09
+
+**The problem.** The new 5×5 template (drawn on an 8×8-pixel block grid) makes the border three 8px bands — light rim, dark band, inner rim row — 24px, 1.5 tiles. A wedge stamp is two cells (surface + underlay), which holds the light and dark bands and only a sliver of the inner rim at 45°, none of it in the low columns of 2:1 and 3:1. Under `RIM_WEDGES: "terminate"` the inner rim row stops wherever a slope starts, because the cell two below the surface is an ordinary ring cell (deep, `iB`, `iR`, a corner) that has no idea a slope is above it. Slopes read thinner than the walls they join, and every slope end shows a broken ring. James's test room (`newtemp`, 33 runs, all three grads, both faces) exercises 31 distinct end situations built from 7 joint shapes (base on floor `ofof`, base against wall `ffof`, tip at wall `ffof`, peak `ppof`, base/tip over a ledge `ooof`, thin wedge `oooo`).
+
+**What was measured (keep these numbers; they are the reason it is shelved).**
+- Full rim-follows-slope with clean corners, single layer: James redrew his ideal by hand on the Room PNG (floor-ascending only). Diffed cell by cell: 42 changed cells → **27 distinct cells per face** after folding mirrors and 8px of hand variance (45°=7, 2:1=10, 3:1=10); ~55 with ceilings, which are always separate art (non-negotiable). The count is intrinsic to the look: the same stamp tile needed different art depending on its neighbours (`(2,9)` five ways, `(4,9)`/`(5,9)` four each).
+- Quarter-tile (8×8) decomposition: the 27 cells contain 55 distinct quadrants — diagonal art shifts per column and does not repeat. Does not help.
+- A second overlay layer: the added pieces were as position-specific as the whole cells (29 distinct). Does not reduce the count; it only moves it.
+- Mock renders of overlay / stop-short / contact-stop hybrids: each was clean at some ends and broken at others; the turn-vs-run-past distinction (turn = tuck, run-past = butt) is computable from the end signature, but every contact cell is still a combined tile in a single layer.
+- Research (2026-09-09 report): no shipped 2D game autotiles a deep multi-band border along arbitrary slopes. Celeste keeps the edge ~1 tile + infill; Sonic and Super Metroid hand-author slope blocks/chunks; Terraria's hammered slopes leave gaps the player fills. The one precedent that joined two-cell-deep edges across slopes (Levi Lindsey's Surface Tiler, Godot, per-quadrant closest-match with authored fallbacks) dropped its 27°/3:1 slopes as "way too many corner cases". Community answers: closest-match fallbacks, rules that reach beyond 3×3 (LDtk goes to 9×9), manual per-cell overrides, slopes terminating on caps/plateaus, or procedural (SDF/shader) bands.
+
+**Smallest viable design, if it returns** (James 2026-09-09, then shelved the same day):
+- A **transition-under-slope** tile in the cell two below the surface (one below the underlay), one per stamp column: 45°=1, 2:1=2, 3:1=3 → **6 per face, 12 total**, floor and ceiling drawn separately.
+- Contract keys `SLOPE_TRANSITION` / `CEIL_SLOPE_TRANSITION`, shaped like `SLOPE_STAMPS` but one row deep; absent = off, so every existing sheet is byte-identical.
+- Placement: one pass after `addSlopeSupports`; the cell takes the transition only if the ring gave it deep or a ring-1 tile (`iT/iB/iL/iR`, corners) — never an edge tile. Ends butt-join: the straight rim stops one cell early and the diagonal rim's own end shows. No corner tiles, no joint table.
+- Sheet space on the 11×18 template: A12–F12 free for floor, D17–I17 free for ceiling (or grow a row).
+- Lives in the Slopes tray (§5).
+
+**Why shelved.** Anything past the 12-cell version is orders of magnitude more complexity for the corners, and even the 12-cell version buys butt joints, not clean ones. Three things may make it moot before it is worth building: the **pattern fill** under transparent interiors (§3 backdrop pattern), the **"joints bend around slopes"** `RIM_WEDGES` mode (§10 rim-joint arc item 1), and **art authored to terminate slopes on a cap or plateau** (the convention every shipped reference uses). Reopen only if, after those land, a real room still shows the missing row two-below-the-surface — and then build the 12-cell version, nothing more.
+
+**Artifacts kept:** the exported room (`newtemp.room.png`), James's redraw (`slope-rules.png`), and the 27-cell draw-list extracted from it (`drawlist_floor_asc.png`, labelled; `drawlist_floor_asc_1x.png`, a 1× strip) — his own art for the first 27 cells if the full version is ever wanted.
 
 ---
 
