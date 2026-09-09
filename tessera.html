@@ -169,7 +169,9 @@
   #rulesbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;   /* v6.113: centred like the Select and Shapes trays */
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   #rulesbar .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; margin-right: 4px; }
-  #rulesbar .spacer { width: 6px; }   /* v6.113: was flex: 1 (pushed Reset to the far right) */
+  #rulesbar .rulesFlank { flex: 1 1 0; min-width: max-content; display: flex; justify-content: flex-end; }   /* max-content: the right flank never shrinks under its button, so it pushes rather than overlaps */   /* v6.114.1: flanks absorb the slack; Reset sits at the end of the right one */
+  #rulesbar .optline { height: 28px; padding: 0 10px; gap: 6px; }   /* v6.114.1: same size as Cut / Copy / Paste */
+  #rulesbar .optline svg { width: 14px; height: 14px; }
   #rulesbot { display: none; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); font-size: 12px; color: var(--text); }
   #rulesbot .rulesChip canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 4px; }
@@ -206,7 +208,6 @@
   #rulesCenter { display: flex; flex-direction: column; gap: 6px; }
   .rulesCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
   .rulesNote { color: var(--dim); line-height: 1.4; }
-  #rulesState { color: var(--dim); font-size: 11px; }
   #projOverlay.show { display: flex; }
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
@@ -494,13 +495,12 @@
      status and reset live at the right end because they belong to the whole
      layout, not to one rule. -->
 <div id="rulesbar">
+  <span class="rulesFlank"></span><!-- v6.114.1: equal flanks keep the modes centred; they collapse first, so Reset pushes the modes left instead of overlapping -->
   <span class="vlbl">RULES</span>
   <button class="optline rulesMode on" data-v="depth" title="Border depth — how many bands of tiles make up the border before the core begins"><span data-icon="depth"></span>Depth</button>
   <button class="optline rulesMode" data-v="edges" title="Edges — per side, the edge tiles that cycle along the outside and the rim tiles that cycle beneath them; plus where the cycles start counting"><span data-icon="edges"></span>Edges</button>
   <button class="optline rulesMode" data-v="vary" title="Variations — the core pool: the primary tile plus weighted variants and multi-cell groups, with spread and rotation per entry"><span data-icon="dice"></span>Variations</button>
-  <span class="vsep"></span>
-  <span id="rulesState"></span>
-  <button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)"><span data-icon="reload"></span>Reset to template</button>
+  <span class="rulesFlank"><button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)"><span data-icon="reload"></span>Reset to template</button></span>
 </div>
 
 <!-- Import/Export tray (v6.36): rules JSON = the tileset's full effective
@@ -5906,11 +5906,8 @@ function rulesRender() {
   const onSheet = rulesEngaged;   // v6.88: false on Level/Zoo — tuning only
   document.querySelectorAll("#rulesbar .rulesMode").forEach((b) => b.classList.toggle("on", b.dataset.v === rulesMode));
   const own = contractIsProject(CT.id);
-  $("rulesState").textContent = own ? "Own layout (edited from " + CONTRACTS[CT.id].label + ")" : CT.label + " template layout";
-  $("rulesState").title = own
-    ? "This project has its own layout, edited from the " + CONTRACTS[CT.id].label + " template. Other projects are unaffected."
-    : "Using the " + CT.label + " template layout. Editing anything here gives this project its own copy; other projects are unaffected.";
-  $("btnRulesLayoutReset").style.display = own ? "" : "none";
+  $("btnRulesLayoutReset").style.display = own ? "" : "none";   // v6.114: the button's presence is the "own layout" signal; the old state label is gone
+  if (own) $("btnRulesLayoutReset").title = "This project has its own layout, edited from the " + CONTRACTS[CT.id].label + " template. Discard those edits and go back to the template (asks first). Other projects are unaffected.";
   $("rulesDepthRow").style.display = rulesMode === "depth" ? "flex" : "none";
   $("rulesRim").style.display = rulesMode === "edges" ? "contents" : "none";
   $("rulesSidesRow").style.display = rulesMode === "edges" && CT.TRANSITION && CT.TRANSITION.iL ? "flex" : "none";   // v6.90: only formats with sides
@@ -7885,7 +7882,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.113.1";
+const APP_VERSION = "6.114.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
