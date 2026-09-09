@@ -175,7 +175,9 @@
   #rulesbot { display: none; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); font-size: 12px; color: var(--text); }
   #rulesbot .rulesChip canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 4px; }
-  #rail.rules .tool, #rail.rules #btnUndo, #rail.rules #btnRedo { opacity: .28; pointer-events: none; }   /* v6.94.6: no drawing while rules own the sheet — tools stay put, greyed, so nothing drifts */
+  #rail.rules .tool, #rail.rules #btnUndo, #rail.rules #btnRedo { opacity: .28; pointer-events: none; }
+  #rail.lvl .tool[data-tool="marquee"], #rail.lvl .tool[data-tool="selmove"], #rail.lvl .tool[data-tool="shape"],
+  #rail.lvl .tool[data-tool="outline"], #rail.lvl .tool[data-tool="gradient"] { opacity: .28; pointer-events: none; }   /* v6.116: Template-only tools, greyed on Level and Zoo */   /* v6.94.6: no drawing while rules own the sheet — tools stay put, greyed, so nothing drifts */
   .rulesRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .rulesLab { text-transform: capitalize; margin-right: 2px; min-width: 3.4em; }
   .rulesChip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -6377,6 +6379,12 @@ $("btnRulesLayoutReset").addEventListener("click", () => { if (confirm("Reset th
 function setTab(tab) {
   if (tab === "rules") tab = "ed";   // v6.88: no Rules tab any more — the toggle follows whichever tab is open
   if (activeTab === "ed" && tab !== "ed") rulesRelease();   // leaving the sheet hands the pointer back before the tab flips
+  const TEMPLATE_ONLY = ["marquee", "selmove", "shape", "outline", "gradient"];   // v6.116: greyed on Level and Zoo
+  if (activeTab === "ed" && tab !== "ed" && (float || selMask || selPoly || TEMPLATE_ONLY.includes(tool))) {   // v6.115: a selection or transform left behind locked the Level/Zoo pointer
+    setTool("pencil");   // commits a transform (or a pending shape/gradient) the same way any tool switch does
+    selClear(true);      // then drops the selection, recorded so undo can bring it back
+  }
+  $("rail").classList.toggle("lvl", tab !== "ed");
   // "ed" | "pv" (Level) | "zoo" — Level and Zoo share the
   // pv canvas/view; layoutMode picks the generator, and the tabs own it now.
   const wantMode = tab === "zoo" ? "zoo" : "field";
@@ -7882,7 +7890,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.114.1";
+const APP_VERSION = "6.116.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
