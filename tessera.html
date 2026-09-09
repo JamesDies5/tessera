@@ -442,7 +442,7 @@
   <button class="optline" id="btnCanvasFlipV" title="Flip the whole canvas top ↔ bottom — every layer (undoable)"><span data-icon="flipV"></span>Flip V</button>
   <span class="vsep"></span>
   <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
-  <button class="optline" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span>Export</button>
+  <button class="optline" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span><span id="btnSaveLabel">Export</span></button>
 </div>
 
 <!-- Cells sub-row: tools and layout operations for cell-terrain editing.
@@ -2432,7 +2432,7 @@ const PROJ_ACTIVE = "tessera.activeProject";
 let projExportSlug = null;
 function exportName(kind) {
   const base = projExportSlug || (kind === "png" ? CT.filename.replace(/\.png$/, "") : "tessera_" + CT.id);
-  return kind === "png" ? base + ".png" : kind === "rules" ? base + ".rules.json" : base + ".room.json";
+  return kind === "png" ? base + ".png" : kind === "roompng" ? base + ".room.png" : kind === "rules" ? base + ".rules.json" : base + ".room.json";   // v6.108: .room.png = the Level exported as a flat image
 }
 
 function projDB() {
@@ -5202,23 +5202,28 @@ function renderPreview() {
   rafQueued = true;
   requestAnimationFrame(() => { rafQueued = false; renderPreviewNow(); });
 }
-function renderPreviewNow() {
-  pvDirty = false;
-  offCtx.clearRect(0, 0, off.width, off.height);
+/* v6.108: the resolved-tile blit, shared by the preview and by Export Room
+   PNG — grayscale template pixels, no palette, no door/spawn decor. */
+function blitResolved(ctx) {
   for (const k of Object.keys(resolved)) {
     const [c, r] = k.split(",").map(Number);
     const t = resolved[k];
     if (t.rot || t.flipV || t.flipH) {
-      offCtx.save();
-      offCtx.translate(c * TILE + TILE / 2, r * TILE + TILE / 2);
-      offCtx.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1);   // mirror applied AFTER rotation
-      if (t.rot) offCtx.rotate(Math.PI / 2 * t.rot);
-      offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, -TILE / 2, -TILE / 2, TILE, TILE);
-      offCtx.restore();
+      ctx.save();
+      ctx.translate(c * TILE + TILE / 2, r * TILE + TILE / 2);
+      ctx.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1);   // mirror applied AFTER rotation
+      if (t.rot) ctx.rotate(Math.PI / 2 * t.rot);
+      ctx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, -TILE / 2, -TILE / 2, TILE, TILE);
+      ctx.restore();
     } else {
-      offCtx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, c * TILE, r * TILE, TILE, TILE);
+      ctx.drawImage(ed, t.ax * TILE, t.ay * TILE, TILE, TILE, c * TILE, r * TILE, TILE, TILE);
     }
   }
+}
+function renderPreviewNow() {
+  pvDirty = false;
+  offCtx.clearRect(0, 0, off.width, off.height);
+  blitResolved(offCtx);
   const pal = palettes[palIdx];
   if (pal.base) {
     const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
@@ -7116,8 +7121,27 @@ function sharePng(url, filename) {   // v6.63: shared by sheet export, flat back
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status(`Saved ${filename}.`);
 }
+/* v6.108: Export follows the tab — Template/Zoo save the sheet, a background
+   project saves the flattened stack, and the Level tab saves the ROOM as one
+   flat PNG (GCOLS×GROWS tiles at 1:1, grayscale, no palette, no decor) so the
+   resolved level can be marked up in a paint tool and compared cell by cell. */
+const roomExportActive = () => APP_MODE !== "bg" && activeTab === "pv" && layoutMode === "field";
+function syncSaveLabel() {
+  const room = roomExportActive();
+  $("btnSaveLabel").textContent = room ? "Export Room PNG" : "Export";
+  $("btnSave").title = room ? "Save the Level as a flat PNG — every resolved tile at 1:1, grayscale, no palette or decor"
+    : APP_MODE === "bg" ? "Export the flattened background PNG" : "Save autotile_template.png";
+}
 $("btnSave").addEventListener("click", () => {
   if (APP_MODE === "bg") { if (float) floatFlatten(); sharePng(bgComposite().toDataURL("image/png"), CT.filename); return; }   // flattened stack
+  if (roomExportActive()) {
+    if (!resolved || !Object.keys(resolved).length) { status("Nothing to export — the Level is empty."); return; }
+    const c = document.createElement("canvas"); c.width = GCOLS * TILE; c.height = GROWS * TILE;
+    const cx = c.getContext("2d"); cx.imageSmoothingEnabled = false;
+    blitResolved(cx);
+    sharePng(c.toDataURL("image/png"), exportName("roompng"));
+    return;
+  }
   sharePng(ed.toDataURL("image/png"), exportName("png"));
 });
 function persistPng() {
@@ -7816,7 +7840,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.107.1";
+const APP_VERSION = "6.108.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -7878,6 +7902,7 @@ $("btnOptions").addEventListener("click", () => {
   const b = $("optbar");
   if (b.style.display === "flex") { closeOptMenu(); return; }
   closeColorMenu(); closeBrushMenu(); closeLayerMenu(); closeBgViewMenu();
+  syncSaveLabel();   // v6.108: Export vs Export Room PNG
   b.style.display = "flex"; sizeOverlay();
   $("btnOptions").classList.add("on");
 });
