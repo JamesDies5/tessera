@@ -116,13 +116,14 @@
   #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
     border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
     display: none; pointer-events: none; transform: translate(-50%, -115%); }
-  #btnConvert, #btnCut, #btnCopy, #btnCopyAll, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+  #btnConvert, #btnCut, #btnCopy, #btnCopyAll, #btnPaste, #btnFlipH, #btnFlipV, #btnRot90 { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto;
     display: inline-flex; align-items: center; gap: 6px; }
-  #btnCut svg, #btnCopy svg, #btnCopyAll svg, #btnPaste svg { width: 14px; height: 14px; }   /* v6.109: clipboard icons */
-  #btnConvert:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active { background: var(--line); }
+  #btnCut svg, #btnCopy svg, #btnCopyAll svg, #btnPaste svg, #btnFlipH svg, #btnFlipV svg, #btnRot90 svg { width: 14px; height: 14px; }   /* v6.109: clipboard icons; v6.112: transform row matches */
+  #btnConvert:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active, #btnFlipH:active, #btnFlipV:active, #btnRot90:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
+  #stageCol { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }   /* v6.113: viewport over its lower tray */
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
   #rail .hsep { width: 26px; height: 1px; background: var(--line); margin: 3px 0; flex: 0 0 auto; }
 
@@ -165,10 +166,10 @@
   /* v6.85: Rules tab — the Template tab's chassis. The sheet is the template
      viewport; rule modes sit in the upper tray (#rulesbar, like #varybar),
      the selected rule's properties in the lower tray (#rulesbot, like #selbar). */
-  #rulesbar { display: none; gap: 6px; align-items: center; padding: 6px 12px; flex: 0 0 auto;
+  #rulesbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;   /* v6.113: centred like the Select and Shapes trays */
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   #rulesbar .vlbl { font-size: 10px; letter-spacing: 1px; color: #8a8a8a; margin-right: 4px; }
-  #rulesbar .spacer { flex: 1; }
+  #rulesbar .spacer { width: 6px; }   /* v6.113: was flex: 1 (pushed Reset to the far right) */
   #rulesbot { display: none; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); font-size: 12px; color: var(--text); }
   #rulesbot .rulesChip canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 4px; }
@@ -396,9 +397,9 @@
     <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)"><span data-icon="paste"></span>PASTE</button>
   </div>
   <div class="selrow" id="selrowMove" style="display:none">
-    <button class="optItem" id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span><span class="olbl">Flip H</span></button>
-    <button class="optItem" id="btnFlipV" title="Flip the floating selection vertically"><span data-icon="flipV"></span><span class="olbl">Flip V</span></button>
-    <button class="optItem" id="btnRot90" title="Rotate the floating selection 90° clockwise — lossless; four taps return to start"><span data-icon="rot90"></span><span class="olbl">Rotate 90°</span></button>
+    <button id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span>FLIP H</button>
+    <button id="btnFlipV" title="Flip the floating selection vertically"><span data-icon="flipV"></span>FLIP V</button>
+    <button id="btnRot90" title="Rotate the floating selection 90° clockwise — lossless; four taps return to start"><span data-icon="rot90"></span>ROTATE 90°</button>
   </div>
 </div>
 
@@ -494,12 +495,12 @@
      layout, not to one rule. -->
 <div id="rulesbar">
   <span class="vlbl">RULES</span>
-  <button class="optline rulesMode on" data-v="depth" title="Border depth — how many bands of tiles make up the border before the core begins">Depth</button>
-  <button class="optline rulesMode" data-v="edges" title="Edges — per side, the edge tiles that cycle along the outside and the rim tiles that cycle beneath them; plus where the cycles start counting">Edges</button>
-  <button class="optline rulesMode" data-v="vary" title="Variations — the core pool: the primary tile plus weighted variants and multi-cell groups, with spread and rotation per entry">Variations</button>
-  <span class="spacer"></span>
+  <button class="optline rulesMode on" data-v="depth" title="Border depth — how many bands of tiles make up the border before the core begins"><span data-icon="depth"></span>Depth</button>
+  <button class="optline rulesMode" data-v="edges" title="Edges — per side, the edge tiles that cycle along the outside and the rim tiles that cycle beneath them; plus where the cycles start counting"><span data-icon="edges"></span>Edges</button>
+  <button class="optline rulesMode" data-v="vary" title="Variations — the core pool: the primary tile plus weighted variants and multi-cell groups, with spread and rotation per entry"><span data-icon="dice"></span>Variations</button>
+  <span class="vsep"></span>
   <span id="rulesState"></span>
-  <button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)">Reset to template</button>
+  <button class="optline" id="btnRulesLayoutReset" title="Discard this project's layout edits and go back to the template (asks first)"><span data-icon="reload"></span>Reset to template</button>
 </div>
 
 <!-- Import/Export tray (v6.36): rules JSON = the tileset's full effective
@@ -640,15 +641,12 @@
       <button class="ibtn" id="varyConfirmNo" title="Keep it" style="font-size:12px;padding:0 10px;width:auto">Cancel</button>
     </div>
   </div>
+  <div id="stageCol"><!-- v6.113: viewport + its lower tray in one column; the rail stays full height beside them -->
   <div id="viewport">
     <canvas id="screen"></canvas>
     <canvas id="gridOverlay"></canvas>
     <div id="statusChip"></div>
   </div>
-  <!-- v6.88.1: Variations side rail (Rules on, Variations selected, any tab) -->
-  <div id="rulesSide"><label class="rulesCheck" title="A/B preview: every core cell shows the primary alone. The pool, its weights and settings stay as they are, and export is unaffected."><input type="checkbox" id="rulesVaryOff"> Disable variations</label><span class="vlbl">VARIATION POOL</span><div id="rulesSideList" style="display:contents"></div></div>
-</div>
-
 <!-- v6.85: Rules tab lower tray — the selected rule's editable properties -->
 <div id="rulesbot">
   <div class="rulesRow" id="rulesDepthRow" style="display:none"><span class="rulesLab">Border depth</span><span id="rulesDepthBtns" style="display:contents"></span></div>
@@ -668,6 +666,11 @@
   </div>
   <div class="rulesNote" id="rulesHint"></div>
 </div>
+  </div><!-- /stageCol -->
+  <!-- v6.88.1: Variations side rail (Rules on, Variations selected, any tab) -->
+  <div id="rulesSide"><label class="rulesCheck" title="A/B preview: every core cell shows the primary alone. The pool, its weights and settings stay as they are, and export is unaffected."><input type="checkbox" id="rulesVaryOff"> Disable variations</label><span class="vlbl">VARIATION POOL</span><div id="rulesSideList" style="display:contents"></div></div>
+</div>
+
 
 <script>
 /*__PURE_START__*/
@@ -2309,6 +2312,8 @@ window.addEventListener("error", (e) => { try { status("Error: " + (e.message ||
 window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + (e.reason && e.reason.message || e.reason || "unhandled rejection")); } catch (err) {} });
 
 const ICONS = {
+  depth: '<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
+  edges: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M6 12H2"/><path d="M22 12h-4"/><path d="M12 6V2"/><path d="M12 22v-4"/>',
   scissors: '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
   copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   paste: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14h6"/><path d="M9 18h4"/>',
@@ -7863,6 +7868,14 @@ function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Ob
 
 /* ---- boot ---- */
 window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
+/* v6.113.1: the viewport also changes size WITHOUT a window resize — a tray grows or shrinks in place
+   (the Edges ring giving way to the one-row Depth tray), a side rail opens. The canvases only ever
+   followed explicit show/hide calls, so the freed strip showed the viewport's plain background. Watch
+   the viewport's box and resize the canvases whenever it moves; no refit, so pan and zoom stay put. */
+if (window.ResizeObserver) new ResizeObserver(() => {
+  const r = viewport.getBoundingClientRect();
+  if (Math.round(r.width) !== Math.round(parseFloat(screen.style.width) || 0) || Math.round(r.height) !== Math.round(parseFloat(screen.style.height) || 0)) sizeOverlay();
+}).observe(viewport);
 /* 2026-09-02 arc (v6.61 → v6.81): Backgrounds project type — layers with
    groups, alpha lock, and opacity; tiled preview; symmetry; Transform
    (Procreate model); magic wand, invert, hatch selection display; Shapes
@@ -7872,7 +7885,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.111.0";
+const APP_VERSION = "6.113.1";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
