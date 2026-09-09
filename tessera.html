@@ -86,7 +86,7 @@
   #brushMenu .seg button .bci { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
   #brushMenu .seg button .bdit { width: 14px; height: 14px; image-rendering: pixelated; }
   #selbar { display: none; flex-direction: column; gap: 6px; align-items: center; padding: 6px 12px; flex: 0 0 auto;
-    background: #1a1a1a; border-top: 1px solid var(--line); }
+    background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }   /* v6.110: top tray, bordered like .tray */
   .selrow { display: flex; gap: 6px; align-items: center; }
   #cellbar { display: none; gap: 6px; align-items: center; justify-content: center; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -116,11 +116,11 @@
   #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
     border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
     display: none; pointer-events: none; transform: translate(-50%, -115%); }
-  #btnConvert, #btnDeselect, #btnCut, #btnCopy, #btnCopyAll, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+  #btnConvert, #btnCut, #btnCopy, #btnCopyAll, #btnPaste { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto;
     display: inline-flex; align-items: center; gap: 6px; }
   #btnCut svg, #btnCopy svg, #btnCopyAll svg, #btnPaste svg { width: 14px; height: 14px; }   /* v6.109: clipboard icons */
-  #btnConvert:active, #btnDeselect:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active { background: var(--line); }
+  #btnConvert:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
@@ -377,6 +377,31 @@
 
 <!-- Options tray: template file + canvas operations, one line each.
      Toggled by the wrench; actions close it. -->
+<!-- Selection options bar (v6.110: a TOP tray like Shapes, less reach on the iPad): shapes + modes + clipboard
+     while the marquee tool is active, flip/rotate while Transform is; Template tab only. -->
+<div id="selbar">
+  <div class="selrow" id="selrowSelect">
+    <button class="ibtn selshape on" data-selshape="rect" data-icon="selrect" title="Rectangle — drag corner to corner"></button>
+    <button class="ibtn selshape" data-selshape="ellipse" data-icon="selellipse" title="Ellipse — drag the bounding box"></button>
+    <button class="ibtn selshape" data-selshape="lasso" data-icon="lasso" title="Freehand / polygon — drag to lasso (auto-closes on release); tap to place polygon points, then tap the origin marker to close"></button>
+    <button class="ibtn selshape" data-selshape="wand" data-icon="wand" title="Automatic (magic wand) — tap to select the contiguous region of the same color on this layer; Add / Remove modes apply"></button>
+    <span class="vsep"></span>
+    <button class="ibtn selmode on" data-selmode="add" data-icon="plus" title="Additive — new shapes extend the selection"></button>
+    <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
+    <button class="ibtn" id="btnSelInvert" data-icon="invert" title="Invert — select everything that isn't selected, within the canvas"></button>
+    <span class="vsep"></span>
+    <button id="btnCut" title="Cut the selected pixels on this layer to the clipboard — the selection stays, so Paste puts them back in place (Cmd/Ctrl+X)"><span data-icon="scissors"></span>CUT</button>
+    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard (Cmd/Ctrl+C)"><span data-icon="copy"></span>COPY</button>
+    <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none"><span data-icon="copy"></span>COPY ALL</button>
+    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)"><span data-icon="paste"></span>PASTE</button>
+  </div>
+  <div class="selrow" id="selrowMove" style="display:none">
+    <button class="optItem" id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span><span class="olbl">Flip H</span></button>
+    <button class="optItem" id="btnFlipV" title="Flip the floating selection vertically"><span data-icon="flipV"></span><span class="olbl">Flip V</span></button>
+    <button class="optItem" id="btnRot90" title="Rotate the floating selection 90° clockwise — lossless; four taps return to start"><span data-icon="rot90"></span><span class="olbl">Rotate 90°</span></button>
+  </div>
+</div>
+
 <!-- Shapes tray (v6.70): shown while the Shapes tool is active -->
 <div class="tray" id="shapebar">
   <span class="lbl">SHAPE</span>
@@ -622,33 +647,6 @@
   </div>
   <!-- v6.88.1: Variations side rail (Rules on, Variations selected, any tab) -->
   <div id="rulesSide"><label class="rulesCheck" title="A/B preview: every core cell shows the primary alone. The pool, its weights and settings stay as they are, and export is unaffected."><input type="checkbox" id="rulesVaryOff"> Disable variations</label><span class="vlbl">VARIATION POOL</span><div id="rulesSideList" style="display:contents"></div></div>
-</div>
-
-<!-- Selection options bar (bottom): shapes on top, modes + deselect below.
-     Visible only while the marquee tool is active on the Template tab. -->
-<div id="selbar">
-  <div class="selrow" id="selrowSelect">
-    <button class="ibtn selshape on" data-selshape="rect" data-icon="selrect" title="Rectangle — drag corner to corner"></button>
-    <button class="ibtn selshape" data-selshape="ellipse" data-icon="selellipse" title="Ellipse — drag the bounding box"></button>
-    <button class="ibtn selshape" data-selshape="lasso" data-icon="lasso" title="Freehand / polygon — drag to lasso (auto-closes on release); tap to place polygon points, then tap the origin marker to close"></button>
-    <button class="ibtn selshape" data-selshape="wand" data-icon="wand" title="Automatic (magic wand) — tap to select the contiguous region of the same color on this layer; Add / Remove modes apply"></button>
-    <span class="vsep"></span>
-    <button class="ibtn selmode on" data-selmode="add" data-icon="plus" title="Additive — new shapes extend the selection"></button>
-    <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
-    <button class="ibtn" id="btnSelInvert" data-icon="invert" title="Invert — select everything that isn't selected, within the canvas"></button>
-    <span class="vsep"></span>
-    <button id="btnDeselect" title="Clear the selection (and any in-progress polygon)">DESELECT</button>
-    <span class="vsep"></span>
-    <button id="btnCut" title="Cut the selected pixels on this layer to the clipboard — the selection stays, so Paste puts them back in place (Cmd/Ctrl+X)"><span data-icon="scissors"></span>CUT</button>
-    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard (Cmd/Ctrl+C)"><span data-icon="copy"></span>COPY</button>
-    <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none"><span data-icon="copy"></span>COPY ALL</button>
-    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)"><span data-icon="paste"></span>PASTE</button>
-  </div>
-  <div class="selrow" id="selrowMove" style="display:none">
-    <button class="optItem" id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span><span class="olbl">Flip H</span></button>
-    <button class="optItem" id="btnFlipV" title="Flip the floating selection vertically"><span data-icon="flipV"></span><span class="olbl">Flip V</span></button>
-    <button class="optItem" id="btnRot90" title="Rotate the floating selection 90° clockwise — lossless; four taps return to start"><span data-icon="rot90"></span><span class="olbl">Rotate 90°</span></button>
-  </div>
 </div>
 
 <!-- v6.85: Rules tab lower tray — the selected rule's editable properties -->
@@ -6501,7 +6499,6 @@ document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click",
   selMode = b.dataset.selmode;
   document.querySelectorAll(".selmode").forEach((q) => q.classList.toggle("on", q === b));
 }));
-$("btnDeselect").addEventListener("click", () => { selClear(true); status("Selection cleared."); });
 $("btnCut").addEventListener("click", doCut);
 $("btnCopy").addEventListener("click", () => doCopy(false));
 $("btnCopyAll").addEventListener("click", () => doCopy(true));
@@ -7875,7 +7872,7 @@ window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView(
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.109.0";
+const APP_VERSION = "6.111.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
