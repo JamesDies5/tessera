@@ -2880,7 +2880,8 @@ function ghListSub(subdir) {
    branch in quick succession (a multi-file push or delete does exactly that),
    and 5xx on its bad days. Both are transient: wait, then try again. Three
    attempts, 1.5 s / 3 s apart; anything else fails at once. */
-const GH_RETRY_ATTEMPTS = 3, GH_RETRY_MS = 1500;
+const GH_RETRY_ATTEMPTS = 5, GH_RETRY_MS = 1500;   // v6.121.10: 5 tries (1.5 s, 3 s, 4.5 s, 6 s) — the contents API 409s on quick successive commits
+const GH_FILE_GAP_MS = 700;   // v6.121.10: breathing room between the commits of one push, so the branch head settles
 function ghCommitRetry(send, attempt) {
   attempt = attempt || 1;
   return send().then((r) => {
@@ -2891,9 +2892,16 @@ function ghCommitRetry(send, attempt) {
   });
 }
 function ghPutFile(path, b64, msg, sha) {
-  const body = { message: msg, branch: GH.branch, content: b64 };
-  if (sha) body.sha = sha;
-  return ghCommitRetry(() => ghFetch(path, { method: "PUT", body: JSON.stringify(body) }));
+  /* v6.121.10: a 409 can mean the branch moved (transient — resend) OR that our SHA for this file is
+     stale because another device pushed it since we listed the folder (permanent — resending the same
+     SHA would 409 forever). So before each retry, re-read the file's current SHA and send that. */
+  const send = () => ghFetch(path + "?ref=" + GH.branch, null).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((cur) => {
+    const body = { message: msg, branch: GH.branch, content: b64 };
+    const useSha = cur && cur.sha ? cur.sha : sha;
+    if (useSha) body.sha = useSha;
+    return ghFetch(path, { method: "PUT", body: JSON.stringify(body) });
+  });
+  return ghCommitRetry(send);
 }
 function ghDeleteFile(path, sha, msg) {   // v6.84
   return ghCommitRetry(() => ghFetch(path, { method: "DELETE", body: JSON.stringify({ message: msg, branch: GH.branch, sha }) }));
@@ -3026,8 +3034,9 @@ function ghPushFiles(rec, base, files) {
       for (const f of files) {
         chain = chain.then(() => {
           projPushUI(rec.id, 0.15 + 0.8 * (done / files.length), "Uploading " + f.name + "…");
-          return ghPutFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + base + "/" + f.name,
-            f.b64, "TESSERA: " + rec.name + " — " + f.name, shas[f.name]).then(() => { done += 1; });
+          const gap = done ? new Promise((res) => setTimeout(res, GH_FILE_GAP_MS)) : Promise.resolve();   // v6.121.10
+          return gap.then(() => ghPutFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + base + "/" + f.name,
+            f.b64, "TESSERA: " + rec.name + " — " + f.name, shas[f.name])).then(() => { done += 1; });
         });
       }
       return chain;
@@ -8293,7 +8302,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.9";
+const APP_VERSION = "6.121.10";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
