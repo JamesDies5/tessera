@@ -177,7 +177,9 @@
   #rulesbot .rulesChip canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 4px; }
   #rail.rules .tool, #rail.rules #btnUndo, #rail.rules #btnRedo { opacity: .28; pointer-events: none; }
   #rail.lvl .tool[data-tool="marquee"], #rail.lvl .tool[data-tool="selmove"], #rail.lvl .tool[data-tool="shape"],
-  #rail.lvl .tool[data-tool="outline"], #rail.lvl .tool[data-tool="gradient"] { opacity: .28; pointer-events: none; }   /* v6.116: Template-only tools, greyed on Level and Zoo */   /* v6.94.6: no drawing while rules own the sheet — tools stay put, greyed, so nothing drifts */
+  #rail.lvl .tool[data-tool="outline"], #rail.lvl .tool[data-tool="gradient"] { opacity: .28; pointer-events: none; }   /* v6.116: Template-only tools, greyed on Level and Zoo */
+  #rail.cellmode .tool[data-tool="pencil"], #rail.cellmode .tool[data-tool="eraser"], #rail.cellmode .tool[data-tool="fill"],
+  #rail.cellmode .tool[data-tool="pick"] { opacity: .28; pointer-events: none; }   /* v6.117: pixel tools, greyed while Cell mode is on */   /* v6.94.6: no drawing while rules own the sheet — tools stay put, greyed, so nothing drifts */
   .rulesRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .rulesLab { text-transform: capitalize; margin-right: 2px; min-width: 3.4em; }
   .rulesChip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -335,8 +337,7 @@
   <button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
-    <button class="ibtn pvmode on" data-pvmode="pixels" data-icon="brush" title="Pixels — draw here with the template tools; edits land in the template cell each tile came from"></button>
-    <button class="ibtn pvmode" data-pvmode="cells" data-icon="layout" title="Cells — paint or erase whole terrain cells"></button>
+    <button class="ibtn" id="btnCellMode" data-icon="layout" title="Cell mode — paint or erase whole terrain cells, draw solid rectangles and slopes. Tap again to return to pixel drawing, where edits land in the template cell each tile came from."></button>
     <span class="vsep"></span>
     <button class="ibtn" id="btnIO" data-icon="share" title="Import/Export — rules and room JSON files (rules describe the tileset; rooms describe drawn geometry)"></button>
   </div>
@@ -480,6 +481,7 @@
      Lives under the header, only while the Level tab is in Cells mode. -->
 <div id="cellbar">
   <button class="ibtn ptool on" data-ptool="paint" data-icon="sqplus" title="Paint terrain cells"></button>
+  <button class="ibtn tool" data-tool="cellRect" data-icon="shRect" title="Rectangle — drag corner to corner to fill a solid block of terrain cells (as in ATLAS); drawn slopes inside it are left alone"></button>
   <button class="ibtn tool" data-tool="slopeF" data-icon="slopeF" title="Draw FLOOR slope: drag from one end to the other — height sets the steps, width picks the gradient (1:1, 2:1, 3:1). Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
   <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
   <button class="ibtn ptool" data-ptool="erase" data-icon="eraser" title="Erase terrain cells — erasing any cell of a slope removes that whole run"></button>
@@ -3035,6 +3037,7 @@ try { sheetSize = JSON.parse(localStorage.getItem(LS.size) || "{}") || {}; } cat
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
+const CELL_ONLY_TOOLS = ["slopeF", "slopeC", "cellRect"];   // v6.117: tools that live in the cell tray; they hand back to the pencil when Cell mode ends
 let revKey = null, revRotVal = 0, revMask = null, revRole = null;
 let roleRemaps = (() => { try { return JSON.parse(localStorage.getItem("tessera.roleremaps")) || {}; } catch (e) { return {}; } })();
 function persistRoleRemaps() { try { localStorage.setItem("tessera.roleremaps", JSON.stringify(roleRemaps)); } catch (e) {} }
@@ -3424,6 +3427,12 @@ function drawGrid() {
       ovCtx.fillStyle = "#8ecbff";
       ovCtx.fillText(nm, x, y);
     }
+  }
+  if (activeTab === "pv" && stroke && stroke.kind === "cellRect") {   // v6.117: rectangle drag ghost
+    const c0 = Math.min(stroke.c0, stroke.c1), c1 = Math.max(stroke.c0, stroke.c1), r0 = Math.min(stroke.r0, stroke.r1), r1 = Math.max(stroke.r0, stroke.r1);
+    const gx = v.x + c0 * TILE * v.s, gy = v.y + r0 * TILE * v.s, gw = (c1 - c0 + 1) * TILE * v.s, gh = (r1 - r0 + 1) * TILE * v.s;
+    ovCtx.fillStyle = "rgba(155,229,100,0.30)"; ovCtx.fillRect(gx, gy, gw, gh);
+    ovCtx.strokeStyle = "rgba(155,229,100,0.9)"; ovCtx.lineWidth = 2; ovCtx.strokeRect(gx + 1, gy + 1, gw - 2, gh - 2);
   }
   if (activeTab === "pv" && CT && stroke && stroke.kind === "slope" && stroke.ghost) {
     // live drag ghost: run footprint (surface strong, underlay faint) + hypotenuse
@@ -5511,6 +5520,15 @@ function beginStroke(e) {
     status("Drawing " + (tool === "slopeC" ? "ceiling" : "floor") + " slope\u2026 drag to the other end and release.");
     return;
   }
+  if (tool === "cellRect") {   // v6.117: solid rectangle of terrain cells
+    if (layoutMode === "zoo") { status("Rectangles draw on the Level tab \u2014 the Zoo is generated."); return; }
+    const [px, py] = pvPos(e);
+    const c0 = Math.max(0, Math.min(GCOLS - 1, Math.floor(px / TILE))), r0 = Math.max(0, Math.min(GROWS - 1, Math.floor(py / TILE)));
+    stroke = { kind: "cellRect", c0, r0, c1: c0, r1: r0 };
+    drawGrid();
+    status("Rectangle\u2026 drag to the opposite corner and release.");
+    return;
+  }
   if (pvMode === "cells" && layoutMode !== "zoo") { levelSnapshot(); const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE)); stroke = { kind: "pvcell" }; return; }
   const [px, py] = pvPos(e);
   const m = levelToTemplate(px, py);
@@ -5586,6 +5604,13 @@ function moveStroke(e) {
     drawGrid();
     const run = stroke.ghost;
     if (run) status((run.face === "c" ? "Ceiling" : "Floor") + " slope: " + (run.grad === 1 ? "45\u00b0" : run.grad + ":1") + " " + run.dir + ", " + run.steps + " step" + (run.steps > 1 ? "s" : "") + " \u2014 release to place.");
+  } else if (stroke.kind === "cellRect") {
+    const [px, py] = pvPos(e);
+    const nc = Math.max(0, Math.min(GCOLS - 1, Math.floor(px / TILE))), nr = Math.max(0, Math.min(GROWS - 1, Math.floor(py / TILE)));
+    if (nc === stroke.c1 && nr === stroke.r1) return;
+    stroke.c1 = nc; stroke.r1 = nr;
+    drawGrid();   // the ghost is drawn there
+    status("Rectangle " + (Math.abs(nc - stroke.c0) + 1) + "\u00d7" + (Math.abs(nr - stroke.r0) + 1) + " cells \u2014 release to fill.");
   } else if (stroke.kind === "pvcell") {
     const [px, py] = pvPos(e); pvApply(Math.floor(px / TILE), Math.floor(py / TILE));
   }
@@ -5669,6 +5694,26 @@ function endStroke() {
       drawGrid(); return;
     }
     selApply(shapePoly(s.pts));
+    return;
+  }
+  if (stroke && stroke.kind === "cellRect") {   // v6.117
+    const c0 = Math.min(stroke.c0, stroke.c1), c1 = Math.max(stroke.c0, stroke.c1), r0 = Math.min(stroke.r0, stroke.r1), r1 = Math.max(stroke.r0, stroke.r1);
+    let n = 0;
+    const adds = [];
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const k = K(c, r);
+      if (fills[k]) continue;
+      if (cells[k] && cells[k].kind === "slope") continue;   // a drawn run keeps its cells
+      adds.push(k);
+    }
+    if (adds.length) {
+      levelSnapshot();
+      for (const k of adds) { fills[k] = { t: 1 }; n++; }
+      rebuild(); renderPreview(); persistFills();
+      status("Rectangle filled \u2014 " + n + " cell" + (n > 1 ? "s" : "") + " added.");
+    } else status("Rectangle: nothing new to fill.");
+    stroke = null;
+    drawGrid();
     return;
   }
   if (stroke && stroke.kind === "slope") {
@@ -6397,7 +6442,7 @@ function setTab(tab) {
   if (canvasMode) exitCanvasMode();
   closeOptMenu();
   closeIOBar();
-  syncCellbar(tab === "pv");
+  syncCellMode();   // v6.117: tray + rail greying follow the tab and the cell toggle
   syncVarybar();
   syncSelbar();
   if (tab === "zoo" && (tool === "slopeF" || tool === "slopeC")) setTool("pencil");
@@ -6429,7 +6474,7 @@ function setTool(t) {
   exitCanvasMode();
   tool = t;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("on", b.dataset.tool === t));
-  document.querySelectorAll(".ptool").forEach((q) => q.classList.toggle("on", t !== "slopeF" && t !== "slopeC" && q.dataset.ptool === pTool));
+  document.querySelectorAll(".ptool").forEach((q) => q.classList.toggle("on", !CELL_ONLY_TOOLS.includes(t) && q.dataset.ptool === pTool));
   if (t !== "marquee" && selPoly) { selPoly = null; drawGrid(); }   // abandon an open polygon
   if (t !== "vary") { closeVaryPanel(); closeVaryConfirm(); }
   syncVarybar();
@@ -6485,11 +6530,11 @@ document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", ()
   if (t === "gradient" && tool === "gradient") { if ($("gradPop").style.display === "flex") closeGradPop(); else openGradPop(); return; }
   if (t === "marquee" && tool === "marquee") { selClear(true); setTool("pencil"); status("Deselected."); return; }   // v6.109: second tap = deselect + back to the pencil (Procreate)
   if (t === "selmove" && tool === "selmove") { setTool("pencil"); return; }   // v6.109: second tap commits the transform and returns to the pencil
-  setTool((t === tool && (t === "slopeF" || t === "slopeC")) ? "pencil" : t);   // slope tools toggle off
+  setTool((t === tool && CELL_ONLY_TOOLS.includes(t)) ? "pencil" : t);   // slope + rectangle tools toggle off
 }));
 document.querySelectorAll(".ptool").forEach((b) => b.addEventListener("click", () => {
   pTool = b.dataset.ptool;
-  if (tool === "slopeF" || tool === "slopeC") setTool("pencil");   // terrain paint and slope paint are mutually exclusive
+  if (CELL_ONLY_TOOLS.includes(tool)) setTool("pencil");   // terrain paint, slopes and the rectangle are mutually exclusive
   document.querySelectorAll(".ptool").forEach((q) => q.classList.toggle("on", q === b));
 }));
 document.querySelectorAll(".selshape").forEach((b) => b.addEventListener("click", () => {
@@ -6524,11 +6569,21 @@ function syncCellbar(levelTab) {   // levelTab: is the Level tab the active one?
   bar.style.display = want;
   sizeOverlay();   // bar show/hide resizes the viewport without a window resize event
 }
-document.querySelectorAll(".pvmode").forEach((b) => b.addEventListener("click", () => {
-  pvMode = b.dataset.pvmode;
-  document.querySelectorAll(".pvmode").forEach((q) => q.classList.toggle("on", q === b));
-  syncCellbar(true);   // the toggle only exists on the Level tab
-}));
+/* v6.117: Cell mode is a toggle (James). On: the cell tray opens and the rail's pixel tools grey out
+   (pencil, eraser, fill, eyedropper — the cell branch takes every tap before they see it). Off: the
+   tray collapses, the tools come back, and a cell-only tool (slopes, rectangle) hands back to the pencil. */
+function syncCellMode() {
+  const on = activeTab === "pv" && pvMode === "cells";
+  $("btnCellMode").classList.toggle("on", pvMode === "cells");
+  $("rail").classList.toggle("cellmode", on);
+  syncCellbar(activeTab === "pv");
+}
+$("btnCellMode").addEventListener("click", () => {
+  pvMode = pvMode === "cells" ? "pixels" : "cells";
+  if (pvMode !== "cells" && CELL_ONLY_TOOLS.includes(tool)) setTool("pencil");
+  syncCellMode();
+  status(pvMode === "cells" ? "Cell mode \u2014 paint, erase, rectangle, slopes." : "Pixel mode \u2014 template tools draw through to the sheet.");
+});
 /* v6.8: Playfield/Zoo toggle retired — setTab owns layoutMode. */
 $("btnUndo").addEventListener("click", undo);
 $("btnRedo").addEventListener("click", redo);
@@ -7890,7 +7945,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.116.0";
+const APP_VERSION = "6.117.0";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
