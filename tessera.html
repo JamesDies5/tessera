@@ -1592,7 +1592,10 @@ function resolveAll(cells, ct) {
         const eN = isEdge(0,-1) || (!wedgeTerm && !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand));
         const eS = isEdge(0, 1) || (!wedgeTerm && !!(below && below.kind === "slope" && below.face === "c" && below.seamBand));
         const leg = pillar[k] && pillar[k].leg ? pillar[k].side : null, foot = pillar[k] && pillar[k].wall ? pillar[k].side : null, strip = !!(pillar[k] && pillar[k].strip);
-        const eW = strip ? true : leg ? leg === "left" : (isEdge(-1,0) || foot === "left"), eE = strip ? true : leg ? leg === "right" : (isEdge(1,0) || foot === "right");   // v6.107: a strip cell is walled on both sides   // v6.106: a leg reads only its own side sideways; a foot adds the pillar's side to what it really sees
+        /* v6.121.4: a pillar leg also sees a wall on its OTHER side when one is really there (a real edge or a
+           neighbouring pillar's face) — a leg walled on both sides is a strip in all but name (tester-2 room 5: the
+           column beside an inner seam's end reads capN over pinchV, not a side rim). */
+        const eW = strip ? true : leg ? (leg === "left" || isEdge(-1,0)) : (isEdge(-1,0) || foot === "left"), eE = strip ? true : leg ? (leg === "right" || isEdge(1,0)) : (isEdge(1,0) || foot === "right");   // v6.107: a strip cell is walled on both sides   // v6.106: a leg reads only its own side sideways; a foot adds the pillar's side to what it really sees
         /* v6.52 — tier-1 JOINTS (7×7 only): degenerate contact patterns.
            3 cardinals → cap; 4 → dot; opposite pair → pinch (3-wide
            corridors change from edge/core/edge to edge/ring-line/edge in v4;
@@ -8286,7 +8289,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.3";
+const APP_VERSION = "6.121.4";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
