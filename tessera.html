@@ -487,6 +487,10 @@
   <button class="ibtn tool" data-tool="slopeC" data-icon="slopeC" title="Draw CEILING slope: drag from one end to the other. Tap a drawn slope to remove it; tap an empty inside corner to drop a 45° connector."></button>
   <button class="ibtn ptool" data-ptool="erase" data-icon="eraser" title="Erase terrain cells — erasing any cell of a slope removes that whole run"></button>
   <span class="vsep"></span>
+  <button class="ibtn tool" data-tool="slice" data-icon="scissors" title="Slice — drag along a line BETWEEN tiles to un-heal the geometry there: both sides grow edges facing each other, the rest still resolves. Tap to cut one edge. Axis-aligned; slopes are left alone."></button>
+  <button class="ibtn tool" data-tool="islice" data-icon="innerslice" title="Inner slice — like Slice, but the seam is invisible to the edge band: the rim and core either side resolve into themselves (rim facing rim), and no edge tiles appear inside the geometry"></button>
+  <button class="ibtn tool" data-tool="heal" data-icon="stitch" title="Heal — drag along a sliced line (or tap one edge) to join the geometry back together"></button>
+  <span class="vsep"></span>
   <button class="ibtn" id="btnDice" data-icon="dice" title="Roll a random test room — Metroid-style layout stressing every slope family; replaces the Level layout (undo restores it)"></button>
   <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
   <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
@@ -1106,10 +1110,52 @@ function expandSlopeRun(run, ct) {
 /* Neighbour mask — mirrors ATLAS terrMaskAt: slope SURFACE cells read as
    empty from their AIR side (a block above a floor ramp grows a bottom
    edge; mirrored for ceilings). Underlays are fully solid. */
+/* v6.120 SLICES (James 2026-09-09, field-tested in Tessera first, ATLAS later). A cut lives on the
+   EDGE between two cells — "c,r,E" is the line east of (c,r), "c,r,S" the line south of it. The
+   mask treats a neighbour across a cut as air, so both cells grow edge art facing each other and the
+   rim rows stop at the seam; everything else resolves as before. A diagonal neighbour counts only
+   when it is reachable around at least one uncut corner. CUTS is the active set — empty means the
+   output is byte-identical to pre-6.120. [PORT: ATLAS resolveRoom sets CUTS from room.cuts.] */
+let CUTS = new Set();
+let INNER = new Set();   // v6.121 INNER SLICE: the seam is invisible to the edge band; only the rim/core
+                          // logic sees it — cells either side resolve as rim facing the seam, never as edge.
+function edgeIn(set, c, r, dx, dy) {   // is the edge from (c,r) to its orthogonal neighbour (dx,dy) in the set?
+  if (dx === 1) return set.has(c + "," + r + ",E");
+  if (dx === -1) return set.has((c - 1) + "," + r + ",E");
+  if (dy === 1) return set.has(c + "," + r + ",S");
+  return set.has(c + "," + (r - 1) + ",S");
+}
+function cutEdge(c, r, dx, dy) { return edgeIn(CUTS, c, r, dx, dy); }
+/* v6.121.3 — A SEAM CLOSES AGAINST THE WALL (James 2026-09-10, tester-2 B4/B2): an inner seam that
+   ends beside a rim cell reaches into that cell when the cell's own wall is on the far side, so the
+   rim column turns the corner (iBL above the seam, iTL below) instead of running past a dangling
+   end. Only rim cells absorb a seam — a seam ending in open core still ends plainly. */
+function innerReach(cells, masks, c, r, dx, dy, extraWall) {   // extraWall: the caller's synthetic walls (pillar faces, strips)
+  if (!INNER.size || (dx !== 0 && dy !== 0)) return false;
+  const wall = (ddx, ddy) => { const kk = K(c + ddx, r + ddy), n = cells[kk]; return !n || n.kind === "slope" || masks[kk] !== 255 || !!(extraWall && extraWall(ddx, ddy)); };
+  if (dy !== 0) return (edgeIn(INNER, c + 1, r, 0, dy) && wall(-1, 0)) || (edgeIn(INNER, c - 1, r, 0, dy) && wall(1, 0));   // horizontal seam arriving from a side
+  return (edgeIn(INNER, c, r + 1, dx, 0) && wall(0, -1)) || (edgeIn(INNER, c, r - 1, dx, 0) && wall(0, 1));   // vertical seam arriving from above/below
+}
+function innerCut(c, r, dx, dy) {   // orthogonal: the edge; diagonal: ANY seam touching that corner (v6.121.2)
+  // The rim asks about diagonals to decide hooks and bends — "does a concave edge meet my far corner?"
+  // A seam that ends at that corner is exactly such an edge, so one crossing path is enough here
+  // (unlike the mask, where a corner is only cut off when both paths are).
+  if (!INNER.size) return false;
+  if (dx === 0 || dy === 0) return edgeIn(INNER, c, r, dx, dy);
+  return edgeIn(INNER, c, r, dx, 0) || edgeIn(INNER, c + dx, r, 0, dy) || edgeIn(INNER, c, r, 0, dy) || edgeIn(INNER, c, r + dy, dx, 0);
+}
+function cutBetween(c, r, dx, dy) {   // orthogonal: the edge; diagonal: both corner paths blocked
+  if (!CUTS.size) return false;
+  if (dx === 0 || dy === 0) return cutEdge(c, r, dx, dy);
+  const viaX = cutEdge(c, r, dx, 0) || cutEdge(c + dx, r, 0, dy);
+  const viaY = cutEdge(c, r, 0, dy) || cutEdge(c, r + dy, dx, 0);
+  return viaX && viaY;
+}
 function maskAt(cells, c, r, ct) {
   const on = (dx, dy) => {
     const v = cells[K(c + dx, r + dy)];
     if (!v) return false;
+    if (v.kind !== "slope" && cutBetween(c, r, dx, dy)) return false;   // v6.120: a slice reads as air
     if (v.kind === "slope" && v.part === "s") {
       if (v.face !== "c" && dy === 1) return false;
       if (v.face === "c" && dy === -1) return false;
@@ -1251,7 +1297,7 @@ function resolveAll(cells, ct) {
   if (ct.RIM_COLUMNS && ct.TRANSITION && ct.RIM_VARIANTS) {
     const T = ct.TRANSITION, rv = ct.RIM_VARIANTS;
     const wtA = ct.RIM_WEDGES === "terminate";
-    const pe = (c, r, dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wtA && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85))); };
+    const pe = (c, r, dc, dr) => { const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? (masks[kk] !== 255 || innerCut(c, r, dc, dr) || innerReach(cells, masks, c, r, dc, dr)) : (wtA && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85))); };   // v6.121: an inner slice reads as an edge neighbour here
     const cN = (c, r) => { if (pe(c, r, 0, -1)) return true; const a = cells[K(c, r - 1)]; return !wtA && !!(a && a.kind === "slope" && a.face !== "c" && a.seamBand); };
     const cS = (c, r) => { if (pe(c, r, 0, 1)) return true; const b = cells[K(c, r + 1)]; return !wtA && !!(b && b.kind === "slope" && b.face === "c" && b.seamBand); };
     const left = rv.left && rv.left.length ? rv.left : null, right = rv.right && rv.right.length ? rv.right : null;
@@ -1538,7 +1584,10 @@ function resolveAll(cells, ct) {
            cadence, or a hooked side when a far corner meets an edge). Beside a pillar,
            with Rim joints on, the pillar's outer face is a wall to the neighbour. */
         const pillarWall = (dc, dr) => { const q = pillar[K(c + dc, r + dr)]; return !!(q && dr === 0 && jointsOn(ct) && (q.strip || (q.side === "right" && dc === -1) || (q.side === "left" && dc === 1))); };   // v6.107: a strip walls both its neighbours
-        const isEdge = (dc, dr) => { if (pillarWall(dc, dr)) return true; const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? masks[kk] !== 255 : (wedgeTerm && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85)   /* v6.103.2: BASE underlay only — the open-end underlay also sees air beside its surface and must not stand in for a wall */)); };
+        /* v6.121.3: a pillar leg/foot/strip is walled by the pillar itself — that synthetic wall is what an
+           arriving seam closes against, so the seam-reach test must see it too. */
+        const selfWall = (ddx, ddy) => { const q = pillar[k]; return !!(q && ddy === 0 && jointsOn(ct) && (q.strip || ((q.leg || q.wall) && ((q.side === "left" && ddx === -1) || (q.side === "right" && ddx === 1))))); };
+        const isEdge = (dc, dr) => { if (pillarWall(dc, dr)) return true; const kk = K(c + dc, r + dr), n = cells[kk]; return !!(n && (n.kind !== "slope" ? (masks[kk] !== 255 || innerCut(c, r, dc, dr) || innerReach(cells, masks, c, r, dc, dr, (ddx, ddy) => pillarWall(ddx, ddy) || selfWall(ddx, ddy))) : (wedgeTerm && dr === 0 && n.part === "u" && n.seamBand && (maskAt(cells, c + dc, r + dr, ct) & 85) !== 85)   /* v6.103.2: BASE underlay only — the open-end underlay also sees air beside its surface and must not stand in for a wall */)); };
         const above = cells[K(c, r - 1)], below = cells[K(c, r + 1)];
         const eN = isEdge(0,-1) || (!wedgeTerm && !!(above && above.kind === "slope" && above.face !== "c" && above.seamBand));
         const eS = isEdge(0, 1) || (!wedgeTerm && !!(below && below.kind === "slope" && below.face === "c" && below.seamBand));
@@ -2329,6 +2378,8 @@ window.addEventListener("error", (e) => { try { status("Error: " + (e.message ||
 window.addEventListener("unhandledrejection", (e) => { try { status("Error: " + (e.reason && e.reason.message || e.reason || "unhandled rejection")); } catch (err) {} });
 
 const ICONS = {
+  stitch: '<path d="M4 12h16"/><path d="M8 8v8"/><path d="M12 9v6"/><path d="M16 8v8"/>',
+  innerslice: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 7v10" stroke-dasharray="2 2"/>',
   depth: '<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
   edges: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M6 12H2"/><path d="M22 12h-4"/><path d="M12 6V2"/><path d="M12 22v-4"/>',
   scissors: '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
@@ -2426,7 +2477,7 @@ const DEFAULT_PNGS = {
   v1: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACwCAYAAACIGWW2AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFkWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0wNVQxMDo1Mzo0Ny0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBv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",
   v2: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAADACAYAAACDO2h3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAHyGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgMTAuMC1jMDAwIDc5LmQyMGU0NjYzMCwgMjAyNS8xMi8wOS0wMjoxMToyMyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI3LjggKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0wNy0xMVQwODozNToxNSswMjowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpIaXN0b3J5PSIyMDI2LTA3LTA1VDEwOjUzOjA4LTA0OjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMDVUMTA6NTM6NDctMDQ6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUucG5nIHNhdmVkJiN4QTsyMDI2LTA3LTExVDA4OjI5OjMzKzAyOjAwJiN4OTtGaWxlIGF1dG90aWxlX3RlbXBsYXRlLnBuZyBvcGVuZWQmI3hBOzIwMjYtMDctMTFUMDg6MzU6MTUrMDI6MDAmI3g5O0ZpbGUgYXV0b3RpbGVfdGVtcGxhdGUgNHg0LnBuZyBzYXZlZCYjeEE7IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjI0YzVmZWFlLWJhOTItNDhmMC04OTM5LTBlMTU3NzI5MmFhMiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjM2ZmU3NDE1LWEyNWEtNTU0NC04ZmFhLWQ2ODM4NTI3MWRmMiIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOjdjOWZjZWExLTE1NWEtNGNmOC1hNjVjLWQwZjlkNzExNTE4NSI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6N2M5ZmNlYTEtMTU1YS00Y2Y4LWE2NWMtZDBmOWQ3MTE1MTg1IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTA1VDEwOjA3OjE0LTA0OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6YWIyNjBmZDgtY2E1NC00MGIxLWI2MzEtZWNkYzY2YTZhMzA4IiBzdEV2dDp3aGVuPSIyMDI2LTA3LTExVDA4OjM1OjE1KzAyOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgMjcuOCAoTWFjaW50b3NoKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNl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",
 };
-const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush", size: "tessera.size", decor: "tessera.decor" };
+const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tessera.pals", finger: "tessera.finger", pen: "tessera.pen", bg: "tessera.bg", slopes: "tessera.slopes", brush: "tessera.brush", size: "tessera.size", decor: "tessera.decor", cuts: "tessera.cuts", icuts: "tessera.icuts" };
 
 /* ==== PROJECTS (v6.39) ============================================
    A project is a snapshot of the workspace's localStorage keys.
@@ -2443,7 +2494,7 @@ const LS = { contract: "tessera.contract", fills: "tessera.fills", pals: "tesser
 const BG_KEYS = { doc: "tessera.bg.doc", flat: "tessera.bg.flat" };
 const PROJ_TYPE_KEY = "tessera.projType";
 const PROJECT_KEYS = [
-  LS.contract, LS.size, LS.fills, LS.slopes, LS.decor,
+  LS.contract, LS.size, LS.fills, LS.slopes, LS.decor, LS.cuts, LS.icuts,
   "tessera.grid", "tessera.remaps", "tessera.roleremaps", "tessera.deepvars", "tessera.palsel", "tessera.ct",
   ...Object.keys(CONTRACTS).map((id) => CONTRACTS[id].lsKey),
   PROJ_TYPE_KEY, BG_KEYS.doc, BG_KEYS.flat,
@@ -3050,7 +3101,7 @@ try { sheetSize = JSON.parse(localStorage.getItem(LS.size) || "{}") || {}; } cat
 
 /* ---- state ---- */
 let tool = "pencil", pTool = "paint", pvMode = "pixels", layoutMode = "field", activeTab = "ed";
-const CELL_ONLY_TOOLS = ["cellSel", "slopeF", "slopeC", "cellRect"];   // v6.117: tools that live in the cell tray; they hand back to the pencil when Cell mode ends
+const CELL_ONLY_TOOLS = ["cellSel", "slopeF", "slopeC", "cellRect", "slice", "islice", "heal"];   // v6.117: tools that live in the cell tray; they hand back to the pencil when Cell mode ends
 let cellSel = null;   // v6.118: Level cell selection {c0,r0,c1,r1} (inclusive), or null
 function cellSelClear() { cellSel = null; }
 let revKey = null, revRotVal = 0, revMask = null, revRole = null;
@@ -3215,6 +3266,14 @@ function maskRemapFor(m) {
 }
 let userSlopes = (() => { try { return JSON.parse(localStorage.getItem(LS.slopes)) || []; } catch (e) { return []; } })();
 function persistUserSlopes() { try { localStorage.setItem(LS.slopes, JSON.stringify(userSlopes)); } catch (e) {} }
+let cuts = (() => { try { return new Set(JSON.parse(localStorage.getItem(LS.cuts)) || []); } catch (e) { return new Set(); } })();   // v6.120: slice edges
+let icuts = (() => { try { return new Set(JSON.parse(localStorage.getItem(LS.icuts)) || []); } catch (e) { return new Set(); } })();   // v6.121: inner slice edges
+function persistCuts() { try { localStorage.setItem(LS.cuts, JSON.stringify([...cuts])); localStorage.setItem(LS.icuts, JSON.stringify([...icuts])); } catch (e) {} }
+function cutCells(key) { const [c, r, side] = key.split(","); const a = [+c, +r]; return [a, side === "E" ? [a[0] + 1, a[1]] : [a[0], a[1] + 1]]; }
+function plainFill(c, r) { const v = fills[K(c, r)]; return !!v && v.kind !== "slope"; }
+function pruneCuts() {   // a cut only means something between two plain fills; erased or sloped cells shed theirs
+  for (const set of [cuts, icuts]) for (const key of [...set]) { const [a, b] = cutCells(key); if (!plainFill(a[0], a[1]) || !plainFill(b[0], b[1])) set.delete(key); }
+}
 const cellName = (ax, ay) => String.fromCharCode(65 + ax) + (ay + 1);
 let color = APP_MODE === "bg" ? { r: 52, g: 52, b: 52, a: 255 } : { r: 25, g: 25, b: 25, a: 255 };   // tile lane starts at 25; backgrounds open on their body tone (20 is the void-match)
 let fills = null, cells = null, resolved = null;
@@ -3447,6 +3506,26 @@ function drawGrid() {
       ovCtx.fillText(nm, x, y);
     }
   }
+  const sliceToolUp = tool === "slice" || tool === "islice" || tool === "heal";
+  if (activeTab === "pv" && pvMode === "cells" && layoutMode === "field" && (sliceToolUp || (stroke && stroke.kind === "slice"))) {   // v6.120/121: seams + gesture
+    const seg = (c, r, side, style, w, dash) => {
+      const x = v.x + c * TILE * v.s, y = v.y + r * TILE * v.s, t = TILE * v.s;
+      ovCtx.strokeStyle = style; ovCtx.lineWidth = w; ovCtx.setLineDash(dash ? [4, 3] : []); ovCtx.beginPath();
+      if (side === "E") { ovCtx.moveTo(x + t, y); ovCtx.lineTo(x + t, y + t); } else { ovCtx.moveTo(x, y + t); ovCtx.lineTo(x + t, y + t); }
+      ovCtx.stroke(); ovCtx.setLineDash([]);
+    };
+    for (const key of cuts) { const [c, r, side] = key.split(","); seg(+c, +r, side, "rgba(255,220,60,0.9)", 2, false); }     // v6.121: yellow
+    for (const key of icuts) { const [c, r, side] = key.split(","); seg(+c, +r, side, "rgba(255,220,60,0.9)", 2, true); }     // inner: dashed
+    if (stroke && stroke.kind === "slice") {
+      for (const ed of sliceEdges(stroke)) seg(ed[0], ed[1], ed[2], sliceEdgeLive(ed) ? (stroke.heal ? "rgba(155,229,100,0.95)" : "rgba(255,230,80,1)") : "rgba(255,255,255,0.25)", 3, stroke.mode === "islice");
+    } else if (hover && sliceToolUp) {   // v6.121: crosshair at the tip + the edge a tap would take
+      const ed = sliceEdges({ x0: hover.x, y0: hover.y, moved: false })[0];
+      seg(ed[0], ed[1], ed[2], sliceEdgeLive(ed) ? "rgba(255,230,80,0.9)" : "rgba(255,255,255,0.3)", 3, tool === "islice");
+      const hx = v.x + hover.x * v.s, hy = v.y + hover.y * v.s;
+      ovCtx.strokeStyle = "rgba(0,0,0,0.7)"; ovCtx.lineWidth = 3; ovCtx.beginPath(); ovCtx.moveTo(hx - 12, hy); ovCtx.lineTo(hx + 12, hy); ovCtx.moveTo(hx, hy - 12); ovCtx.lineTo(hx, hy + 12); ovCtx.stroke();
+      ovCtx.strokeStyle = "#e8e8e8"; ovCtx.lineWidth = 1; ovCtx.beginPath(); ovCtx.moveTo(hx - 12, hy); ovCtx.lineTo(hx + 12, hy); ovCtx.moveTo(hx, hy - 12); ovCtx.lineTo(hx, hy + 12); ovCtx.stroke();
+    }
+  }
   if (activeTab === "pv" && pvMode === "cells" && layoutMode === "field") {   // v6.118: selection, marquee and move ghosts
     const box = (q, fill, line, dash) => {
       const gx = v.x + q.c0 * TILE * v.s, gy = v.y + q.r0 * TILE * v.s, gw = (q.c1 - q.c0 + 1) * TILE * v.s, gh = (q.r1 - q.r0 + 1) * TILE * v.s;
@@ -3568,7 +3647,7 @@ function drawGrid() {
     ovCtx.fillStyle = "#8ecbff"; ovCtx.fillText(lbl, v.x + 8, v.y + 7);
   }
   const hpo = activeTab === "pv" ? pvPad() * TILE : 0;   // v6.119.1: the hover ghost follows the pen into the margin
-  if (hover && tool !== "selmove" && !canvasMode && hover.x >= -hpo && hover.y >= -hpo && hover.x < W + hpo && hover.y < H + hpo) {
+  if (hover && tool !== "selmove" && !sliceToolUp && !canvasMode && hover.x >= -hpo && hover.y >= -hpo && hover.x < W + hpo && hover.y < H + hpo) {   // v6.121: slice tools draw their own crosshair
     // hovering pen/mouse tip: outline the pixel it would touch (or the whole
     // cell in Cells mode), dark halo behind an accent line for contrast
     const cellMode = activeTab === "pv" && pvMode === "cells";
@@ -3826,13 +3905,13 @@ const UNDO_CAP = APP_MODE === "bg" ? 24 : 40;   // a 480×270 snapshot is ~0.5 M
 let lockMask = null;   // v6.74: alpha lock — 1 where the layer had pixels when the edit began
 function snapshot() { const im = edCtx.getImageData(0, 0, TW, TH); if (APP_MODE === "bg") im.bgLayer = bgDoc.active; undoStack.push(im); if (undoStack.length > UNDO_CAP) undoStack.shift();
   if (bgAlphaLocked()) { lockMask = new Uint8Array(TW * TH); const d = im.data; for (let i = 0; i < lockMask.length; i++) if (d[i * 4 + 3]) lockMask[i] = 1; } else lockMask = null; redoStack = []; actionLog.push("ed"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
-function levelStateJSON() { return JSON.stringify({ fills, userSlopes, gc: fieldCols, gr: fieldRows, doors: roomDoors, spawn: roomSpawn }); }
+function levelStateJSON() { return JSON.stringify({ fills, userSlopes, cuts: [...cuts], icuts: [...icuts], gc: fieldCols, gr: fieldRows, doors: roomDoors, spawn: roomSpawn }); }
 function levelSnapshot() { levelUndo.push(levelStateJSON()); if (levelUndo.length > 40) levelUndo.shift(); levelRedo = []; actionLog.push("level"); if (actionLog.length > 80) actionLog.shift(); redoLog = []; }
 function applyLevelState(s) {
   cellSelClear();   // v6.118: the cells it pointed at are gone
   roomDoors = s.doors || []; roomSpawn = s.spawn || null;   // decorations ride with the layout they belong to
   persistDecor();
-  fills = s.fills; userSlopes = s.userSlopes;
+  fills = s.fills; userSlopes = s.userSlopes; cuts = new Set(s.cuts || []); icuts = new Set(s.icuts || []); persistCuts();   // v6.120/121: cuts ride the layout
   if (s.gc && s.gr) { fieldCols = s.gc; fieldRows = s.gr; persistGrid(); }
   persistFills(); persistUserSlopes(); rebuild(); renderPreview(); blit(); drawGrid();
 }
@@ -5262,6 +5341,9 @@ function rebuild() {
     offCtx.imageSmoothingEnabled = false;
     WORLD.pv.w = wc * TILE; WORLD.pv.h = wr * TILE;
   }
+  if (layoutMode !== "zoo") { const n = cuts.size + icuts.size; pruneCuts(); if (cuts.size + icuts.size !== n) persistCuts(); }
+  CUTS = layoutMode === "zoo" ? new Set() : cuts;   // v6.120
+  INNER = layoutMode === "zoo" ? new Set() : icuts;   // v6.121
   cells = layoutMode === "zoo" ? buildZooCells(CT) : buildCells(fills, CT, userSlopes);
   resolved = resolveAll(cells, CT);
   // role rules: keyed by the cell's geometric role — direction-explicit,
@@ -5508,6 +5590,33 @@ function entFootprints() {   // cell rects, with a reference back to the record
   roomDoors.forEach((dd, i) => out.push({ kind: "door", i, side: dd.side, c0: dd.side === "L" ? 0 : GCOLS - dc, c1: dd.side === "L" ? dc - 1 : GCOLS - 1, r0: dd.r - 3, r1: dd.r }));
   return out;
 }
+/* v6.120: which edges a slice/heal gesture covers. A drag snaps to the grid line nearest its start
+   along the dominant axis and covers every edge it passes; a tap takes the single nearest edge. */
+function sliceEdges(st) {
+  const out = [];
+  if (!st.moved) {
+    const gx = Math.round(st.x0 / TILE), gy = Math.round(st.y0 / TILE);
+    if (Math.abs(st.x0 - gx * TILE) <= Math.abs(st.y0 - gy * TILE)) out.push([gx - 1, Math.floor(st.y0 / TILE), "E"]);
+    else out.push([Math.floor(st.x0 / TILE), gy - 1, "S"]);
+    return out;
+  }
+  const dx = st.x1 - st.x0, dy = st.y1 - st.y0;
+  if (Math.abs(dx) >= Math.abs(dy)) {   // horizontal line: south edges of the row above it
+    const gy = Math.round(st.y0 / TILE);
+    const c0 = Math.floor(Math.min(st.x0, st.x1) / TILE), c1 = Math.ceil(Math.max(st.x0, st.x1) / TILE) - 1;
+    for (let c = c0; c <= c1; c++) out.push([c, gy - 1, "S"]);
+  } else {
+    const gx = Math.round(st.x0 / TILE);
+    const r0 = Math.floor(Math.min(st.y0, st.y1) / TILE), r1 = Math.ceil(Math.max(st.y0, st.y1) / TILE) - 1;
+    for (let r = r0; r <= r1; r++) out.push([gx - 1, r, "E"]);
+  }
+  return out;
+}
+function sliceEdgeKey(e) { return e[0] + "," + e[1] + "," + e[2]; }
+function sliceEdgeLive(e) {   // both sides must be plain fills for a cut to mean anything
+  const b = e[2] === "E" ? [e[0] + 1, e[1]] : [e[0], e[1] + 1];
+  return plainFill(e[0], e[1]) && plainFill(b[0], b[1]);
+}
 function cellSelContents(q) {   // v6.118.1: fills, whole runs and entities inside a rect
   const fillKeys = Object.keys(fills).filter((kk) => { const [a, b] = kk.split(",").map(Number); return inRect(q, a, b); });
   const runs = []; userSlopes.forEach((run, i) => { if (runKeys(run).every((kk) => { const [a, b] = kk.split(",").map(Number); return inRect(q, a, b); })) runs.push(i); });
@@ -5562,6 +5671,16 @@ function cellGrabCommit(g, dx, dy) {
   const occupied = new Set(dest); for (const run of destRuns) for (const kk of runKeys(run)) occupied.add(kk);
   let replaced = 0;   // a static run under the drop goes — a fill piled on a run cell is exactly the ATLAS corruption
   userSlopes = userSlopes.filter((old) => { const hit = runKeys(old).some((kk) => occupied.has(kk)); if (hit) replaced++; return !hit; });
+  {   // v6.120: cuts ride with their cells — both cells moved: shift; one moved: dropped
+    const moved = new Set(g.fillKeys);
+    for (const set of [cuts, icuts]) for (const key of [...set]) {
+      const [a, b] = cutCells(key); const ma = moved.has(K(a[0], a[1])), mb = moved.has(K(b[0], b[1]));
+      if (!ma && !mb) continue;
+      set.delete(key);
+      if (ma && mb) set.add((a[0] + dx) + "," + (a[1] + dy) + "," + key.split(",")[2]);
+    }
+    persistCuts();
+  }
   for (const kk of dest) fills[kk] = { t: 1 };
   for (const kk of occupied) if (!dest.includes(kk)) delete fills[kk];   // moved run cells clear any static fill beneath them
   userSlopes.push(...destRuns);
@@ -5680,6 +5799,13 @@ function beginStroke(e) {
     else { stroke = { kind: "cellMarq", c0: c, r0: r, c1: c, r1: r, moved: false }; drawGrid(); }
     return;
   }
+  if (tool === "slice" || tool === "islice" || tool === "heal") {   // v6.120/121: slice / inner slice / heal along grid lines
+    if (layoutMode === "zoo") { status("Slice and Heal work on the Level tab \u2014 the Zoo is generated."); return; }
+    const [px, py] = pvPos(e);
+    stroke = { kind: "slice", mode: tool, heal: tool === "heal", x0: px, y0: py, x1: px, y1: py, moved: false };
+    drawGrid();
+    return;
+  }
   if (tool === "cellRect") {   // v6.117: solid rectangle of terrain cells
     if (layoutMode === "zoo") { status("Rectangles draw on the Level tab \u2014 the Zoo is generated."); return; }
     const [px, py] = pvPos(e);
@@ -5764,6 +5890,14 @@ function moveStroke(e) {
     drawGrid();
     const run = stroke.ghost;
     if (run) status((run.face === "c" ? "Ceiling" : "Floor") + " slope: " + (run.grad === 1 ? "45\u00b0" : run.grad + ":1") + " " + run.dir + ", " + run.steps + " step" + (run.steps > 1 ? "s" : "") + " \u2014 release to place.");
+  } else if (stroke.kind === "slice") {
+    const [px, py] = pvPos(e);
+    if (px === stroke.x1 && py === stroke.y1) return;
+    stroke.x1 = px; stroke.y1 = py;
+    if (Math.hypot(px - stroke.x0, py - stroke.y0) >= 4) stroke.moved = true;
+    drawGrid();
+    const n = sliceEdges(stroke).filter(sliceEdgeLive).length;
+    status((stroke.heal ? "Heal" : stroke.mode === "islice" ? "Inner slice" : "Slice") + " \u2014 " + n + " edge" + (n === 1 ? "" : "s") + " \u2014 release to apply.");
   } else if (stroke.kind === "cellMarq" || stroke.kind === "cellGrab") {
     const [px, py] = pvPos(e);
     const nc = clampPadC(Math.floor(px / TILE)), nr = clampPadR(Math.floor(py / TILE));
@@ -5867,6 +6001,19 @@ function endStroke() {
     }
     selApply(shapePoly(s.pts));
     return;
+  }
+  if (stroke && stroke.kind === "slice") {   // v6.120
+    const edges = sliceEdges(stroke).filter(sliceEdgeLive);
+    const want = stroke.mode === "islice" ? icuts : cuts, other = stroke.mode === "islice" ? cuts : icuts;
+    let n = 0;
+    for (const ed of edges) { const key = sliceEdgeKey(ed); if (stroke.heal ? (cuts.has(key) || icuts.has(key)) : !want.has(key)) n++; }
+    if (n) {
+      levelSnapshot();
+      for (const ed of edges) { const key = sliceEdgeKey(ed); if (stroke.heal) { cuts.delete(key); icuts.delete(key); } else { want.add(key); other.delete(key); } }   // an edge is one kind or the other
+      persistCuts(); rebuild(); renderPreview(); blit();
+      status((stroke.heal ? "Healed " : stroke.mode === "islice" ? "Inner-sliced " : "Sliced ") + n + " edge" + (n === 1 ? "" : "s") + ".");
+    } else status(stroke.heal ? "Nothing sliced there to heal." : (edges.length ? "Already sliced there." : "A slice needs solid on both sides of the line."));
+    stroke = null; drawGrid(); return;
   }
   if (stroke && stroke.kind === "cellMarq") {   // v6.118
     if (!stroke.moved) { cellSel = null; status("Selection cleared."); }
@@ -7040,7 +7187,7 @@ function shareJSON(json, filename) {
     }
   } catch (e) {}   // fall through to the download
   const a = document.createElement("a");
-  a.href = "data:application/json," + encodeURIComponent(json);
+  a.href = "data:application/json;base64," + btoa(unescape(encodeURIComponent(json)));   // v6.121.2: base64 — some hosts (the in-app preview) atob() every download
   a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   status("Saved " + filename + ".");
@@ -7053,7 +7200,7 @@ $("btnRoomExport").addEventListener("click", () => {
   shareJSON(JSON.stringify({
     tessera_room: 1, contractId: CT.id, app: APP_VERSION, savedAt: new Date().toISOString(),
     rulesHash: rulesHash(),
-    gcols: fieldCols, grows: fieldRows, pad: PV_PAD, fills, slopes: userSlopes,   // v6.119: pad = drawable margin; keys outside 0..gcols-1 / 0..grows-1 are margin cells
+    gcols: fieldCols, grows: fieldRows, pad: PV_PAD, fills, slopes: userSlopes, cuts: [...cuts], innerCuts: [...icuts],   // v6.120/121: slice edges "c,r,E" / "c,r,S"   // v6.119: pad = drawable margin; keys outside 0..gcols-1 / 0..grows-1 are margin cells
     resolved,   // baked layer: the deterministic resolver's output for this geometry
   }), exportName("room"));
 });
@@ -7113,6 +7260,7 @@ function importRoom(data) {
   persistDecor();
   fieldCols = data.gcols || 44; fieldRows = data.grows || 26; persistGrid();
   userSlopes = Array.isArray(data.slopes) ? data.slopes : []; persistUserSlopes();
+  cuts = new Set(Array.isArray(data.cuts) ? data.cuts : []); icuts = new Set(Array.isArray(data.innerCuts) ? data.innerCuts : []); persistCuts();   // v6.120/121
   persistFills(); rebuild(); renderPreview(); blit(); drawGrid();
   status("Room loaded." +
     (data.remaps || data.roleRemaps || data.deepVariants ? " (Old combined file — its rules were NOT applied; use Import Rules for those.)" : "") +
@@ -8138,7 +8286,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.119.1";
+const APP_VERSION = "6.121.3";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
