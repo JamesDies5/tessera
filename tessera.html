@@ -3055,6 +3055,7 @@ function ghPullProject(slug, legacy) {
         if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
         const rec = { id: data.id, name: data.name || slug, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: slug };
         rec.type = data.type === "bg" || (rec.keys[PROJ_TYPE_KEY] === "bg") ? "bg" : "tiles";
+        rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));   // v6.121.9: what was just pulled IS what GitHub has — badge reads in sync, not "changes since last push"
         return projPut(rec).then(() => rec);
       });
     })
@@ -8292,7 +8293,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.8";
+const APP_VERSION = "6.121.9";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
