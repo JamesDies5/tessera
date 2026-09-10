@@ -698,18 +698,6 @@
    ============================================================ */
 const TILE = 16;
 let GCOLS = 44, GROWS = 26;   // ACTIVE grid dims (rebuild syncs: zoo pins the contract's zoo dims — 44×26 default, 44×36 for v4 — field follows fieldCols/Rows)
-/* v6.119: OUT-OF-BOUNDS MARGIN (James 2026-09-09). In-game rooms continue past the camera, so
-   floors, walls and ceilings should not terminate at the room edge. The Level keeps PV_PAD cells
-   of drawable margin on every side: cells there are real geometry (they heal the in-room cells
-   exactly like any neighbour) and render at half opacity. Cell coordinates stay room-relative —
-   the margin is negative / >= GCOLS — so the resolver, keys, saves and undo are untouched; only
-   the preview canvas, the fit, the grid and the pointer clamps know about the pad. */
-const PV_PAD = 4;
-function pvPad() { return layoutMode === "field" ? PV_PAD : 0; }
-function inPadded(c, r) { const p = pvPad(); return c >= -p && r >= -p && c < GCOLS + p && r < GROWS + p; }
-function clampPadC(c) { const p = pvPad(); return Math.max(-p, Math.min(GCOLS + p - 1, c)); }
-function clampPadR(r) { const p = pvPad(); return Math.max(-p, Math.min(GROWS + p - 1, r)); }
-function inRoom(c, r) { return c >= 0 && r >= 0 && c < GCOLS && r < GROWS; }
 const SCREEN_TC = 30, SCREEN_TR = 17;   // one game screen = 480×270 px (landscape) → 30×17 tiles
 let fieldCols = 44, fieldRows = 26;
 try { const g = JSON.parse(localStorage.getItem("tessera.grid") || "null"); if (g && g.c && g.r) { fieldCols = g.c; fieldRows = g.r; } } catch (e) {}
@@ -2365,6 +2353,18 @@ function parseTresPalette(filename, text) {
   return { name, base: [col("color_darkest",D[0]), col("color_dark",D[1]), col("color_medium",D[2]), col("color_light",D[3]), col("color_lightest",D[4])] };
 }
 /*__PURE_END__*/
+/* v6.119 (moved below the pure region in v6.121.5 — it reads layoutMode, an app variable): OUT-OF-BOUNDS MARGIN (James 2026-09-09). In-game rooms continue past the camera, so
+   floors, walls and ceilings should not terminate at the room edge. The Level keeps PV_PAD cells
+   of drawable margin on every side: cells there are real geometry (they heal the in-room cells
+   exactly like any neighbour) and render at half opacity. Cell coordinates stay room-relative —
+   the margin is negative / >= GCOLS — so the resolver, keys, saves and undo are untouched; only
+   the preview canvas, the fit, the grid and the pointer clamps know about the pad. */
+const PV_PAD = 4;
+function pvPad() { return layoutMode === "field" ? PV_PAD : 0; }
+function inPadded(c, r) { const p = pvPad(); return c >= -p && r >= -p && c < GCOLS + p && r < GROWS + p; }
+function clampPadC(c) { const p = pvPad(); return Math.max(-p, Math.min(GCOLS + p - 1, c)); }
+function clampPadR(r) { const p = pvPad(); return Math.max(-p, Math.min(GROWS + p - 1, r)); }
+function inRoom(c, r) { return c >= 0 && r >= 0 && c < GCOLS && r < GROWS; }
 
 /* ============================================================ app ============================================================ */
 const $ = (id) => document.getElementById(id);
@@ -8289,7 +8289,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.4";
+const APP_VERSION = "6.121.5";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
