@@ -3023,11 +3023,21 @@ function ghPushProject(rec) {
   ghArtifactsFromRecord(rec, slug)
     .then((files) => ghPushFiles(rec, base, files));
 }
+/* v6.121.12 — the ONLY files a push may remove from its own folder: this
+   project's per-layer PNGs (<slug>.layerN.png) that the push did not write,
+   left behind when a background lost layers. Nothing else can match. */
+function ghStaleLayerFiles(entries, slug, files) {
+  const kept = new Set(files.map((f) => f.name));
+  return (entries || []).filter((f) => f.type === "file" && f.name.startsWith(slug + ".layer")
+    && /^\.layer\d+\.png$/.test(f.name.slice(slug.length)) && !kept.has(f.name));
+}
 function ghPushFiles(rec, base, files) {
+  let stale = [], cleared = 0;
   ghListSub(base)
     .then((entries) => {
       const shas = {};
       for (const f of entries || []) shas[f.name] = f.sha;
+      stale = ghStaleLayerFiles(entries, base.split("/").pop(), files);
       let chain = Promise.resolve(), done = 0;
       for (const f of files) {
         chain = chain.then(() => {
@@ -3039,6 +3049,16 @@ function ghPushFiles(rec, base, files) {
       }
       return chain;
     })
+    .then(() => {   // v6.121.12: clear leftover layer PNGs; a failed removal never fails the push — the next push tries again
+      let c = Promise.resolve();
+      for (const f of stale) c = c.then(() => {
+        projPushUI(rec.id, 0.96, "Removing " + f.name + "…");
+        return new Promise((res) => setTimeout(res, GH_FILE_GAP_MS))
+          .then(() => ghDeleteFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + f.path, f.sha, "TESSERA: " + rec.name + " — removed " + f.name))
+          .then(() => { cleared += 1; }, () => {});
+      });
+      return c;
+    })
     .then(() => ghRemoveOldSlugs(rec))   // v6.84: a rename's previous folder(s) go once the new files are in place
     .then((moved) => {
       rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));
@@ -3046,7 +3066,7 @@ function ghPushFiles(rec, base, files) {
       const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
       if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
       projPushUI(rec.id, 1, projType(rec) === "bg" ? (files.length > 2 ? "Pushed ✓ project + PNG + layers" : "Pushed ✓ project + PNG") : "Pushed ✓ project + PNG + rules", "ok");
-      status("Pushed “" + rec.name + "” to GitHub." + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
+      status("Pushed “" + rec.name + "” to GitHub." + (cleared ? " Removed " + cleared + " old layer file" + (cleared > 1 ? "s" : "") + "." : "") + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
     })
     .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
 }
@@ -8301,7 +8321,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.11";
+const APP_VERSION = "6.121.12";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

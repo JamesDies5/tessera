@@ -5,7 +5,7 @@ Home Screen shortcut to author autotile sheets and rooms for LILA, his Godot 4.6
 also his pixel editor: a second project type, Background, is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.11** (2026-10-03).
+be a change there. Current: **v6.121.12** (2026-10-03).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -129,7 +129,8 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
   apart, up to 5 tries on a 409 or a server error, with a fresh SHA each try (v6.121.10). A tileset
   pushes `project.json` + `<slug>.png` + `<slug>.rules.json`; a background pushes `project.json` +
   the flattened `<slug>.png` + one `<slug>.layerN.png` per layer when it has more than one, and no
-  rules file. A pull reads `project.json` only (everything is inside it) and works without a token
+  rules file; since v6.121.12 a push also removes leftover `<slug>.layerN.png` files it no longer
+  writes (and can remove nothing else). A pull reads `project.json` only (everything is inside it) and works without a token
   (public repo); pushes need the fine-grained token stored in `localStorage`. Last write wins.
 - Background document (`tessera.bg.doc`): `w`, `h`, `active`, `tiled`, `sym`, and `layers` bottom
   to top, each `{id, name, visible, locked, opacity, png}` or a group header `{kind: "folder", …}`
@@ -164,6 +165,6 @@ tray), collision drawing, variations for tiles other than the centre core, patte
 the canon 5×5 start-up ruleset, and a rethink of slopes on the 7×7 — then the full tileset exporter (art, rules, collision, hazard, slopes, semi-solid in one bundle that
 ATLAS and Godot import ready to go), then Tech 3 into ATLAS/Godot. Also raised 2026-10-03: a
 dedicated Sprites project type beside Tileset and Background, possibly with animation and onion
-skinning (nothing of that exists yet). Next small fix: a background that loses layers should also
-remove its old per-layer PNGs from the repo. Delivered and awaiting James's test on the iPad: the v6.121.11
-tooltip and wording tidy (checked in the preview 2026-10-03).
+skinning (nothing of that exists yet). Delivered and awaiting James's test on the iPad: v6.121.12, a push
+also clears a background's leftover per-layer PNGs from the repo. (The v6.121.11 tooltip tidy was
+verified by James 2026-10-03.)

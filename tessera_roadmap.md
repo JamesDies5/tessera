@@ -10,8 +10,8 @@
 ## 0. In hand
 
 - **Documentation sweep (2026-10-03).** Done: blueprint rebuilt, this roadmap, the history file, `CLAUDE.md` corrected, regression rooms unpacked, and a preview of the app in Claude Code's browser pane (`CLAUDE.md`, "Preview").
-- **Tooltip and wording tidy** (v6.121.11) — delivered 2026-10-03, awaiting James's test. Tooltips now match what each button does and no longer mention keyboard keys; a few on-screen messages corrected; the Pencil-hover tip now follows tooltips that change after load (background projects, Export on the Level tab); a background push with layers says so. Resolver untouched: identical on all three regression rooms.
-- **Next small fix:** a background that loses layers should also remove its old per-layer PNGs from the repo (§4 below). James wants this one.
+- **Tooltip and wording tidy** (v6.121.11) — **verified by James on the iPad 2026-10-03.** Tooltips now match what each button does and no longer mention keyboard keys; a few on-screen messages corrected; the Pencil-hover tip now follows tooltips that change after load (background projects, Export on the Level tab); a background push with layers says so. Resolver untouched: identical on all three regression rooms.
+- **Leftover layer files** (v6.121.12) — delivered 2026-10-03, awaiting James's test. A push now also removes this project's own per-layer PNGs that it no longer writes, and nothing else; a failed removal never fails the push. Checked with a simulated push in the preview. Real leftovers in the repo at the time: Gunner 3, Rope Sprites 22.
 
 ---
 
@@ -111,7 +111,7 @@ James already draws game sprites in Background projects. A dedicated third type 
 
 Sync is working well for James as his cloud save. Possible gaps, in the order worth closing:
 
-1. **Leftover layer files.** When a background drops layers, the push never removes the per-layer PNGs it no longer writes, so old ones stay in the repo. James wants them cleared. Next small fix.
+1. **Leftover layer files.** When a background drops layers, the push used to leave the per-layer PNGs it no longer writes in the repo. Fixed in v6.121.12, awaiting James's test (§0).
 2. **Silent save failure.** A background keeps every layer inside one saved document in the browser's quick storage. If that ever fills, the save fails without a word, and a push would upload the last good save and still show success. Far from the limit today (the largest project, Rope Sprites with 26 layers, is a small fraction of it). Cheap protection: say so on screen when a save fails.
 3. **Same folder name.** Two projects whose names reduce to the same folder would overwrite each other in the repo. No guard yet (noted 2026-09-05).
 
