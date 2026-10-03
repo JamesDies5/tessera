@@ -324,12 +324,12 @@
 <header>
   <div class="brand"><h1>TESSERA</h1><div id="ver"></div><div id="bgLabel" style="display:none" title="Background project — canvas size"></div></div>
   <button class="ibtn" id="btnReload" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
-  <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset lives in its own project; opening this gallery or switching auto-saves the open one"></button>
+  <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset or background lives in its own project; opening this gallery or switching auto-saves the open one"></button>
   <span class="vsep"></span>
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
   <button class="tab" data-tab="zoo" data-icon="puzzle" title="Zoo — generated coverage: every blob mask + all twelve slope stamps"></button>
-  <select class="pal" id="ctSelect" title="Terrain sheet format — 3&times;3 is the current production ATLAS/Godot contract; 4&times;4 adds parity edge pairs and depth bands (TESSERA-only until the ATLAS port)">
+  <select class="pal" id="ctSelect" title="Terrain sheet format — 5&times;5 is the standard; 3&times;3 is the original, used by the game's older terrains; 4&times;4 adds a simple rim; 7&times;7 has three border bands">
     <option value="v1">3&times;3</option>
     <option value="v2">4&times;4</option>
     <option value="v3">5&times;5</option>
@@ -340,12 +340,12 @@
   <button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
     <span class="vsep"></span>
-    <button class="ibtn" id="btnCellMode" data-icon="layout" title="Cell mode — paint or erase whole terrain cells, draw solid rectangles and slopes. Tap again to return to pixel drawing, where edits land in the template cell each tile came from."></button>
+    <button class="ibtn" id="btnCellMode" data-icon="layout" title="Cell mode — work in whole terrain cells: select and move, paint, erase, rectangles, slopes, slices. Tap again to return to pixel drawing, where edits land in the template cell each tile came from."></button>
     <span class="vsep"></span>
     <button class="ibtn" id="btnIO" data-icon="share" title="Import/Export — rules and room JSON files (rules describe the tileset; rooms describe drawn geometry)"></button>
   </div>
   <span class="spacer"></span>
-  <span class="fly"><button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size and shape, shared by pencil and eraser"></button>
+  <span class="fly"><button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size, shape, pixel-perfect and dither; shared by pencil, eraser and shape outlines"></button>
   <!-- Brush flyout: pixel size + stamp shape, shared by pencil and eraser -->
   <div id="brushMenu">
     <div class="cmRow"><span class="lbl">SIZE</span>
@@ -367,7 +367,7 @@
       <button data-v="2" title="50% — checkerboard"><canvas class="bdit" width="4" height="4" data-d="2"></canvas>50%</button>
       <button data-v="3" title="75% — three pixels in four"><canvas class="bdit" width="4" height="4" data-d="3"></canvas>75%</button></div></div>
   </div></span>
-  <span class="fly"><button class="ibtn" id="btnLayers" data-icon="layers" title="Layers — add, hide, lock, reorder, merge" style="display:none"></button>
+  <span class="fly"><button class="ibtn" id="btnLayers" data-icon="layers" title="Layers — add, group, hide, alpha lock, opacity, reorder, merge" style="display:none"></button>
   <div id="layerMenu">
     <div class="lmHead"><span class="lbl">LAYERS</span><button class="lyBtn" id="lyOpts" data-icon="chevron" title="Options for the selected layer (same menu as tapping it)"></button><button class="lyBtn" id="lyAdd" data-icon="sqplus" title="New layer above the selected one"></button></div>
     <div id="layerList"></div>
@@ -383,8 +383,6 @@
   <input type="file" id="fileTpl" accept="image/png" hidden>
 </header>
 
-<!-- Options tray: template file + canvas operations, one line each.
-     Toggled by the wrench; actions close it. -->
 <!-- Selection options bar (v6.110: a TOP tray like Shapes, less reach on the iPad): shapes + modes + clipboard
      while the marquee tool is active, flip/rotate while Transform is; Template tab only. -->
 <div id="selbar">
@@ -398,10 +396,10 @@
     <button class="ibtn selmode" data-selmode="sub" data-icon="minus" title="Removal — new shapes carve out of the selection"></button>
     <button class="ibtn" id="btnSelInvert" data-icon="invert" title="Invert — select everything that isn't selected, within the canvas"></button>
     <span class="vsep"></span>
-    <button id="btnCut" title="Cut the selected pixels on this layer to the clipboard — the selection stays, so Paste puts them back in place (Cmd/Ctrl+X)"><span data-icon="scissors"></span>CUT</button>
-    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard (Cmd/Ctrl+C)"><span data-icon="copy"></span>COPY</button>
+    <button id="btnCut" title="Cut the selected pixels on this layer to the clipboard — the selection stays, so Paste puts them back in place"><span data-icon="scissors"></span>CUT</button>
+    <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard"><span data-icon="copy"></span>COPY</button>
     <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none"><span data-icon="copy"></span>COPY ALL</button>
-    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move (Cmd/Ctrl+V)"><span data-icon="paste"></span>PASTE</button>
+    <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move"><span data-icon="paste"></span>PASTE</button>
   </div>
   <div class="selrow" id="selrowMove" style="display:none">
     <button id="btnFlipH" title="Flip the floating selection horizontally"><span data-icon="flipH"></span>FLIP H</button>
@@ -469,6 +467,8 @@
   <button class="optline" data-v="v" title="Vertical symmetry — mirror top and bottom across the horizontal center line"><span data-icon="symV"></span>Vertical</button>
   <button class="optline" data-v="quad" title="Mirror into all four quadrants"><span data-icon="symQuad"></span>Quad</button>
 </div>
+<!-- Options tray: template file + canvas operations, one line each.
+     Toggled by the wrench; actions close it. -->
 <div id="optbar">
   <button class="optline" id="btnResetArt" title="Reset the template art to the shipped original (asks first)"><span data-icon="history"></span>Reset</button>
   <span class="vsep" id="optSep1"></span>
@@ -477,7 +477,7 @@
   <button class="optline" id="btnCanvasFlipV" title="Flip the whole canvas top ↔ bottom — every layer (undoable)"><span data-icon="flipV"></span>Flip V</button>
   <span class="vsep"></span>
   <button class="optline" id="btnLoad" title="Load a template PNG"><span data-icon="sqplus"></span>Import</button>
-  <button class="optline" id="btnSave" title="Save autotile_template.png"><span data-icon="share"></span><span id="btnSaveLabel">Export</span></button>
+  <button class="optline" id="btnSave" title="Export the tile sheet as a PNG named after the project"><span data-icon="share"></span><span id="btnSaveLabel">Export</span></button>
 </div>
 
 <!-- Cells sub-row: tools and layout operations for cell-terrain editing.
@@ -495,13 +495,10 @@
   <button class="ibtn tool" data-tool="heal" data-icon="stitch" title="Heal — drag along a sliced line (or tap one edge) to join the geometry back together"></button>
   <span class="vsep"></span>
   <button class="ibtn" id="btnDice" data-icon="dice" title="Roll a random test room — Metroid-style layout stressing every slope family; replaces the Level layout (undo restores it)"></button>
-  <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Playfield cell layout to the default mock arrangement (asks first)"></button>
+  <button class="ibtn" id="btnReset" data-icon="rotate" title="Reset the Level layout to the default mock arrangement (asks first)"></button>
   <button class="ibtn" id="btnRulesReset" data-icon="sqx" title="Delete ALL taught rules for this format — back to pure resolver defaults (asks first)"></button>
 </div>
 
-<!-- Variation tray: shown while the vary tool is active on the Template tab.
-     Draw adds free sheet cells to the deep pool; Erase removes variants
-     (confirm first, primary protected); both off = tap-to-inspect. -->
 
 <!-- v6.85: Rules tab upper tray — one button per rule mode; the layout's
      status and reset live at the right end because they belong to the whole
@@ -596,28 +593,28 @@
 
 <div id="stage">
   <div id="rail">
-    <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil (B) — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
-    <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser (E) — hold still mid-stroke to snap to a straight erase line"></button>
-    <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes — drag to place a pixel-exact rectangle, ellipse, or line; outline or filled, in the current color and brush width"></button>
-    <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Marquee select (Template) — freehand/polygon, rectangle, or ellipse; Additive and Removal modes in the bottom bar"></button>
-    <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform (V) — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
+    <button class="ibtn tool on" data-tool="pencil" data-icon="pencil" title="Pencil — draw, then hold still to snap the stroke to a straight line; keep holding to adjust, release to place"></button>
+    <button class="ibtn tool" data-tool="eraser" data-icon="eraser" title="Eraser — hold still mid-stroke to snap to a straight erase line"></button>
+    <button class="ibtn tool" data-tool="shape" data-icon="shapes" title="Shapes — rectangle, ellipse, polygon, line or curve; outline or filled, in the current color and brush width. A shape stays adjustable until you place it."></button>
+    <button class="ibtn tool" data-tool="marquee" data-icon="marquee" title="Select — rectangle, ellipse, freehand / polygon, or magic wand; Add and Remove modes in the tray above. Tap again to deselect."></button>
+    <button class="ibtn tool" data-tool="selmove" data-icon="move" title="Transform — moves, flips, and rotates the selection, or the whole layer if nothing is selected. Switching to any other tool commits it."></button>
     <div class="fillPop" id="fillPop">
       <button class="optline fillMode on" data-v="contiguous" title="Fill the connected region under the tap"><span data-icon="bucket"></span>Contiguous</button>
       <button class="optline fillMode" data-v="global" title="Replace every pixel of the tapped color, connected or not"><span data-icon="dots"></span>Global</button>
     </div>
-    <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell (G)"></button>
+    <button class="ibtn tool" data-tool="fill" data-icon="bucket" title="Fill — bounded to the 16px template cell"></button>
     <button class="ibtn tool" data-tool="outline" data-icon="outline" title="Outline — draw a border around (or just inside) everything on the selected layer, in the current color; options in the tray, Apply to commit"></button>
     <div class="fillPop" id="gradPop">
       <button class="optline gradMode on" data-v="linear" title="Linear — the ramp runs along the line"><span data-icon="gradient"></span>Linear</button>
       <button class="optline gradMode" data-v="radial" title="Radial — the ramp runs outward from the first point; the line's length is the radius"><span data-icon="gradRadial"></span>Radial</button>
     </div>
     <button class="ibtn tool" data-tool="gradient" data-icon="gradient" title="Gradient — drag a line to fill the selection (or the layer) with a dithered ramp between color stops; adjust stops and fall-off before Apply"></button>
-    <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper (I)"></button>
-    <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (A1..J12) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
+    <button class="ibtn tool" data-tool="pick" data-icon="pipette" title="Eyedropper — tap to pick a color from the canvas"></button>
+    <button class="ibtn tool" data-tool="revise" data-icon="stamp" title="Revise tile — tap any filled LEVEL cell and type the template coordinate (such as C10) plus flip/rotation. Teaches a tileset rule (masks for terrain, roles for slopes) that cascades everywhere and is remembered."></button>
 
     <div class="hsep"></div>
-    <button class="ibtn" id="btnUndo" data-icon="undo" title="Undo (Cmd/Ctrl+Z)"></button>
-    <button class="ibtn" id="btnRedo" data-icon="redo" title="Redo (Shift+Cmd/Ctrl+Z)"></button>
+    <button class="ibtn" id="btnUndo" data-icon="undo" title="Undo — or tap the canvas with two fingers"></button>
+    <button class="ibtn" id="btnRedo" data-icon="redo" title="Redo — or tap the canvas with three fingers"></button>
     <div class="hsep"></div>
     <button class="ibtn on" id="btnFinger" data-icon="hand" title="Finger drawing — when off: one finger hold-picks color, two fingers pan/zoom (auto-disabled when an Apple Pencil is detected)"></button>
     <div class="hsep"></div>
@@ -625,7 +622,7 @@
     <div class="hsep"></div>
     <button class="ibtn on" id="btnCellGrid" data-icon="grid" title="16px cell/tile grid for the current view"></button>
     <button class="ibtn" id="btnPxGrid" data-icon="dots" title="1px pixel grid for the current view (visible when zoomed in)"></button>
-    <button class="ibtn" id="btnCoords" data-icon="coords" title="Show template coordinates (A1..J12) — on every template cell, and on every level/zoo tile (the tile it resolved to)"></button>
+    <button class="ibtn" id="btnCoords" data-icon="coords" title="Show template coordinates (A1, B2 …) — on every template cell, and on every level/zoo tile (the tile it resolved to)"></button>
     <button class="ibtn" id="btnRoles" data-icon="tag" title="Label special template cells: E = open-end slope cap (used when a run ends into air), C = dedicated ceiling stamps (surface/underlay)"></button>
     <div class="hsep"></div>
     <button class="ibtn" id="btnFit" data-icon="fit" title="Fit to screen"></button>
@@ -2802,8 +2799,9 @@ $("newCreate").addEventListener("click", () => {
 
 /* ==== GITHUB SYNC (v6.40) =========================================
    The repo is the durable store; the local library is the working
-   cache. Each project pushes as one commit-tracked JSON file at
-   projects/<slug>.json on main, so version history is git history.
+   cache. Each project pushes as a folder, projects/<slug>/ on main
+   (project.json, the PNG, then rules or layer PNGs: ghArtifactsFromRecord),
+   one commit per file, so version history is git history.
    Push/pull are explicit; last write wins. The token is a fine-grained
    PAT scoped to Contents on this one repo, stored ONLY in device
    localStorage — never inside a project record, never in a payload. */
@@ -2878,8 +2876,8 @@ function ghListSub(subdir) {
 }
 /* v6.84.5 — GitHub's Contents API answers 409 when commits land on the same
    branch in quick succession (a multi-file push or delete does exactly that),
-   and 5xx on its bad days. Both are transient: wait, then try again. Three
-   attempts, 1.5 s / 3 s apart; anything else fails at once. */
+   and 5xx on its bad days. Both are transient: wait, then try again, up to
+   GH_RETRY_ATTEMPTS tries with a growing wait; anything else fails at once. */
 const GH_RETRY_ATTEMPTS = 5, GH_RETRY_MS = 1500;   // v6.121.10: 5 tries (1.5 s, 3 s, 4.5 s, 6 s) — the contents API 409s on quick successive commits
 const GH_FILE_GAP_MS = 700;   // v6.121.10: breathing room between the commits of one push, so the branch head settles
 function ghCommitRetry(send, attempt) {
@@ -3047,7 +3045,7 @@ function ghPushFiles(rec, base, files) {
       projPut(rec).catch(() => {});                 // persist slug + push fingerprint (+ cleared oldSlugs)
       const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
       if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
-      projPushUI(rec.id, 1, projType(rec) === "bg" ? "Pushed ✓ project + PNG" : "Pushed ✓ project + PNG + rules", "ok");
+      projPushUI(rec.id, 1, projType(rec) === "bg" ? (files.length > 2 ? "Pushed ✓ project + PNG + layers" : "Pushed ✓ project + PNG") : "Pushed ✓ project + PNG + rules", "ok");
       status("Pushed “" + rec.name + "” to GitHub." + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
     })
     .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
@@ -5723,7 +5721,7 @@ function cellGrabCommit(g, dx, dy) {
   drawGrid();
   let msg = "Moved " + cellGrabLabel(g) + ".";
   if (replaced) msg += " Replaced " + replaced + " slope run" + (replaced > 1 ? "s" : "") + " under the drop.";
-  if (dropped) msg += " " + dropped + " item" + (dropped > 1 ? "s" : "") + " fell outside the room and " + (dropped > 1 ? "were" : "was") + " dropped.";
+  if (dropped) msg += " " + dropped + " item" + (dropped > 1 ? "s" : "") + " fell outside the drawable area and " + (dropped > 1 ? "were" : "was") + " dropped.";
   if (seated) msg += " Seated on the floor below.";
   status(msg);
 }
@@ -6244,9 +6242,9 @@ document.addEventListener("gesturechange", (e) => e.preventDefault());
    while the tab is open and setTool refuses any other tool until it closes,
    when the previous tool comes back. No sample block — the Level tab is the
    live reflection. Contract writes (rim add/remove, cadence anchor, reset)
-   are the v6.82 functions unchanged. Each future rule (depth, edges, wedges,
-   panels, collision, re-sort) is one more entry in RULES_MODES: a tray
-   button, a lower-tray row, a highlight painter and a tap handler. */
+   are the v6.82 functions unchanged. Each future rule mode (slopes,
+   collision, re-sort) is one more tray button, lower-tray row, highlight
+   painter and tap handler. */
 const RIM_KEYS = ["top", "bottom", "left", "right"];
 const RIM_COLORS = { top: "#6fd3ff", bottom: "#ffb060", left: "#c9a6ff", right: "#9cf59c" };
 const EDGE_SIDE = { 124: "top", 199: "bottom", 31: "left", 241: "right" };   // EDGE_VARIANTS mask -> side
@@ -6938,7 +6936,7 @@ $("btnCellMode").addEventListener("click", () => {
   pvMode = pvMode === "cells" ? "pixels" : "cells";
   if (pvMode !== "cells" && CELL_ONLY_TOOLS.includes(tool)) setTool("pencil");
   syncCellMode();
-  status(pvMode === "cells" ? "Cell mode \u2014 paint, erase, rectangle, slopes." : "Pixel mode \u2014 template tools draw through to the sheet.");
+  status(pvMode === "cells" ? "Cell mode \u2014 select, paint, erase, rectangle, slopes, slices." : "Pixel mode \u2014 template tools draw through to the sheet.");
 });
 /* v6.8: Playfield/Zoo toggle retired — setTab owns layoutMode. */
 $("btnUndo").addEventListener("click", undo);
@@ -7584,7 +7582,7 @@ function syncSaveLabel() {
   const room = roomExportActive();
   $("btnSaveLabel").textContent = room ? "Export Room PNG" : "Export";
   $("btnSave").title = room ? "Save the Level as a flat PNG — every resolved tile at 1:1, grayscale, no palette or decor"
-    : APP_MODE === "bg" ? "Export the flattened background PNG" : "Save autotile_template.png";
+    : APP_MODE === "bg" ? "Export the flattened background PNG" : "Export the tile sheet as a PNG named after the project";
 }
 $("btnSave").addEventListener("click", () => {
   if (APP_MODE === "bg") { if (float) floatFlatten(); sharePng(bgComposite().toDataURL("image/png"), CT.filename); return; }   // flattened stack
@@ -7609,9 +7607,10 @@ function persistPng() {
    fields the shared editor path reads (id, label, lsKey, filename); the
    rules/level/zoo machinery is never entered (rebuild is not called, the
    Level/Zoo tabs are hidden, renderPreview is a no-op off the pv tab).
-   Document: { w, h, active, layers:[{ id, name, visible, locked, png }] }.
-   Base pass = one layer, `ed` is that layer's canvas. The layer panel,
-   tiled view, and symmetry build on this in later passes. */
+   Document: { tessera_bg: 1, w, h, active, tiled, sym, layers:[...] },
+   layers bottom to top: { id, name, visible, locked, opacity, png } or a
+   group header { kind: "folder", ... } with its members directly below.
+   `locked` is ALPHA lock (v6.74), not an edit lock. */
 const BG_CT = { id: "bg", label: "Background", lsKey: BG_KEYS.flat, filename: "background.png" };
 let bgDoc = null;
 let bgLayers = [];   // parallel to bgDoc.layers, bottom -> top: { canvas, ctx, png } for layers, { canvas: null } for folders
@@ -8265,7 +8264,7 @@ function bgBoot() {
   $("btnSave").title = "Export the flattened background PNG";
   $("btnProjects").title = "Projects — tilesets and backgrounds; opening this gallery or switching auto-saves the open one";
   $("btnCellGrid").title = "16px tile grid over the canvas";
-  document.querySelector('.tool[data-tool="fill"]').title = "Fill — flood the contiguous region (G)";
+  document.querySelector('.tool[data-tool="fill"]').title = "Fill — flood the contiguous region";
   projGet(activeProjectId).then((rec) => { if (rec && rec.name) BG_CT.filename = projSlug(rec) + ".png"; }).catch(() => {});
   // decode every layer's PNG into its canvas, then show the stack
   let pending = 0;
@@ -8302,7 +8301,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.10";
+const APP_VERSION = "6.121.11";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -8310,6 +8309,7 @@ const tipEl = document.createElement("div"); tipEl.id = "tip"; document.body.app
 document.querySelectorAll("[title]").forEach((el) => { el.dataset.tip = el.getAttribute("title"); el.removeAttribute("title"); });
 let tipT = null;
 function showTip(el) {
+  if (el.hasAttribute("title")) { el.dataset.tip = el.getAttribute("title"); el.removeAttribute("title"); }   // v6.121.11: a title set after load (bgBoot, syncSaveLabel) replaces the stale tip
   tipEl.textContent = el.dataset.tip;
   tipEl.style.display = "block"; tipEl.style.left = "0px"; tipEl.style.top = "0px";
   const r = el.getBoundingClientRect(), tr = tipEl.getBoundingClientRect();
