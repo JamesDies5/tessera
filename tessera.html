@@ -119,11 +119,11 @@
   #loupe { position: fixed; z-index: 90; width: 64px; height: 64px; border-radius: 50%;
     border: 3px solid #fff; box-shadow: 0 2px 12px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.35);
     display: none; pointer-events: none; transform: translate(-50%, -115%); }
-  #btnConvert, #btnCut, #btnCopy, #btnCopyAll, #btnPaste, #btnFlipH, #btnFlipV, #btnRot90 { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+  #btnConvert, #btnCut, #btnCopy, #btnCopyAll, #btnCutPaste, #btnPaste, #btnFlipH, #btnFlipV, #btnRot90 { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
     height: 28px; padding: 0 10px; font: inherit; font-size: 10px; letter-spacing: 1px; cursor: pointer; flex: 0 0 auto;
     display: inline-flex; align-items: center; gap: 6px; }
-  #btnCut svg, #btnCopy svg, #btnCopyAll svg, #btnPaste svg, #btnFlipH svg, #btnFlipV svg, #btnRot90 svg { width: 14px; height: 14px; }   /* v6.109: clipboard icons; v6.112: transform row matches */
-  #btnConvert:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnPaste:active, #btnFlipH:active, #btnFlipV:active, #btnRot90:active { background: var(--line); }
+  #btnCut svg, #btnCopy svg, #btnCopyAll svg, #btnCutPaste svg, #btnPaste svg, #btnFlipH svg, #btnFlipV svg, #btnRot90 svg { width: 14px; height: 14px; }   /* v6.109: clipboard icons; v6.112: transform row matches */
+  #btnConvert:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnCutPaste:active, #btnPaste:active, #btnFlipH:active, #btnFlipV:active, #btnRot90:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
   #stageCol { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }   /* v6.113: viewport over its lower tray */
@@ -399,6 +399,7 @@
     <button id="btnCut" title="Cut the selected pixels on this layer to the clipboard — the selection stays, so Paste puts them back in place"><span data-icon="scissors"></span>CUT</button>
     <button id="btnCopy" title="Copy the selected pixels on this layer to the clipboard"><span data-icon="copy"></span>COPY</button>
     <button id="btnCopyAll" title="Copy the selected area as you see it — every visible layer flattened into one piece" style="display:none"><span data-icon="copy"></span>COPY ALL</button>
+    <button id="btnCutPaste" title="Cut the selection from this layer and paste it in place on a new layer, ready to move (sprite projects)" style="display:none"><span data-icon="scissors"></span>CUT &amp; PASTE</button>
     <button id="btnPaste" title="Paste as a floating selection on a new layer, ready to move"><span data-icon="paste"></span>PASTE</button>
   </div>
   <div class="selrow" id="selrowMove" style="display:none">
@@ -5261,6 +5262,14 @@ function doPaste() {
   blit(); drawGrid();
   status(APP_MODE === "bg" ? "Pasted onto \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d \u2014 drag, flip, or rotate; switching tools places it." : "Pasted \u2014 drag, flip, or rotate; switching tools places it.");
 }
+function doCutPaste() {   // v6.121.14 (James's QOL card): Procreate's cut-and-paste — lift the selection off this layer onto a new one, in place, as a float
+  if (APP_MODE !== "bg") { status("Cut & Paste is for sprite projects."); return; }
+  const before = clip;
+  doCut();
+  if (clip === before) return;   // nothing was cut (empty selection, alpha lock, ...): doCut already said why
+  doPaste();
+  if (float) status("Cut to new layer \u201c" + bgDoc.layers[bgDoc.active].name + "\u201d \u2014 drag, flip, or rotate; switching tools places it.");
+}
 /* Pixel-perfect freehand (v6.73) — Aseprite's rule (IntertwineAsPixelPerfect,
    src/app/tools/intertwiners.h): as the path grows, a pixel that sits in the
    corner of an L — sharing a row or column with each neighbour while the two
@@ -6931,6 +6940,7 @@ document.querySelectorAll(".selmode").forEach((b) => b.addEventListener("click",
 $("btnCut").addEventListener("click", doCut);
 $("btnCopy").addEventListener("click", () => doCopy(false));
 $("btnCopyAll").addEventListener("click", () => doCopy(true));
+$("btnCutPaste").addEventListener("click", doCutPaste);
 $("btnPaste").addEventListener("click", doPaste);
 $("btnFlipH").addEventListener("click", () => floatXform("fh"));
 $("btnFlipV").addEventListener("click", () => floatXform("fv"));
@@ -8279,7 +8289,7 @@ function bgBoot() {
   $("btnResetArt").style.display = "none"; $("optSep1").style.display = "none";   // v6.71.1: redundant here — the layer options popover has Clear
   $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
   $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
-  $("btnLayers").style.display = ""; $("btnCopyAll").style.display = "";
+  $("btnLayers").style.display = ""; $("btnCopyAll").style.display = ""; $("btnCutPaste").style.display = "";
   $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
   $("btnSave").title = "Export the flattened sprite PNG";
   $("btnProjects").title = "Projects — tilesets and sprites; opening this gallery or switching auto-saves the open one";
@@ -8321,7 +8331,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.13";
+const APP_VERSION = "6.121.14";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

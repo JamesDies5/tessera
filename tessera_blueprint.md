@@ -1,12 +1,12 @@
 # Tessera Blueprint
 
-**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.13. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
+**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.14. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
 **Purpose:** what Tessera is today and why it is built that way.
 **Sibling documents:** `CLAUDE.md` (how to work here, and where things are in the file) · `tessera_roadmap.md` (what is next, in order; the old §4, §5 plan, §7 and §10 moved there) · `tessera_history.md` (the old blueprint, frozen: the build-by-build record; never take current state from it). In the game repo (`/Users/jamesdies/platformer-test`): `atlas/atlas-roadmap.md` for ATLAS, and `global/palettes/palette_canon.md`, the only palette canon.
 
 ---
 
-## 1. What Tessera is today (v6.121.13)
+## 1. What Tessera is today (v6.121.14)
 
 One HTML file, no build step, used on an iPad from a Home Screen shortcut with touch and Apple Pencil. It is not a keyboard app (James 2026-10-03: he only ever types file names); never design around keyboard shortcuts.
 
@@ -91,7 +91,7 @@ Built 2026-09-02 (v6.61 → v6.81) by studying Aseprite's source; the ellipse, t
 - **Shapes** — rectangle, ellipse, polygon, line, curve; outline or filled. A shape stays live with handles until placed.
 - **Select** — rectangle, ellipse, lasso (drag freehand, or tap corners), magic wand; add and subtract; invert. Shown as a hatch over what is *not* selected. A selection confines painting.
 - **Transform** — move, Flip H, Flip V, Rotate 90°. No scaling or free rotation.
-- **Cut · Copy · Copy All · Paste** — inside the app only. On a background, paste lands on a new layer.
+- **Cut · Copy · Copy All · Cut & Paste · Paste** — inside the app only. On a sprite project, paste lands on a new layer; **Cut & Paste** (v6.121.14, sprite projects only, in Procreate's position left of Paste) lifts the selection off the current layer onto a new one in place, already floating in Move mode. It refuses for the same reasons Cut does (nothing selected, alpha lock) and then adds no layer. Undo takes two steps: the paste, then the cut.
 - **Outline** — outside or inside, four neighbour patterns, live preview.
 - **Gradient** — linear or radial, two or more stops (one may be transparent), adjustable midpoints, ordered dither 2×2 / 4×4 / 8×8 or hard steps.
 - **Drag a colour chip onto the canvas** to fill.
