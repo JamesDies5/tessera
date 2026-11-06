@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.16** (2026-11-06).
+be a change there. Current: **v6.121.17** (2026-11-06).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -173,5 +173,6 @@ Background to Sprites, project folders, move a layer group, a Cut & Paste button
 better canvas-size entry, and a Procreate-style animation mode. Roadmap §3a has each item sized. Started
 2026-11-06 in the order small-first: v6.121.13 (the rename) verified by James on the iPad 2026-11-06; v6.121.14 (the Cut & Paste button, sprite
 projects only) verified the same day. v6.121.15 (cropped thumbnails in the layer panel and on sprite gallery cards) seen on the iPad; his three notes
-are answered in v6.121.16 (no minimum crop, whole-number scaling at screen resolution, cards filled), awaiting his test.
+are answered in v6.121.16 (no minimum crop, whole-number scaling at screen resolution, cards filled), and v6.121.17 shows
+width and height fields outright in the New dialog; both await his test. Next: moving a layer group with the move tool.
 Next: width and height fields shown outright in the New dialog.

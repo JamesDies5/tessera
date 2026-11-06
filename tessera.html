@@ -574,16 +574,17 @@
     <div id="newDlgTitle" style="font-size:12px;color:#9a9a9a">New project</div>
     <div class="row"><span class="lbl">NAME</span><input type="text" id="newName" autocomplete="off" placeholder="Project name"></div>
     <div class="row"><span class="lbl">TYPE</span><div class="seg"><button data-nt="tiles" class="on">Tileset</button><button data-nt="bg">Sprites</button></div></div>
-    <div class="row" id="newSizeRow" style="display:none"><span class="lbl">SIZE</span>
-      <select id="newSizePreset">
+    <!-- v6.121.17 (James's QOL card): width and height are their own fields, always shown for a sprite project; the presets just fill them -->
+    <div class="row" id="newSizeRow" style="display:none"><span class="lbl">WIDTH</span><input type="number" id="newW" min="16" max="4096" value="480" inputmode="numeric"><span class="lbl" style="flex:0 0 auto;margin-left:6px">HEIGHT</span><input type="number" id="newH" min="16" max="4096" value="270" inputmode="numeric"><span class="lbl" style="flex:0 0 auto">px</span></div>
+    <div class="row" id="newPresetRow" style="display:none"><span class="lbl">PRESET</span>
+      <select id="newSizePreset" title="Fills the width and height above">
         <option value="480x270">480 × 270 — one screen</option>
         <option value="240x270">240 × 270 — half width</option>
         <option value="480x135">480 × 135 — half height</option>
         <option value="240x135">240 × 135 — quarter</option>
-        <option value="custom">Custom…</option>
+        <option value="custom">Custom size</option>
       </select>
     </div>
-    <div class="row" id="newCustomRow" style="display:none"><span class="lbl"></span><input type="number" id="newW" min="16" max="4096" value="480"><span class="lbl" style="flex:0 0 auto">×</span><input type="number" id="newH" min="16" max="4096" value="270"><span class="lbl" style="flex:0 0 auto">px</span></div>
     <div id="newDlgNote" style="font-size:11px;color:#8fb996;display:none"></div>
     <div class="row" style="justify-content:flex-end">
       <button class="ibtn" id="newCancel" style="font-size:12px;padding:0 10px;width:auto">Cancel</button>
@@ -2787,7 +2788,7 @@ function newDlgType() { return document.querySelector("#newDlg .seg button.on").
 function newDlgSyncRows() {
   const isBg = newDlgType() === "bg", importing = !!newDlgImg;
   $("newSizeRow").style.display = isBg && !importing ? "flex" : "none";
-  $("newCustomRow").style.display = isBg && !importing && $("newSizePreset").value === "custom" ? "flex" : "none";
+  $("newPresetRow").style.display = isBg && !importing ? "flex" : "none";
   const note = $("newDlgNote");
   if (importing) {
     const cid = tilesetContractForDims(newDlgImg.w, newDlgImg.h);
@@ -2815,7 +2816,16 @@ document.querySelectorAll("#newDlg .seg button").forEach((b) => b.addEventListen
   document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q === b));
   newDlgSyncRows();
 }));
-$("newSizePreset").addEventListener("change", newDlgSyncRows);
+$("newSizePreset").addEventListener("change", () => {   // v6.121.17: a preset fills the two fields; "Custom size" leaves them as typed
+  const v = $("newSizePreset").value;
+  if (v !== "custom") { const [a, b] = v.split("x"); $("newW").value = a; $("newH").value = b; }
+  newDlgSyncRows();
+});
+const newDlgSizeVals = () => [Math.max(16, Math.min(4096, parseInt($("newW").value, 10) || 480)), Math.max(16, Math.min(4096, parseInt($("newH").value, 10) || 270))];
+["newW", "newH"].forEach((id) => $(id).addEventListener("input", () => {   // typing picks the matching preset, or Custom size
+  const [w, h] = newDlgSizeVals(), key = w + "x" + h, sel = $("newSizePreset");
+  sel.value = [...sel.options].some((o) => o.value === key) ? key : "custom";
+}));
 $("newCancel").addEventListener("click", closeNewDlg);
 $("btnProjNew").addEventListener("click", () => openNewDlg(null));
 $("btnProjImport").addEventListener("click", () => $("fileProj").click());
@@ -2841,9 +2851,7 @@ $("newCreate").addEventListener("click", () => {
     let w = 480, h = 270;
     if (img) { w = img.w; h = img.h; }
     else {
-      const pv2 = $("newSizePreset").value;
-      if (pv2 === "custom") { w = Math.max(16, Math.min(4096, parseInt($("newW").value, 10) || 480)); h = Math.max(16, Math.min(4096, parseInt($("newH").value, 10) || 270)); }
-      else { const [a, b] = pv2.split("x").map(Number); w = a; h = b; }
+      [w, h] = newDlgSizeVals();   // v6.121.17: the fields are the truth; presets only fill them
     }
     rec.keys[BG_KEYS.doc] = JSON.stringify(bgNewDoc(w, h, img ? img.dataURL : null));
     if (img) rec.keys[BG_KEYS.flat] = img.dataURL;
@@ -8392,7 +8400,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.16";
+const APP_VERSION = "6.121.17";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
