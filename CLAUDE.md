@@ -2,10 +2,11 @@
 
 Tessera is a single-file HTML app (`tessera.html`, ~600 KB, no build step) that James uses on an iPad
 Home Screen shortcut to author autotile sheets and rooms for LILA, his Godot 4.6 Metroidvania. It is
-also his pixel editor: a second project type, Background, is a layered canvas he uses for backdrops
+also his pixel editor: a second project type, Background (shown on screen as **Sprites** since v6.121.13;
+the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.12** (2026-10-03).
+be a change there. Current: **v6.121.13** (2026-11-06).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -45,7 +46,7 @@ Four documents, each with one job. Read this file and the blueprint before touch
 | app 2372+ | `LS` keys (2486), exports (`exportName` 2516), projects (2488+), GitHub sync (2803+: `ghPushProject` 3011, `ghPullProject` 3055), per-project layout and variation pool (3150–3204), `drawGrid` 3480 (the whole overlay: grids, labels, every ghost and handle), tone lanes (`LANES` 3867), undo (`snapshot` 3922, `levelSnapshot` 3925), room generator (`genRoom` 3945), pixel tools 4439–5345 (`putPx` 4439, brush, selection 4499+, outline 4617, gradient 4665+, shapes 4790+, move/transform float 5033+, clipboard 5179+, fills 5286+), `rebuild` 5349 → `renderPreviewNow` 5416, `blitResolved` 5394, pointer: `beginStroke` 5730 / `moveStroke` 5844 / `endStroke` 5964, Level select/move 5593+, slices (`sliceEdges` 5611), rules trays (`rulesRender` 6306), `setTab` 6779, `setTool` 6814, cell-mode (`syncCellMode` 6931), variation pool editing 7037+, rules / room export and import 7179+ (`importRoom` 7271), backgrounds mode 7606–8283 (`bgDoc`, layers and groups, `bgBoot` 8250), `APP_VERSION` 8305, `boot` 8536 |
 
 The app boots into one of two modes, fixed at page load by the open project's type: a **Tileset**
-project (tabs, rules, level tools) or a **Background** project (layers; tabs and rules hidden).
+project (tabs, rules, level tools) or a **Background** project, labelled Sprites on screen (layers; tabs and rules hidden).
 Tabs: Template (`activeTab === "ed"`), Level and Zoo (both `"pv"`, `layoutMode` `"field"` / `"zoo"`).
 Level cell edits go through `fills` (`"c,r"` → `{t:1}`), `userSlopes` (runs), `cuts` / `icuts` (edge
 sets), `roomDoors` / `roomSpawn`; every edit calls `levelSnapshot()` first, then `rebuild();
@@ -121,7 +122,7 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
   beside the terrain PNG.
 - Room JSON (`<slug>.room.json`): `gcols`, `grows`, `pad`, `fills`, `slopes`, `cuts`, `innerCuts`,
   `resolved` (baked output), doors/spawn. Older files simply lack newer keys; loaders default them.
-- Projects: two types, Tileset and Background. The open project lives in `localStorage`; the
+- Projects: two types, Tileset and Background (labelled Sprites on screen; key `bg`). The open project lives in `localStorage`; the
   project library is an IndexedDB database (`tessera-projects`), each record a snapshot of the
   project's `localStorage` keys (`PROJECT_KEYS`). Palettes, brush, pen settings and the GitHub
   token stay on the device and never travel with a project.
@@ -169,4 +170,5 @@ skinning (nothing of that exists yet). Verified by James 2026-10-03: the v6.121.
 v6.121.12 (a push also clears a background's leftover per-layer PNGs). Nothing is awaiting test.
 On 2026-11-04 James added a starred **QOL Improvements** card (board, Tessera lane, status *next*): rename
 Background to Sprites, project folders, move a layer group, a Cut & Paste button, cropped layer previews,
-better canvas-size entry, and a Procreate-style animation mode. Roadmap §3a has each item sized.
+better canvas-size entry, and a Procreate-style animation mode. Roadmap §3a has each item sized. Started
+2026-11-06 in the order small-first: v6.121.13 (the rename) is delivered and awaiting James's test on the iPad.

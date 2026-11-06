@@ -1,12 +1,12 @@
 # Tessera Blueprint
 
-**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.12. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
+**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.13. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
 **Purpose:** what Tessera is today and why it is built that way.
 **Sibling documents:** `CLAUDE.md` (how to work here, and where things are in the file) · `tessera_roadmap.md` (what is next, in order; the old §4, §5 plan, §7 and §10 moved there) · `tessera_history.md` (the old blueprint, frozen: the build-by-build record; never take current state from it). In the game repo (`/Users/jamesdies/platformer-test`): `atlas/atlas-roadmap.md` for ATLAS, and `global/palettes/palette_canon.md`, the only palette canon.
 
 ---
 
-## 1. What Tessera is today (v6.121.12)
+## 1. What Tessera is today (v6.121.13)
 
 One HTML file, no build step, used on an iPad from a Home Screen shortcut with touch and Apple Pencil. It is not a keyboard app (James 2026-10-03: he only ever types file names); never design around keyboard shortcuts.
 
@@ -15,9 +15,9 @@ One HTML file, no build step, used on an iPad from a Home Screen shortcut with t
 The app starts in one of two modes, decided by the open project's type and fixed until the next reload.
 
 - **Tileset** — an autotile sheet plus its rules. Tabs, rules trays and level tools are all available.
-- **Background** — a layered canvas (§1.8). Tabs, rules and level tools are hidden. James uses it for backdrops and, increasingly, for game sprites: portraits, the Gunner, rope pieces, scraps.
+- **Background**, shown on screen as **Sprites** since v6.121.13 — a layered canvas (§1.8). Tabs, rules and level tools are hidden. James uses it for backdrops and, increasingly, for game sprites: portraits, the Gunner, rope pieces, scraps. The rename (James's QOL card, 2026-11-04) changed only the words: the gallery badge and filter, the New dialog, the header label, tooltips and status lines. The stored type key is still `bg`, so every project, its saved document and its folder in the repo are unchanged.
 
-A dedicated Sprites type is on the roadmap; nothing of it exists yet.
+What would make Sprites more than a renamed Background (frames, a timeline, onion skin) is roadmap §3 / §3a; nothing of it exists yet.
 
 ### 1.2 Sheet formats, and where each stands
 
@@ -100,7 +100,7 @@ Built 2026-09-02 (v6.61 → v6.81) by studying Aseprite's source; the ellipse, t
 
 **Colour.** Art is painted in fixed gray tones and shown through a zone palette, exactly as the game's shader shows it. Tileset tones: 25, 52, 89, 139, 200, 255. Background projects add 20, the void-match tone. The colour menu shows the tones, any off-tone colours found in the file with a Convert button that snaps them to the nearest tone, and the preview palette. What each tone means is in the game repo's `palette_canon.md`.
 
-### 1.8 Background projects
+### 1.8 Background (Sprites) projects
 
 A canvas of any size from 16 to 4096 px a side; presets are one game screen (480×270) and its halves. The size shows in the header and can be changed later (shrinking crops, keeping the top-left).
 

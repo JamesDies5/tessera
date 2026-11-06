@@ -322,9 +322,9 @@
 </head>
 <body>
 <header>
-  <div class="brand"><h1>TESSERA</h1><div id="ver"></div><div id="bgLabel" style="display:none" title="Background project — canvas size"></div></div>
+  <div class="brand"><h1>TESSERA</h1><div id="ver"></div><div id="bgLabel" style="display:none" title="Sprite project — canvas size"></div></div>
   <button class="ibtn" id="btnReload" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
-  <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset or background lives in its own project; opening this gallery or switching auto-saves the open one"></button>
+  <button class="ibtn" id="btnProjects" data-icon="folder" title="Projects — each tileset or sprite project lives in its own project; opening this gallery or switching auto-saves the open one"></button>
   <span class="vsep"></span>
   <button class="tab on" data-tab="ed" data-icon="grid" title="Template — the tile sheet"></button>
   <button class="tab" data-tab="pv" data-icon="mountain" title="Level — editable mock level; the only tab with tile and slope tools"></button>
@@ -548,12 +548,12 @@
     <div id="projFilter">
       <button class="optline on" data-pf="all">All</button>
       <button class="optline" data-pf="tiles">Tilesets</button>
-      <button class="optline" data-pf="bg">Backgrounds</button>
+      <button class="optline" data-pf="bg">Sprites</button>
     </div>
     <span class="spacer"></span>
     <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
-    <button class="optline" id="btnProjImport" title="Start a project from an existing PNG — you choose whether it becomes a tileset or a background"><span data-icon="sqplus"></span>Import PNG</button>
-    <button class="optline" id="btnProjNew" title="Create a new, blank project — tileset or background"><span data-icon="sqplus"></span>New</button>
+    <button class="optline" id="btnProjImport" title="Start a project from an existing PNG — you choose whether it becomes a tileset or a sprite project"><span data-icon="sqplus"></span>Import PNG</button>
+    <button class="optline" id="btnProjNew" title="Create a new, blank project — tileset or sprites"><span data-icon="sqplus"></span>New</button>
     <input type="file" id="fileProj" accept="image/png" hidden>
     <button class="optline" id="btnProjClose" title="Back to the open project"><span data-icon="sqx"></span>Close</button>
   </div>
@@ -572,7 +572,7 @@
   <div id="newDlg">
     <div id="newDlgTitle" style="font-size:12px;color:#9a9a9a">New project</div>
     <div class="row"><span class="lbl">NAME</span><input type="text" id="newName" autocomplete="off" placeholder="Project name"></div>
-    <div class="row"><span class="lbl">TYPE</span><div class="seg"><button data-nt="tiles" class="on">Tileset</button><button data-nt="bg">Background</button></div></div>
+    <div class="row"><span class="lbl">TYPE</span><div class="seg"><button data-nt="tiles" class="on">Tileset</button><button data-nt="bg">Sprites</button></div></div>
     <div class="row" id="newSizeRow" style="display:none"><span class="lbl">SIZE</span>
       <select id="newSizePreset">
         <option value="480x270">480 × 270 — one screen</option>
@@ -2641,7 +2641,7 @@ function projRenderGallery() {
       const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
       projTintThumb(img, rec);
       const tag = document.createElement("span"); tag.className = "ptype " + ptype;
-      tag.textContent = ptype === "bg" ? "BACKGROUND" : "TILESET"; th.appendChild(tag);
+      tag.textContent = ptype === "bg" ? "SPRITES" : "TILESET"; th.appendChild(tag);
       const meta = document.createElement("div"); meta.className = "meta";
       const nm = document.createElement("div"); nm.className = "pname";
       nm.textContent = rec.name + (rec.id === activeProjectId ? "  \u2022  open" : "");
@@ -2732,7 +2732,7 @@ function newDlgSyncRows() {
   if (importing) {
     const cid = tilesetContractForDims(newDlgImg.w, newDlgImg.h);
     note.textContent = isBg
-      ? `Background canvas will be ${newDlgImg.w} × ${newDlgImg.h} px, the image as Layer 1.`
+      ? `Sprite canvas will be ${newDlgImg.w} × ${newDlgImg.h} px, the image as Layer 1.`
       : (cid ? `Sheet matches the ${CONTRACTS[cid].label} format.` : `Sheet is ${newDlgImg.w} × ${newDlgImg.h} — no format matches; it opens as 3×3, drawn top-left.`);
     note.style.display = "";
   } else note.style.display = "none";
@@ -7602,7 +7602,7 @@ function syncSaveLabel() {
   const room = roomExportActive();
   $("btnSaveLabel").textContent = room ? "Export Room PNG" : "Export";
   $("btnSave").title = room ? "Save the Level as a flat PNG — every resolved tile at 1:1, grayscale, no palette or decor"
-    : APP_MODE === "bg" ? "Export the flattened background PNG" : "Export the tile sheet as a PNG named after the project";
+    : APP_MODE === "bg" ? "Export the flattened sprite PNG" : "Export the tile sheet as a PNG named after the project";
 }
 $("btnSave").addEventListener("click", () => {
   if (APP_MODE === "bg") { if (float) floatFlatten(); sharePng(bgComposite().toDataURL("image/png"), CT.filename); return; }   // flattened stack
@@ -7631,7 +7631,7 @@ function persistPng() {
    layers bottom to top: { id, name, visible, locked, opacity, png } or a
    group header { kind: "folder", ... } with its members directly below.
    `locked` is ALPHA lock (v6.74), not an edit lock. */
-const BG_CT = { id: "bg", label: "Background", lsKey: BG_KEYS.flat, filename: "background.png" };
+const BG_CT = { id: "bg", label: "Sprites", lsKey: BG_KEYS.flat, filename: "background.png" };
 let bgDoc = null;
 let bgLayers = [];   // parallel to bgDoc.layers, bottom -> top: { canvas, ctx, png } for layers, { canvas: null } for folders
 let bgScratch = null;   // where `ed` points while a folder row is selected (nothing draws there — the guard blocks it)
@@ -7715,7 +7715,7 @@ function bgSetDims(w, h) {   // (re)allocate every layer at w×h, keeping existi
   bgScratch = null;
   bgSelectLayer(bgDoc.active, true);
   undoStack = []; redoStack = []; actionLog = []; redoLog = [];   // snapshots carry the old dims
-  $("bgLabel").textContent = "BG \u00b7 " + w + " \u00d7 " + h;
+  $("bgLabel").textContent = "SPRITES \u00b7 " + w + " \u00d7 " + h;
 }
 /* ---- invariant: members directly below their header, orphans freed ---- */
 function bgNormalize() {
@@ -7784,7 +7784,7 @@ function bgDeleteAt(idxs) {   // idxs ascending; folders take their members alon
   const kill = new Set(idxs);
   for (const i of idxs) if (isFolder(bgDoc.layers[i])) for (const m of bgMembersOf(bgDoc.layers[i].id)) kill.add(m);
   const keep = bgDoc.layers.map((_, i) => i).filter((i) => !kill.has(i));
-  if (!keep.some((i) => !isFolder(bgDoc.layers[i]))) { status("A background needs at least one layer."); return false; }
+  if (!keep.some((i) => !isFolder(bgDoc.layers[i]))) { status("A sprite project needs at least one layer."); return false; }
   if (float) floatFlatten();
   bgStructSnapshot();
   bgDoc.layers = keep.map((i) => bgDoc.layers[i]); bgLayers = keep.map((i) => bgLayers[i]);
@@ -8281,14 +8281,14 @@ function bgBoot() {
   $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
   $("btnLayers").style.display = ""; $("btnCopyAll").style.display = "";
   $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
-  $("btnSave").title = "Export the flattened background PNG";
-  $("btnProjects").title = "Projects — tilesets and backgrounds; opening this gallery or switching auto-saves the open one";
+  $("btnSave").title = "Export the flattened sprite PNG";
+  $("btnProjects").title = "Projects — tilesets and sprites; opening this gallery or switching auto-saves the open one";
   $("btnCellGrid").title = "16px tile grid over the canvas";
   document.querySelector('.tool[data-tool="fill"]').title = "Fill — flood the contiguous region";
   projGet(activeProjectId).then((rec) => { if (rec && rec.name) BG_CT.filename = projSlug(rec) + ".png"; }).catch(() => {});
   // decode every layer's PNG into its canvas, then show the stack
   let pending = 0;
-  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); const n = bgDoc.layers.filter((L) => L.kind !== "folder").length; status("Background \u2014 " + TW + " \u00d7 " + TH + " px, " + n + " layer" + (n > 1 ? "s" : "") + "."); };
+  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); const n = bgDoc.layers.filter((L) => L.kind !== "folder").length; status("Sprites \u2014 " + TW + " \u00d7 " + TH + " px, " + n + " layer" + (n > 1 ? "s" : "") + "."); };
   bgDoc.layers.forEach((L, i) => {
     if (!L.png) return;
     pending++;
@@ -8321,7 +8321,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.12";
+const APP_VERSION = "6.121.13";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
