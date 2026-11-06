@@ -2608,14 +2608,29 @@ function artBoundsOf(src, W, H) {
   if (x1 < 0) return null;
   return { x: x0 * step, y: y0 * step, w: Math.min(W, (x1 - x0 + 1) * step), h: Math.min(H, (y1 - y0 + 1) * step) };
 }
-/* The crop box for a thumbnail: the art's bounds plus a thin margin, never smaller than minW × minH source px, kept inside the image. */
-function artCropBox(b, W, H, minW, minH) {
+/* The crop box for a thumbnail: the art's bounds plus a thin margin, kept inside the image. No minimum —
+   a 2 × 2 mark may fill its thumbnail, as in Procreate (James 2026-11-06). */
+function artCropBox(b, W, H) {
   const pad = Math.max(1, Math.round(Math.max(b.w, b.h) * 0.08));
-  let bw = Math.min(W, Math.max(minW, b.w + pad * 2)), bh = Math.min(H, Math.max(minH, b.h + pad * 2));
-  let bx = Math.round(b.x + b.w / 2 - bw / 2), by = Math.round(b.y + b.h / 2 - bh / 2);
-  bx = Math.max(0, Math.min(W - bw, bx)); by = Math.max(0, Math.min(H - bh, by));
-  return { x: bx, y: by, w: bw, h: bh };
+  const x0 = Math.max(0, b.x - pad), y0 = Math.max(0, b.y - pad);
+  const x1 = Math.min(W, b.x + b.w + pad), y1 = Math.min(H, b.y + b.h + pad);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
+/* How to fit a w × h crop into a W × H box so pixels stay square: whole-number enlargement when it fits
+   (crisp, nearest neighbour), a smooth reduction when the art is bigger than the box. */
+function pixelFit(w, h, W, H) {
+  const fit = Math.min(W / w, H / h);
+  if (fit >= 1) { const n = Math.floor(fit); return { w: w * n, h: h * n, smooth: false }; }
+  return { w: Math.max(1, Math.round(w * fit)), h: Math.max(1, Math.round(h * fit)), smooth: true };
+}
+/* Gallery cards (v6.121.16): size a sprite card's image to fill its box with a small margin, by the same rule. */
+function projFitThumb(img) {
+  const nw = +img.dataset.nw, nh = +img.dataset.nh; if (!nw || !nh || !img.parentElement) return;
+  const box = img.parentElement.getBoundingClientRect(); if (!box.width || !box.height) return;
+  const f = pixelFit(nw, nh, box.width * 0.92, box.height * 0.92);
+  img.style.width = f.w + "px"; img.style.height = f.h + "px"; img.style.imageRendering = f.smooth ? "auto" : "pixelated";
+}
+function projFitThumbs() { document.querySelectorAll("#projGrid .thumb img[data-nw]").forEach(projFitThumb); }
 function projThumbSrc(rec) {
   if (projType(rec) === "bg") return (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
   const cid = (rec.keys && rec.keys[LS.contract]) || "v1";
@@ -2652,12 +2667,14 @@ function projTintThumb(img, rec) {   // v6.121.15: also crops a sprite project's
       if (crop) {
         const b = artBoundsOf(cv, cv.width, cv.height);
         if (!b) return;   // empty sprite: leave the card as it is
-        const c = artCropBox(b, cv.width, cv.height, 16, 12);
+        const c = artCropBox(b, cv.width, cv.height);
         if (c.w !== cv.width || c.h !== cv.height) {
           const cc = document.createElement("canvas"); cc.width = c.w; cc.height = c.h;
           cc.getContext("2d").drawImage(cv, c.x, c.y, c.w, c.h, 0, 0, c.w, c.h);
           cv = cc;
-        } else if (!tint) return;   // nothing to change
+        }
+        img.dataset.nw = cv.width; img.dataset.nh = cv.height;
+        img.onload = () => projFitThumb(img);   // fill the card by whole-number steps once the box has a size
       }
       img.src = cv.toDataURL("image/png");
     } catch (e) {}
@@ -2755,7 +2772,7 @@ function projRenderGallery() {
   }).catch(() => status("Couldn't read the project library."));
 }
 $("btnProjects").addEventListener("click", () => {
-  saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); });
+  saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
 });
 $("btnProjClose").addEventListener("click", () => $("projOverlay").classList.remove("show"));
 /* New / Import dialog (v6.62). Tileset records are created exactly as
@@ -8062,13 +8079,13 @@ function bgRenderLayerList() {
   const host = $("layerList"); if (!host || !bgDoc) return;
   host.innerHTML = "";
   const svg = (k) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS[k] + '</svg>';
-  const thumbOf = (src) => {   // v6.121.15 (James's QOL card): cropped to the art's bounds with a thin margin, never smaller than 16 \u00d7 9 source px
-    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = 80; th.height = 45;
-    const g = th.getContext("2d"); g.imageSmoothingEnabled = false;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const thumbOf = (src) => {   // v6.121.15/16 (James's QOL card): cropped to the art's bounds; drawn at screen resolution, enlarged by whole numbers only, shrunk smoothly
+    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = Math.round(80 * dpr); th.height = Math.round(45 * dpr);
     const b = artBoundsOf(src, TW, TH); if (!b) return th;   // empty layer: just the checkerboard
-    const c = artCropBox(b, TW, TH, 16, 9);
-    const sc = Math.min(80 / c.w, 45 / c.h), dw = Math.max(1, Math.round(c.w * sc)), dh = Math.max(1, Math.round(c.h * sc));
-    g.drawImage(src, c.x, c.y, c.w, c.h, Math.floor((80 - dw) / 2), Math.floor((45 - dh) / 2), dw, dh);
+    const c = artCropBox(b, TW, TH), f = pixelFit(c.w, c.h, th.width, th.height);
+    const g = th.getContext("2d"); g.imageSmoothingEnabled = f.smooth; if (f.smooth) g.imageSmoothingQuality = "high";
+    g.drawImage(src, c.x, c.y, c.w, c.h, Math.floor((th.width - f.w) / 2), Math.floor((th.height - f.h) / 2), f.w, f.h);
     return th;
   };
   for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
@@ -8357,7 +8374,7 @@ function bgBoot() {
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
 /* ---- boot ---- */
-window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); });
+window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); projFitThumbs(); });
 /* v6.113.1: the viewport also changes size WITHOUT a window resize — a tray grows or shrinks in place
    (the Edges ring giving way to the one-row Depth tray), a side rail opens. The canvases only ever
    followed explicit show/hide calls, so the freed strip showed the viewport's plain background. Watch
@@ -8375,7 +8392,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.15";
+const APP_VERSION = "6.121.16";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
