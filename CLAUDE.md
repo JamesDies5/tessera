@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.29** (2026-11-06).
+be a change there. Current: **v6.121.32** (2026-11-06).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -167,19 +167,15 @@ the canon 5×5 start-up ruleset, and a rethink of slopes on the 7×7 — then th
 ATLAS and Godot import ready to go), then Tech 3 into ATLAS/Godot. Also raised 2026-10-03: a
 dedicated Sprites project type beside Tileset and Background, possibly with animation and onion
 skinning (nothing of that exists yet). Verified by James 2026-10-03: the v6.121.11 tooltip tidy and
-v6.121.12 (a push also clears a background's leftover per-layer PNGs). Nothing is awaiting test.
-On 2026-11-04 James added a starred **QOL Improvements** card (board, Tessera lane, status *next*): rename
-Background to Sprites, project folders, move a layer group, a Cut & Paste button, cropped layer previews,
-better canvas-size entry, and a Procreate-style animation mode. Roadmap §3a has each item sized. Started
-2026-11-06 in the order small-first: v6.121.13 (the rename) verified by James on the iPad 2026-11-06; v6.121.14 (the Cut & Paste button, sprite
-projects only) verified the same day. v6.121.15 (cropped thumbnails in the layer panel and on sprite gallery cards) seen on the iPad; his three notes
-are answered in v6.121.16 (no minimum crop, whole-number scaling at screen resolution, cards filled), v6.121.17 shows
-width and height fields outright in the New dialog, and v6.121.18–19 add the canvas-size mode (header button, tray, handles,
-reposition, Done / Cancel, grid guides running past the canvas) for sprite projects; v6.121.20 closes a project-switch
-save race James hit (one project's art written into another's record; roadmap §0; verified by James the same day),
-v6.121.21 adds a switch-in-progress marker and opens the gallery on the open project's kind; v6.121.22 lets a layer group
-transform as one piece and selections work on a group (verified by James the same day); v6.121.23–25 give group rows a
-folder icon and blue name (icon on the left, settled), v6.121.26–28 widen the Layers panel to 400 px, let names wrap to two lines (a group's hanging under its text) and
-reshape thumbnails to 72 × 54 (4:3, Procreate-sized) in 68 px rows; v6.121.29 awaits his test. Next: mock-ups for project folders and the
-animation mode (the two remaining QOL items). Next: moving a layer group with the move tool.
-Next: width and height fields shown outright in the New dialog.
+v6.121.12 (a push also clears a background's leftover per-layer PNGs).
+On 2026-11-04 James added a starred **QOL Improvements** card (board, Tessera lane, status *next*); roadmap §3a
+sizes each item. Worked through on 2026-11-06, small-first, each build checked in the preview and then by James on the
+iPad (roadmap §0 has the build-by-build record): the Sprites rename (v6.121.13), Cut & Paste (v6.121.14), cropped and
+cleanly scaled previews in the layer panel and on gallery cards (v6.121.15–16), width and height fields in the New
+dialog (v6.121.17), the canvas-size mode with handles, repositioning, Done / Cancel and grid guides (v6.121.18–19), a
+project-switch save race closed and hardened with a switch marker after it bit Rope Sprites (v6.121.20–21), the gallery
+opening on the open project's kind (v6.121.21), group transform and group selections (v6.121.22), group rows with a
+folder icon and blue name (v6.121.23–25), a wider Layers panel with two-line names and 72 × 54 thumbnails
+(v6.121.26–29). Verified by James through v6.121.29. **Awaiting his test:** v6.121.30–32, a stable hand-set project order
+with a Sort mode (drag cards, the others slide aside; v6.121.32 fixes cards swapping back and forth mid-slide) in the gallery. **Remaining on the card:** project folders in the gallery and the
+Procreate-style animation mode, both to be mocked up before building.

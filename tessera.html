@@ -223,6 +223,15 @@
   #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; padding: 16px 18px; align-content: start; }
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
   .projCard.active { border-color: #8fb996; }
+  /* v6.121.30 (James): Sort mode — cards drag into a hand-set order; buttons and badges sleep meanwhile */
+  #btnProjSort.on { color: var(--accent); border-color: var(--accent); background: #383838; }
+  #projGrid.sorting .projCard { position: relative; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #projGrid.sorting .projCard::after { content: ""; position: absolute; inset: 0; border: 2px dashed rgba(142,203,255,.4); border-radius: 12px; pointer-events: none; }
+  #projGrid.sorting .projCard .pacts, #projGrid.sorting .projCard .syncbadge { pointer-events: none; opacity: .35; }
+  #projGrid.sorting .projCard img { pointer-events: none; -webkit-user-drag: none; }
+  #projGrid.sorting .projCard { transition: transform .16s ease; }   /* v6.121.31: the other cards slide out of the way, like layer rows */
+  #projGrid.sorting .projCard.dragging { transition: none; }
+  .projCard.dragging { opacity: .92; z-index: 5; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
   .projCard .thumb { position: relative; background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .syncbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; color: #fff; padding: 0; }
@@ -568,6 +577,7 @@
     </div>
     <span class="spacer"></span>
     <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
+    <button class="optline" id="btnProjSort" title="Sort — drag the cards into the order you want; tap again when done. Projects keep their place otherwise; new ones appear at the top"><span data-icon="grip"></span>Sort</button>
     <button class="optline" id="btnProjImport" title="Start a project from an existing PNG — you choose whether it becomes a tileset or a sprite project"><span data-icon="sqplus"></span>Import PNG</button>
     <button class="optline" id="btnProjNew" title="Create a new, blank project — tileset or sprites"><span data-icon="sqplus"></span>New</button>
     <input type="file" id="fileProj" accept="image/png" hidden>
@@ -2729,8 +2739,18 @@ document.querySelectorAll("#projFilter button").forEach((b) => b.addEventListene
 }));
 function projRenderGallery() {
   projList().then((all) => {
-    all.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+    /* v6.121.30 (James): a stable, hand-set order. Each record carries `order`; the gallery never
+       re-sorts by date, so editing a project no longer moves its card. Records without an order
+       (older ones, new, duplicated or pulled projects) go to the top, newest first, and get one. */
+    const have = all.filter((r) => typeof r.order === "number");
+    let min = have.length ? Math.min.apply(null, have.map((r) => r.order)) : 0;
+    const missing = all.filter((r) => typeof r.order !== "number").sort((a, b) => (a.savedAt || "").localeCompare(b.savedAt || ""));   // oldest first, so the newest ends on top
+    const fixes = [];
+    for (const r of missing) { r.order = --min; fixes.push(projPut(r)); }
+    if (fixes.length) Promise.all(fixes).catch(() => {});
+    all.sort((a, b) => a.order - b.order);
     const grid = $("projGrid"); grid.innerHTML = "";
+    grid.classList.toggle("sorting", projSortMode);
     for (const rec of all) {
       const ptype = projType(rec);
       if (projFilter !== "all" && ptype !== projFilter) continue;
@@ -2764,6 +2784,7 @@ function projRenderGallery() {
         const name = (prompt("Name for the copy:", rec.name + " copy") || "").trim();   // v6.84: name first; slug derives from it on the first push
         if (!name) return;
         const copy = projNewRecord(name);
+        if (typeof rec.order === "number") copy.order = rec.order + 0.5;   // v6.121.30: the copy sits right after its source
         copy.keys = JSON.parse(JSON.stringify(rec.keys || {}));
         projPut(copy).then(projRenderGallery).catch(() => status("Duplicate failed."));
       });
@@ -2804,9 +2825,11 @@ function projRenderGallery() {
       const note = document.createElement("div"); note.className = "pushnote";
       card.appendChild(th); card.appendChild(meta); card.appendChild(acts); card.appendChild(bar); card.appendChild(note);
       card.addEventListener("click", () => {
+        if (projSortMode) return;   // v6.121.30: in Sort mode a tap is the start of a drag, not an open
         if (rec.id === activeProjectId) { $("projOverlay").classList.remove("show"); return; }
         projSwitch(rec);
       });
+      if (projSortMode) projSortBind(card);
       grid.appendChild(card);
     }
   }).catch(() => status("Couldn't read the project library."));
@@ -2816,7 +2839,79 @@ $("btnProjects").addEventListener("click", () => {
   projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the open project's own kind, not All
   saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
 });
-$("btnProjClose").addEventListener("click", () => $("projOverlay").classList.remove("show"));
+$("btnProjClose").addEventListener("click", () => { projSortOff(); $("projOverlay").classList.remove("show"); });
+/* ==== Sort mode (v6.121.30, James) ====================================
+   Tap Sort: the cards take a dashed outline, their buttons sleep, and a drag
+   anywhere on a card carries it; the other cards reflow live. Letting go
+   writes the new order of every project (hidden-by-filter ones keep their
+   places between the visible ones). Tap Sort again, or Close, to finish. */
+let projSortMode = false, projDrag = null;
+function projSortOff() { if (!projSortMode) return; projSortMode = false; $("btnProjSort").classList.remove("on"); $("projGrid").classList.remove("sorting"); }
+$("btnProjSort").addEventListener("click", () => {
+  projSortMode = !projSortMode; $("btnProjSort").classList.toggle("on", projSortMode);
+  projRenderGallery();
+  status(projSortMode ? "Sort \u2014 drag the cards into order; tap Sort again when done." : "Order kept.");
+});
+function projSortBind(card) {
+  card.addEventListener("pointerdown", (e) => {
+    if (!projSortMode || e.button) return;
+    projDrag = { card, x0: e.clientX, y0: e.clientY, start: card.getBoundingClientRect(), moved: false };
+    card.classList.add("dragging");
+    card.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  card.addEventListener("pointermove", (e) => {
+    const d = projDrag; if (!d || d.card !== card) return;
+    const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+    if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+    const grid = $("projGrid");
+    const layoutRect = (c) => {   // v6.121.32: where the card BELONGS, ignoring a slide in progress — hit-testing the moving box made cards swap back and forth
+      const r = c.getBoundingClientRect(), t = getComputedStyle(c).transform;
+      const m = t && t !== "none" ? new DOMMatrixReadOnly(t) : { e: 0, f: 0 };
+      return { left: r.left - m.e, right: r.right - m.e, top: r.top - m.f, bottom: r.bottom - m.f };
+    };
+    let target = null;
+    for (const c of grid.querySelectorAll(".projCard")) {   // the card whose slot is under the finger gives it up
+      if (c === card) continue;
+      const r = layoutRect(c);
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) { target = c; break; }
+    }
+    if (target) {
+      const list = [...grid.querySelectorAll(".projCard")], others = list.filter((c) => c !== card);
+      const was = new Map(others.map((c) => [c, c.getBoundingClientRect()]));   // v6.121.31: remember where each card was...
+      if (list.indexOf(card) < list.indexOf(target)) grid.insertBefore(card, target.nextSibling); else grid.insertBefore(card, target);
+      for (const c of others) {   // ...pin it there for one frame, then let the transition carry it to its new slot
+        const b = was.get(c), a = c.getBoundingClientRect(), ddx = b.left - a.left, ddy = b.top - a.top;
+        if (!ddx && !ddy) continue;
+        c.style.transition = "none"; c.style.transform = "translate(" + ddx + "px," + ddy + "px)";
+        c.getBoundingClientRect();   // commit the pinned position before releasing it
+        c.style.transition = ""; c.style.transform = "";
+      }
+    }
+    card.style.transform = "";
+    const base = card.getBoundingClientRect();   // where the card now sits in the flow; keep it under the finger
+    card.style.transform = "translate(" + (d.start.left + dx - base.left) + "px," + (d.start.top + dy - base.top) + "px) scale(1.03)";
+    const gb = grid.getBoundingClientRect();   // keep the gallery scrolling near its edges
+    if (e.clientY < gb.top + 40) grid.scrollTop -= 8; else if (e.clientY > gb.bottom - 40) grid.scrollTop += 8;
+  });
+  const end = () => {
+    const d = projDrag; if (!d || d.card !== card) return; projDrag = null;
+    card.classList.remove("dragging"); card.style.transform = "";
+    if (d.moved) projSortPersist();
+  };
+  card.addEventListener("pointerup", end); card.addEventListener("pointercancel", end);
+}
+function projSortPersist() {   // the visible cards' new order, merged with the filtered-out ones in place
+  const visIds = [...$("projGrid").querySelectorAll(".projCard")].map((c) => c.dataset.pid);
+  projList().then((all) => {
+    const ord = (r) => (typeof r.order === "number" ? r.order : 0);
+    all.sort((a, b) => ord(a) - ord(b));
+    const vis = new Set(visIds), byId = {}; all.forEach((r) => { byId[r.id] = r; });
+    let k = 0;
+    const out = all.map((r) => (vis.has(r.id) ? byId[visIds[k++]] : r)).filter(Boolean);
+    return Promise.all(out.map((r, i) => (r.order !== i ? (r.order = i, projPut(r)) : null)));
+  }).then(() => status("Order saved.")).catch(() => status("Couldn\u2019t save the order."));
+}
 /* New / Import dialog (v6.62). Tileset records are created exactly as
    before (empty key bundle → shipped sheet on boot). Background records
    carry a fresh layered document at the chosen size. Import hands the
@@ -8651,7 +8746,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.29";
+const APP_VERSION = "6.121.32";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
