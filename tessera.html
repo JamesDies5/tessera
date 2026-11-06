@@ -2520,6 +2520,7 @@ const APP_MODE = (() => { try { return localStorage.getItem(PROJ_TYPE_KEY) === "
 const projType = (rec) => (rec && (rec.type === "bg" || (rec.keys && rec.keys[PROJ_TYPE_KEY] === "bg"))) ? "bg" : "tiles";
 const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const PROJ_ACTIVE = "tessera.activeProject";
+const PROJ_SWITCHING = "tessera.projSwitching";   // v6.121.21: the id of a project whose keys are being loaded; present at boot = the switch was cut short
 /* v6.106 — exports carry the project's name (James 2026-09-07): <slug>.png,
    <slug>.rules.json, <slug>.room.json — the same names the GitHub sync uses,
    instead of the format's generic autotile_template / tessera_v3 names. */
@@ -2578,6 +2579,7 @@ function projLoadKeys(rec) {
      write the new project's art into the old project's record (Rope Sprites got Mini Sentry's
      art, 2026-11-06). So: the active id follows the keys at once, and saves stand down. */
   activeProjectId = rec.id; projReloading = true;
+  try { localStorage.setItem(PROJ_SWITCHING, rec.id); } catch (e) {}   // v6.121.21: if the app dies before the last line below, boot finishes the switch from the library
   for (const k of PROJECT_KEYS) {
     try {
       if (rec.keys && rec.keys[k] !== undefined) localStorage.setItem(k, rec.keys[k]);
@@ -2586,8 +2588,21 @@ function projLoadKeys(rec) {
   }
   try { localStorage.setItem(PROJ_TYPE_KEY, projType(rec)); } catch (e) {}   // the record's type wins over a stale key
   try { localStorage.setItem(PROJ_ACTIVE, rec.id); } catch (e) {}
+  try { localStorage.removeItem(PROJ_SWITCHING); } catch (e) {}   // every key is in place: the switch is whole
 }
 function projSwitch(rec) { saveActiveProject().then(() => { projLoadKeys(rec); location.reload(); }); }
+/* v6.121.21: a switch cut short (the app killed between the writes above) leaves the marker. Trust
+   nothing in the workspace: no save may run, and the named project is loaded again from the library. */
+{
+  let pend = null; try { pend = localStorage.getItem(PROJ_SWITCHING); } catch (e) {}
+  if (pend) {
+    projReloading = true;
+    projGet(pend).then((rec) => {
+      try { localStorage.removeItem(PROJ_SWITCHING); } catch (e) {}
+      if (rec) { projLoadKeys(rec); location.reload(); } else projReloading = false;
+    }).catch(() => { try { localStorage.removeItem(PROJ_SWITCHING); } catch (e) {} projReloading = false; });
+  }
+}
 
 /* One-time migration: wrap the pre-projects workspace into a project so
    nothing is lost the first time v6.39 boots. Renamable in the gallery. */
@@ -2701,9 +2716,12 @@ function projTintThumb(img, rec) {   // v6.121.15: also crops a sprite project's
   src.src = img.src;
 }
 let projFilter = "all";
+function projSetFilter(v) {   // v6.121.21: one place sets the pill and the filter
+  projFilter = v;
+  document.querySelectorAll("#projFilter button").forEach((q) => q.classList.toggle("on", q.dataset.pf === v));
+}
 document.querySelectorAll("#projFilter button").forEach((b) => b.addEventListener("click", () => {
-  projFilter = b.dataset.pf;
-  document.querySelectorAll("#projFilter button").forEach((q) => q.classList.toggle("on", q === b));
+  projSetFilter(b.dataset.pf);
   projRenderGallery();
 }));
 function projRenderGallery() {
@@ -2792,6 +2810,7 @@ function projRenderGallery() {
 }
 $("btnProjects").addEventListener("click", () => {
   if (typeof cvMode !== "undefined" && cvMode) cvCancel();   // v6.121.18
+  projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the open project's own kind, not All
   saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
 });
 $("btnProjClose").addEventListener("click", () => $("projOverlay").classList.remove("show"));
@@ -8566,7 +8585,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.20";
+const APP_VERSION = "6.121.21";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
