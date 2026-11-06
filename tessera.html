@@ -254,7 +254,7 @@
   #layerMenu .lmHead { display: flex; align-items: center; gap: 8px; }
   #layerMenu .lmHead .lbl { flex: 1; }
   #layerList { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; border-top: 1px solid #3a3a3a; }
-  .lyRow { display: flex; align-items: center; gap: 8px; padding: 7px 6px 7px 2px; min-height: 60px; border-bottom: 1px solid #3a3a3a; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .lyRow { display: flex; align-items: center; gap: 8px; padding: 7px 6px 7px 2px; min-height: 68px;   /* v6.121.29: room for the taller thumbnail */ border-bottom: 1px solid #3a3a3a; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
   .lyRow.on { background: #3a3a3a; }
   .lyRow.multi { background: #2c3340; }
   .lyRow.on.multi { background: #3a4252; }
@@ -273,7 +273,7 @@
   .lyCount { flex: 0 0 auto; font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
   .lyGrip { width: 26px; height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: #6a6a6a; cursor: grab; touch-action: none; }
   .lyGrip svg { width: 18px; height: 18px; }
-  .lyThumb { width: 60px; height: 45px; border-radius: 5px;   /* v6.121.28 (James): 4:3 like Procreate; 20 px more for names */ border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
+  .lyThumb { width: 72px; height: 54px; border-radius: 5px;   /* v6.121.28/29 (James): 4:3 and about Procreate's size */ border: 1px solid var(--line); flex: 0 0 auto; image-rendering: pixelated;
     background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
   .lyName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 1.25;   /* v6.121.27 (James): names wrap to two lines before trimming */
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; }
@@ -8200,7 +8200,7 @@ function bgRenderLayerList() {
   const svg = (k) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS[k] + '</svg>';
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   const thumbOf = (src) => {   // v6.121.15/16 (James's QOL card): cropped to the art's bounds; drawn at screen resolution, enlarged by whole numbers only, shrunk smoothly
-    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = Math.round(60 * dpr); th.height = Math.round(45 * dpr);   // v6.121.28: 60 × 45
+    const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = Math.round(72 * dpr); th.height = Math.round(54 * dpr);   // v6.121.29: 72 × 54
     const b = artBoundsOf(src, TW, TH); if (!b) return th;   // empty layer: just the checkerboard
     const c = artCropBox(b, TW, TH), f = pixelFit(c.w, c.h, th.width, th.height);
     const g = th.getContext("2d"); g.imageSmoothingEnabled = f.smooth; if (f.smooth) g.imageSmoothingQuality = "high";
@@ -8651,7 +8651,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.28";
+const APP_VERSION = "6.121.29";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

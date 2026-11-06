@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.28** (2026-11-06).
+be a change there. Current: **v6.121.29** (2026-11-06).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -180,6 +180,6 @@ save race James hit (one project's art written into another's record; roadmap §
 v6.121.21 adds a switch-in-progress marker and opens the gallery on the open project's kind; v6.121.22 lets a layer group
 transform as one piece and selections work on a group (verified by James the same day); v6.121.23–25 give group rows a
 folder icon and blue name (icon on the left, settled), v6.121.26–28 widen the Layers panel to 400 px, let names wrap to two lines (a group's hanging under its text) and
-narrow thumbnails to 60 × 45; v6.121.28 awaits his test. Next: mock-ups for project folders and the
+reshape thumbnails to 72 × 54 (4:3, Procreate-sized) in 68 px rows; v6.121.29 awaits his test. Next: mock-ups for project folders and the
 animation mode (the two remaining QOL items). Next: moving a layer group with the move tool.
 Next: width and height fields shown outright in the New dialog.
