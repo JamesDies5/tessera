@@ -1,12 +1,12 @@
 # Tessera Blueprint
 
-**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code). §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
+**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.12. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
 **Purpose:** what Tessera is today and why it is built that way.
 **Sibling documents:** `CLAUDE.md` (how to work here, and where things are in the file) · `tessera_roadmap.md` (what is next, in order; the old §4, §5 plan, §7 and §10 moved there) · `tessera_history.md` (the old blueprint, frozen: the build-by-build record; never take current state from it). In the game repo (`/Users/jamesdies/platformer-test`): `atlas/atlas-roadmap.md` for ATLAS, and `global/palettes/palette_canon.md`, the only palette canon.
 
 ---
 
-## 1. What Tessera is today (v6.121.10)
+## 1. What Tessera is today (v6.121.12)
 
 One HTML file, no build step, used on an iPad from a Home Screen shortcut with touch and Apple Pencil. It is not a keyboard app (James 2026-10-03: he only ever types file names); never design around keyboard shortcuts.
 
@@ -120,10 +120,9 @@ Each project is a named snapshot of everything about it: art, rules, room, layer
 
 The gallery filters by type and offers New (name, type, size), Import PNG, Rename, Duplicate, Delete. The open project cannot be deleted.
 
-**Sync is James's cloud save.** Pushing a project writes it to this repo under `projects/<name>/`: `project.json` (the whole project), the PNG, and for a tileset its `rules.json`; a background with more than one layer also gets one PNG per layer. A pull needs only `project.json`. The folder follows the project's name: a rename moves it on the next push, and Delete removes it from the repo too (when a token is set). Last write wins; there is no merge. Each card shows whether it matches what was last pushed.
+**Sync is James's cloud save.** Pushing a project writes it to this repo under `projects/<name>/`: `project.json` (the whole project), the PNG, and for a tileset its `rules.json`; a background with more than one layer also gets one PNG per layer, and a push clears any of those it no longer writes (v6.121.12). A pull needs only `project.json`. The folder follows the project's name: a rename moves it on the next push, and Delete removes it from the repo too (when a token is set). Last write wins; there is no merge. Each card shows whether it matches what was last pushed.
 
-Known gaps, none of which has bitten yet (roadmap):
-- A background that loses layers leaves its old per-layer PNGs behind in the repo.
+Known gaps, neither of which has bitten yet (roadmap §4):
 - If the browser's quick storage ever fills, the save fails silently, and a push would then upload the last good save while reporting success.
 - Two projects whose names reduce to the same folder name would overwrite each other.
 

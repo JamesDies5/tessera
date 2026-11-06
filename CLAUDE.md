@@ -165,6 +165,8 @@ tray), collision drawing, variations for tiles other than the centre core, patte
 the canon 5×5 start-up ruleset, and a rethink of slopes on the 7×7 — then the full tileset exporter (art, rules, collision, hazard, slopes, semi-solid in one bundle that
 ATLAS and Godot import ready to go), then Tech 3 into ATLAS/Godot. Also raised 2026-10-03: a
 dedicated Sprites project type beside Tileset and Background, possibly with animation and onion
-skinning (nothing of that exists yet). Delivered and awaiting James's test on the iPad: v6.121.12, a push
-also clears a background's leftover per-layer PNGs from the repo. (The v6.121.11 tooltip tidy was
-verified by James 2026-10-03.)
+skinning (nothing of that exists yet). Verified by James 2026-10-03: the v6.121.11 tooltip tidy and
+v6.121.12 (a push also clears a background's leftover per-layer PNGs). Nothing is awaiting test.
+On 2026-11-04 James added a starred **QOL Improvements** card (board, Tessera lane, status *next*): rename
+Background to Sprites, project folders, move a layer group, a Cut & Paste button, cropped layer previews,
+better canvas-size entry, and a Procreate-style animation mode. Roadmap §3a has each item sized.

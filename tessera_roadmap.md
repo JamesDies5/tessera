@@ -11,11 +11,13 @@
 
 - **Documentation sweep (2026-10-03).** Done: blueprint rebuilt, this roadmap, the history file, `CLAUDE.md` corrected, regression rooms unpacked, and a preview of the app in Claude Code's browser pane (`CLAUDE.md`, "Preview").
 - **Tooltip and wording tidy** (v6.121.11) — **verified by James on the iPad 2026-10-03.** Tooltips now match what each button does and no longer mention keyboard keys; a few on-screen messages corrected; the Pencil-hover tip now follows tooltips that change after load (background projects, Export on the Level tab); a background push with layers says so. Resolver untouched: identical on all three regression rooms.
-- **Leftover layer files** (v6.121.12) — delivered 2026-10-03, awaiting James's test. A push now also removes this project's own per-layer PNGs that it no longer writes, and nothing else; a failed removal never fails the push. Checked with a simulated push in the preview. Real leftovers in the repo at the time: Gunner 3, Rope Sprites 22.
+- **Leftover layer files** (v6.121.12) — **verified by James on the iPad 2026-10-03.** A push now also removes this project's own per-layer PNGs that it no longer writes, and nothing else; a failed removal never fails the push. Checked with a simulated push in the preview. Real leftovers in the repo at the time: Gunner 3, Rope Sprites 22.
 
 ---
 
 ## 1. Rule refinements — before the exporter
+
+On the game's board (`platformer-test/docs/board/`, 2026-10-18) these are cards on the Tessera lane; James starred 1a, 1b, 1c and 1g the same day.
 
 ### 1a. Slope logic options (the Slopes tray)
 
@@ -107,11 +109,25 @@ James already draws game sprites in Background projects. A dedicated third type 
 
 ---
 
+## 3a. QOL improvements for the pixel editor (James's board card, 2026-11-04)
+
+James put a starred **QOL Improvements** card on the Tessera lane (status *next*) on 2026-11-04. Its seven steps are his, kept on the card; this is what each means in the app today and how big it is. None touches the resolver.
+
+1. **Rename the Background category to "Sprites".** A label change: the gallery tag, the type filter, the New dialog and the header. The stored type key stays `bg`, so every existing project and its folder in the repo are untouched. Small. (It answers §3's first question: a sprite project is a background project under its real name, until animation gives it more.)
+2. **Project folders.** Named groups of projects in the gallery. Needs a design: where the folder lives (a field on each project record, so a pull still works), what the gallery shows, and whether a folder is a real folder in the repo. Mock the gallery first. Medium.
+3. **Move a layer group with the move tool.** Today the move tool refuses a group header ("select a layer inside it"); the fix is to float every member together and commit them back layer by layer. Medium; the move/transform float code assumes one layer.
+4. **Cut & Paste button**, left of Paste: cut the selection from the current layer and paste it in place on a new layer, as Procreate does. Both halves already exist (Cut, then Paste onto a fresh layer); it is one button that runs them in a row. Small.
+5. **Cropped layer previews.** Thumbnails show the whole canvas; crop each to the bounds of its own pixels, so a small sprite on a large canvas is readable. Small to medium; the thumbnail is drawn per row in the layer list.
+6. **Canvas size entry.** The New dialog already has separate width and height fields, but only after choosing "custom" in the preset menu; show them outright. Changing the size of an existing background still goes through the browser's text prompt (roadmap §5 lists it); James wants to drag the canvas edges with the numbers shown. The fields are small; the edge-drag needs a mock-up. Medium.
+7. **Animation mode, Procreate style.** Each layer is a frame (a group counts as one frame), a timeline along the bottom, onion skinning, frame hold, FPS, loop / ping-pong / one-shot playback, and perhaps a sprite-sheet export. This is §3's "dedicated Sprites type" made concrete; nothing of it exists. Large; mock the timeline and the onion skin before building.
+
+Suggested order when this starts: the small ones first (1, 4, 5, the fields of 6), each its own build James tests on the iPad; then 3; then the three that need a mock-up (2, the edge-drag of 6, 7).
+
 ## 4. Cloud-save refinements
 
 Sync is working well for James as his cloud save. Possible gaps, in the order worth closing:
 
-1. **Leftover layer files.** When a background drops layers, the push used to leave the per-layer PNGs it no longer writes in the repo. Fixed in v6.121.12, awaiting James's test (§0).
+1. **Leftover layer files.** When a background drops layers, the push used to leave the per-layer PNGs it no longer writes in the repo. Fixed in v6.121.12, verified by James 2026-10-03.
 2. **Silent save failure.** A background keeps every layer inside one saved document in the browser's quick storage. If that ever fills, the save fails without a word, and a push would upload the last good save and still show success. Far from the limit today (the largest project, Rope Sprites with 26 layers, is a small fraction of it). Cheap protection: say so on screen when a save fails.
 3. **Same folder name.** Two projects whose names reduce to the same folder would overwrite each other in the repo. No guard yet (noted 2026-09-05).
 
