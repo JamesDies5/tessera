@@ -2563,8 +2563,9 @@ function projNewRecord(name) {
   const now = new Date().toISOString();
   return { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, createdAt: now, savedAt: now, keys: {} };
 }
+let projReloading = false;   // v6.121.20: set once another project's keys are in localStorage and a reload is coming; saves stand down until then
 function saveActiveProject() {
-  if (!activeProjectId) return Promise.resolve();
+  if (!activeProjectId || projReloading) return Promise.resolve();
   return projGet(activeProjectId).then((rec) => {
     if (!rec) return undefined;
     rec.keys = projSnapshotKeys(); rec.savedAt = new Date().toISOString();
@@ -2572,6 +2573,11 @@ function saveActiveProject() {
   }).catch(() => {});
 }
 function projLoadKeys(rec) {
+  /* v6.121.20: from here until the reload, localStorage holds REC's keys. The page-hidden /
+     pagehide insurance below used to fire in that window with the OLD activeProjectId and
+     write the new project's art into the old project's record (Rope Sprites got Mini Sentry's
+     art, 2026-11-06). So: the active id follows the keys at once, and saves stand down. */
+  activeProjectId = rec.id; projReloading = true;
   for (const k of PROJECT_KEYS) {
     try {
       if (rec.keys && rec.keys[k] !== undefined) localStorage.setItem(k, rec.keys[k]);
@@ -8560,7 +8566,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.19";
+const APP_VERSION = "6.121.20";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
