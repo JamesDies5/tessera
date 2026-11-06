@@ -110,6 +110,7 @@
   #gradChips .gch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   #gradChips .gch.tr { background: conic-gradient(#333 25%, #555 0 50%, #333 0 75%, #555 0); background-size: 8px 8px; }
   .tray .optline.ico svg { width: 18px; height: 18px; }
+  #canvasbar input { width: 68px; height: 28px; background: #111; border: 1px solid #454545; border-radius: 8px; color: #eee; text-align: center; font: inherit; font-size: 12px; }   /* v6.121.18: canvas size fields */
   .optItem { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 66px;
     padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px;
     cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 1px; color: var(--text); }
@@ -345,6 +346,7 @@
     <button class="ibtn" id="btnIO" data-icon="share" title="Import/Export — rules and room JSON files (rules describe the tileset; rooms describe drawn geometry)"></button>
   </div>
   <span class="spacer"></span>
+  <button class="ibtn" id="btnBgCanvas" data-icon="frame" title="Canvas size — stretch the handles, type a width and height, or drag the art to reposition it; Done applies, Cancel keeps things as they were" style="display:none"></button>
   <span class="fly"><button class="ibtn" id="btnBrush" data-icon="brush" title="Brush — size, shape, pixel-perfect and dither; shared by pencil, eraser and shape outlines"></button>
   <!-- Brush flyout: pixel size + stamp shape, shared by pencil and eraser -->
   <div id="brushMenu">
@@ -454,6 +456,16 @@
   <button class="optline" id="outlineApply" title="Apply the outline to the selected layer (one undo step)"><span data-icon="check"></span>Apply</button>
 </div>
 <!-- Tiled / Symmetry trays (v6.67): background projects only, opened from the header like Options -->
+<!-- Canvas size tray (v6.121.18, James's QOL card): sprite projects; shown while the canvas-size mode is on -->
+<div class="tray" id="canvasbar">
+  <span class="lbl">CANVAS</span>
+  <span class="lbl">WIDTH</span><input type="number" id="cvW" min="16" max="4096" inputmode="numeric" title="New width in px — grows or shrinks from the left edge">
+  <span class="lbl" style="margin-left:8px">HEIGHT</span><input type="number" id="cvH" min="16" max="4096" inputmode="numeric" title="New height in px — grows or shrinks from the top edge">
+  <span class="lbl">px</span>
+  <span class="vsep"></span>
+  <button class="optline" id="cvCancel" title="Leave the canvas as it was">Cancel</button>
+  <button class="optline on" id="cvDone" title="Apply the new size — one undo step">Done</button>
+</div>
 <div class="tray" id="tiledbar" data-set="tiled">
   <span class="lbl">TILED</span>
   <button class="optline" data-v="off" title="Tiled preview off"><span data-icon="tileOff"></span>Off</button>
@@ -2773,6 +2785,7 @@ function projRenderGallery() {
   }).catch(() => status("Couldn't read the project library."));
 }
 $("btnProjects").addEventListener("click", () => {
+  if (typeof cvMode !== "undefined" && cvMode) cvCancel();   // v6.121.18
   saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
 });
 $("btnProjClose").addEventListener("click", () => $("projOverlay").classList.remove("show"));
@@ -3748,8 +3761,9 @@ function drawGrid() {
     ovCtx.fillStyle = "rgba(0,0,0,0.75)"; ovCtx.fillRect(v.x + 4, v.y + 4, ovCtx.measureText(lbl).width + 8, 18);
     ovCtx.fillStyle = "#8ecbff"; ovCtx.fillText(lbl, v.x + 8, v.y + 7);
   }
+  if (cvMode && APP_MODE === "bg") cvDraw();   // v6.121.18: canvas-size proposal, handles and dimmed outside
   const hpo = activeTab === "pv" ? pvPad() * TILE : 0;   // v6.119.1: the hover ghost follows the pen into the margin
-  if (hover && tool !== "selmove" && !sliceToolUp && !canvasMode && hover.x >= -hpo && hover.y >= -hpo && hover.x < W + hpo && hover.y < H + hpo) {   // v6.121: slice tools draw their own crosshair
+  if (hover && tool !== "selmove" && !sliceToolUp && !canvasMode && !cvMode && hover.x >= -hpo && hover.y >= -hpo && hover.x < W + hpo && hover.y < H + hpo) {   // v6.121: slice tools draw their own crosshair
     // hovering pen/mouse tip: outline the pixel it would touch (or the whole
     // cell in Cells mode), dark halo behind an accent line for contrast
     const cellMode = activeTab === "pv" && pvMode === "cells";
@@ -4463,6 +4477,7 @@ function genRoom(force) {
   return { fills: F, slopes: S, name, cols: CW, rows: CH, doors, spawn };
 }
 function undo() {
+  if (cvMode) { status("Finish the canvas size first \u2014 Done or Cancel."); return; }   // v6.121.18
   if (shp) { if (shp.kind === "poly" && !shp.closed && shp.pts.length > 1) { shp.pts.pop(); drawGrid(); status("Point removed."); return; } shpCancel(); return; }   // undo on a pending shape: step back a vertex, or discard
   if (grad) { gradCancel(); return; }
   if (float) {
@@ -4496,6 +4511,7 @@ function undo() {
   redoLog.push("ed");
 }
 function redo() {
+  if (cvMode) { status("Finish the canvas size first \u2014 Done or Cancel."); return; }   // v6.121.18
   if (float) {
     if (floatRedoHist.length) {
       floatHist.push(floatSnapState());
@@ -5824,6 +5840,7 @@ function cellGrabCommit(g, dx, dy) {
 function beginStroke(e) {
   if (activeTab === "ed") {
     const [x, y] = edPos(e);
+    if (cvMode) { cvBegin(e); return; }   // v6.121.18: in canvas-size mode the canvas only takes handles and repositioning
     if (canvasMode) {
       const p = vpPoint(e), v = view.ed;
       const gripR = Math.hypot(p.x - (v.x + TW * v.s), p.y - (v.y + TH * v.s / 2)) <= 18;
@@ -5936,6 +5953,7 @@ function beginStroke(e) {
   armHold(e);
 }
 function moveStroke(e) {
+  if (stroke && stroke.kind === "cv") { cvMove(e); return; }   // v6.121.18
   if (stroke.holdT) {
     stroke.lastClient = { clientX: e.clientX, clientY: e.clientY };
     const p = vpPoint(e);
@@ -6057,6 +6075,7 @@ function placeSlopeRun(run) {
 }
 function endStroke() {
   clearHold();
+  if (stroke && stroke.kind === "cv") { stroke = null; drawGrid(); return; }   // v6.121.18: the proposal stays until Done or Cancel
   if (stroke && stroke.kind === "varyRect") { const s = stroke; stroke = null; varyCommitRect(s); drawGrid(); rulesRender(); return; }   // v6.91.1
   if (stroke && stroke.kind === "resize") {
     const s = stroke; stroke = null;
@@ -6906,6 +6925,7 @@ document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () 
 
 /* ---- tool + mode UI ---- */
 function setTool(t) {
+  if (cvMode) { status("Finish the canvas size first \u2014 Done or Cancel."); return; }   // v6.121.18
   if (rulesEngaged && t !== "rules") return;   // v6.85: rules own the Template pointer while engaged; the previous tool returns on release
   if (tool === "cellSel" && t !== "cellSel" && cellSel) { cellSelClear(); drawGrid(); }   // v6.118: the selection belongs to the tool
   if (t === "selmove" && tool !== "selmove" && !float) {   // v6.68: Transform (Procreate model)
@@ -7820,6 +7840,7 @@ function bgRestoreStruct(st) {
   bgDoc.layers = st.layers.map((L) => { const o = Object.assign({}, L); delete o.img; delete o.png; if (!isFolder(o)) o.png = null; return o; });
   bgLayers = st.layers.map((L) => { if (isFolder(L)) return { canvas: null }; const nl = bgMakeCanvas(st.w, st.h); nl.ctx.putImageData(L.img, 0, 0); return nl; });
   TW = st.w; TH = st.h; WORLD.ed.w = TW; WORLD.ed.h = TH; bgScratch = null;
+  $("bgLabel").textContent = "SPRITES \u00b7 " + TW + " \u00d7 " + TH;   // v6.121.18: a struct step can change the size (canvas resize)
   bgDoc.active = st.active;
   bgSelectLayer(st.active, true);
 }
@@ -8266,6 +8287,144 @@ function closeLayerMenu() { const m = $("layerMenu"); if (m) { m.style.display =
 /* ---- Tiled / Symmetry trays (v6.67): open from the header like Options,
    one bespoke-icon button per value, chosen value stays lit; picking one
    applies it and closes the tray, exactly as the Options tray behaves. ---- */
+/* ==== Canvas size mode (v6.121.18, James's QOL card) ===================
+   Procreate's Crop & Resize, for sprite projects. The proposal is a rectangle
+   {x, y, w, h} in the CURRENT canvas's pixels (x, y may be negative when the
+   canvas grows left or up). Eight handles stretch it; the WIDTH / HEIGHT
+   fields set w and h from the top-left; dragging inside slides the art (the
+   view pans with the finger so the frame stays still on screen). Nothing is
+   cropped until Done, which is one undo step (a structural snapshot); art
+   outside the frame is dimmed and Done warns before cropping any of it.
+   While the mode is on, tools and undo wait — the canvas only takes handles
+   and repositioning. Tilesets keep their own Canvas item under the wrench. */
+var cvMode = null;   // { x, y, w, h } or null — var: read by drawGrid / setTool / undo, which are defined earlier
+function cvOpen() {
+  if (APP_MODE !== "bg" || cvMode) return;
+  if (float) floatFlatten(); if (shp) shpCancel(); if (grad) gradCancel();
+  closeColorMenu(); closeBrushMenu(); closeOptMenu(); closeLayerMenu(); closeBgViewMenu();
+  selClear();
+  cvMode = { x: 0, y: 0, w: TW, h: TH };
+  $("canvasbar").style.display = "flex"; sizeOverlay(); cvSyncFields();
+  $("btnBgCanvas").classList.add("on");
+  blit(); drawGrid();
+  status("Canvas size — stretch a handle, type a size, or drag the art to move it. Done applies.");
+}
+function cvClose() {
+  if (!cvMode) return;
+  cvMode = null; stroke = null;
+  $("canvasbar").style.display = "none"; sizeOverlay();
+  $("btnBgCanvas").classList.remove("on");
+}
+function cvCancel() {
+  if (!cvMode) return;
+  const v = view.ed; v.x += cvMode.x * v.s; v.y += cvMode.y * v.s;   // put the view back where the art was
+  cvClose(); blit(); drawGrid(); status("Canvas size unchanged.");
+}
+function cvSyncFields() { if (!cvMode) return; $("cvW").value = cvMode.w; $("cvH").value = cvMode.h; }
+const cvClamp = (n, d) => Math.max(16, Math.min(4096, parseInt(n, 10) || d));
+function cvSetSize(w, h) { if (!cvMode) return; cvMode.w = cvClamp(w, cvMode.w); cvMode.h = cvClamp(h, cvMode.h); drawGrid(); }
+function cvHandleAt(p) {   // which handle is under the finger, "move" inside the frame, or null
+  const v = view.ed, m = cvMode;
+  const x0 = v.x + m.x * v.s, y0 = v.y + m.y * v.s, x1 = x0 + m.w * v.s, y1 = y0 + m.h * v.s, xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+  const H = [["nw", x0, y0], ["n", xm, y0], ["ne", x1, y0], ["w", x0, ym], ["e", x1, ym], ["sw", x0, y1], ["s", xm, y1], ["se", x1, y1]];
+  for (const [k, x, y] of H) if (Math.hypot(p.x - x, p.y - y) <= 22) return k;
+  if (p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1) return "move";
+  return null;
+}
+function cvBegin(e) {
+  const p = vpPoint(e), k = cvHandleAt(p); if (!k) return;
+  const m = cvMode;
+  stroke = { kind: "cv", hd: k, px: p.x, py: p.y, x: m.x, y: m.y, w: m.w, h: m.h, vx: view.ed.x, vy: view.ed.y };
+}
+function cvMove(e) {
+  const p = vpPoint(e), s = stroke, m = cvMode, v = view.ed;
+  const dx = Math.round((p.x - s.px) / v.s), dy = Math.round((p.y - s.py) / v.s);
+  if (s.hd === "move") {   // the art follows the finger; the frame stays put on screen
+    m.x = s.x - dx; m.y = s.y - dy; v.x = s.vx + dx * v.s; v.y = s.vy + dy * v.s;
+    blit(); drawGrid(); return;
+  }
+  let x = s.x, y = s.y, w = s.w, h = s.h;
+  if (s.hd.includes("e")) w = s.w + dx;
+  if (s.hd.includes("w")) { w = s.w - dx; x = s.x + dx; }
+  if (s.hd.includes("s")) h = s.h + dy;
+  if (s.hd.includes("n")) { h = s.h - dy; y = s.y + dy; }
+  const cw = Math.max(16, Math.min(4096, w)), ch = Math.max(16, Math.min(4096, h));
+  if (cw !== w && s.hd.includes("w")) x = s.x + s.w - cw;   // the far side stays where it is
+  if (ch !== h && s.hd.includes("n")) y = s.y + s.h - ch;
+  m.x = x; m.y = y; m.w = cw; m.h = ch;
+  cvSyncFields(); drawGrid();
+}
+function cvDraw() {
+  const v = view.ed, m = cvMode, x0 = v.x + m.x * v.s, y0 = v.y + m.y * v.s, w = m.w * v.s, h = m.h * v.s;
+  ovCtx.save();
+  ovCtx.fillStyle = "rgba(0,0,0,0.55)";   // everything outside the frame, art included, goes dim
+  ovCtx.fillRect(-1e5, -1e5, 2e5, 1e5 + y0); ovCtx.fillRect(-1e5, y0 + h, 2e5, 1e5);
+  ovCtx.fillRect(-1e5, y0, 1e5 + x0, h); ovCtx.fillRect(x0 + w, y0, 1e5, h);
+  if (gridOn.ed.cell && TILE * v.s >= 4) {   // v6.121.19 (James): with the cell grid on, the 16 px guides run past the canvas so the frame can be lined up with them; dragging stays free
+    const r = viewport.getBoundingClientRect(), st = TILE * v.s;
+    ovCtx.strokeStyle = "rgba(255,255,255,0.22)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
+    for (let i = Math.floor(-v.x / st), i1 = Math.ceil((r.width - v.x) / st); i <= i1; i++) { const x = Math.round(v.x + i * st) + 0.5; ovCtx.moveTo(x, 0); ovCtx.lineTo(x, r.height); }
+    for (let j = Math.floor(-v.y / st), j1 = Math.ceil((r.height - v.y) / st); j <= j1; j++) { const y = Math.round(v.y + j * st) + 0.5; ovCtx.moveTo(0, y); ovCtx.lineTo(r.width, y); }
+    ovCtx.stroke();
+  }
+  ovCtx.strokeStyle = "#8ecbff"; ovCtx.setLineDash([6, 4]); ovCtx.lineWidth = 2; ovCtx.strokeRect(x0, y0, w, h); ovCtx.setLineDash([]);
+  const grip = (x, y) => { ovCtx.fillStyle = "#8ecbff"; ovCtx.strokeStyle = "rgba(0,0,0,0.8)"; ovCtx.lineWidth = 2; ovCtx.beginPath(); ovCtx.rect(x - 8, y - 8, 16, 16); ovCtx.fill(); ovCtx.stroke(); };
+  [[x0, y0], [x0 + w / 2, y0], [x0 + w, y0], [x0, y0 + h / 2], [x0 + w, y0 + h / 2], [x0, y0 + h], [x0 + w / 2, y0 + h], [x0 + w, y0 + h]].forEach((q) => grip(q[0], q[1]));
+  ovCtx.font = "600 12px ui-monospace, monospace"; ovCtx.textBaseline = "top";
+  const lbl = m.w + " × " + m.h + " px";
+  ovCtx.fillStyle = "rgba(0,0,0,0.75)"; ovCtx.fillRect(x0 + 4, y0 + 4, ovCtx.measureText(lbl).width + 8, 18);
+  ovCtx.fillStyle = "#8ecbff"; ovCtx.fillText(lbl, x0 + 8, y0 + 7);
+  ovCtx.restore();
+}
+function cvArtOutside() {   // exact: does any layer have a visible pixel outside the frame?
+  const m = cvMode;
+  const strips = [];   // in current-canvas px, clipped to the canvas
+  if (m.y > 0) strips.push([0, 0, TW, Math.min(TH, m.y)]);
+  if (m.y + m.h < TH) strips.push([0, Math.max(0, m.y + m.h), TW, TH - Math.max(0, m.y + m.h)]);
+  if (m.x > 0) strips.push([0, 0, Math.min(TW, m.x), TH]);
+  if (m.x + m.w < TW) strips.push([Math.max(0, m.x + m.w), 0, TW - Math.max(0, m.x + m.w), TH]);
+  if (!strips.length) return false;
+  for (let i = 0; i < bgDoc.layers.length; i++) {
+    if (isFolder(bgDoc.layers[i])) continue;
+    const g = bgLayers[i].canvas.getContext("2d");
+    for (const [x, y, w, h] of strips) {
+      if (w <= 0 || h <= 0) continue;
+      const d = g.getImageData(x, y, w, h).data;
+      for (let k = 3; k < d.length; k += 4) if (d[k]) return true;
+    }
+  }
+  return false;
+}
+function cvApply() {
+  const m = cvMode; if (!m) return;
+  if (m.x === 0 && m.y === 0 && m.w === TW && m.h === TH) { cvClose(); blit(); drawGrid(); setTool("pencil"); status("Canvas unchanged."); return; }
+  if (cvArtOutside() && !confirm("Some artwork lies outside the new bounds and will be cropped away. Continue?")) return;
+  bgStructSnapshot();   // one undo step: size and every layer
+  const ox = -m.x, oy = -m.y, w = m.w, h = m.h;
+  bgLayers = bgDoc.layers.map((L, i) => {
+    if (isFolder(L)) return { canvas: null };
+    const nl = bgMakeCanvas(w, h);
+    if (bgLayers[i] && bgLayers[i].canvas) nl.ctx.drawImage(bgLayers[i].canvas, ox, oy);
+    return nl;
+  });
+  TW = w; TH = h; WORLD.ed.w = w; WORLD.ed.h = h; bgScratch = null;
+  bgSelectLayer(bgDoc.active, true);
+  $("bgLabel").textContent = "SPRITES · " + w + " × " + h;
+  cvClose();
+  templateChanged(); bgPersist(); persistPng(); edGen++; fitView("ed"); refreshFileSwatches(); bgRenderLayerList();
+  setTool("pencil"); blit(); drawGrid();
+  status("Canvas is now " + w + " × " + h + " px.");
+}
+$("btnBgCanvas").addEventListener("click", () => { if (cvMode) cvCancel(); else cvOpen(); });
+$("cvCancel").addEventListener("click", cvCancel);
+$("cvDone").addEventListener("click", cvApply);
+["cvW", "cvH"].forEach((id) => {
+  $(id).addEventListener("input", () => {   // live while the typed numbers are in range; the frame grows from the top-left
+    const w = parseInt($("cvW").value, 10), h = parseInt($("cvH").value, 10);
+    if (w >= 16 && w <= 4096 && h >= 16 && h <= 4096) cvSetSize(w, h);
+  });
+  $(id).addEventListener("change", () => { cvSetSize($("cvW").value, $("cvH").value); cvSyncFields(); });
+});
 const BG_VIEWS = { tiled: { btn: "btnBgTiled", tray: "tiledbar" }, sym: { btn: "btnBgSym", tray: "symbar" } };
 function bgViewSync() {
   if (!bgDoc) return;
@@ -8359,6 +8518,7 @@ function bgBoot() {
   $("btnCanvas").title = "Resize the canvas — enter a new width \u00d7 height in px; art is kept top-left";
   $("btnLoad").title = "Import a PNG as a new layer above the selected one (the canvas grows if the image is larger)";
   $("btnLayers").style.display = ""; $("btnCopyAll").style.display = ""; $("btnCutPaste").style.display = "";
+  $("btnBgCanvas").style.display = ""; $("btnCanvas").style.display = "none";   // v6.121.18: canvas size lives in the header for sprites, not under the wrench
   $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
   $("btnSave").title = "Export the flattened sprite PNG";
   $("btnProjects").title = "Projects — tilesets and sprites; opening this gallery or switching auto-saves the open one";
@@ -8400,7 +8560,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.17";
+const APP_VERSION = "6.121.19";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
