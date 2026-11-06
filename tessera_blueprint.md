@@ -1,12 +1,12 @@
 # Tessera Blueprint
 
-**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.14. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
+**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.15. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
 **Purpose:** what Tessera is today and why it is built that way.
 **Sibling documents:** `CLAUDE.md` (how to work here, and where things are in the file) · `tessera_roadmap.md` (what is next, in order; the old §4, §5 plan, §7 and §10 moved there) · `tessera_history.md` (the old blueprint, frozen: the build-by-build record; never take current state from it). In the game repo (`/Users/jamesdies/platformer-test`): `atlas/atlas-roadmap.md` for ATLAS, and `global/palettes/palette_canon.md`, the only palette canon.
 
 ---
 
-## 1. What Tessera is today (v6.121.14)
+## 1. What Tessera is today (v6.121.15)
 
 One HTML file, no build step, used on an iPad from a Home Screen shortcut with touch and Apple Pencil. It is not a keyboard app (James 2026-10-03: he only ever types file names); never design around keyboard shortcuts.
 
@@ -104,7 +104,7 @@ Built 2026-09-02 (v6.61 → v6.81) by studying Aseprite's source; the ellipse, t
 
 A canvas of any size from 16 to 4096 px a side; presets are one game screen (480×270) and its halves. The size shows in the header and can be changed later (shrinking crops, keeping the top-left).
 
-**Layers:** add, delete, duplicate, rename, reorder by dragging, merge down, merge selected, per-layer opacity, hide, and **alpha lock** (paint only where the layer already has pixels — it is not an edit lock). Layers can be grouped, one level deep; a group can be hidden, collapsed, moved, duplicated, or flattened to one layer. Swipe right on rows to multi-select. There are no blend modes and no layer limit. Undo is 24 steps.
+**Layers:** add, delete, duplicate, rename, reorder by dragging, merge down, merge selected, per-layer opacity, hide, and **alpha lock** (paint only where the layer already has pixels — it is not an edit lock). Layers can be grouped, one level deep; a group can be hidden, collapsed, moved, duplicated, or flattened to one layer. Swipe right on rows to multi-select. There are no blend modes and no layer limit. Undo is 24 steps. Each row's thumbnail is cropped to the layer's own pixels with a thin margin (v6.121.15), so a small sprite on a large canvas reads; an empty layer shows the bare checkerboard, and a group's thumbnail crops to its members together. The gallery card of a sprite project is cropped the same way; tileset cards show the whole sheet.
 
 **Views:** tiled preview (across, down or both) for seamless art; symmetry painting (horizontal, vertical or quad).
 

@@ -2586,6 +2586,36 @@ projGet(activeProjectId).then((rec) => { if (rec && rec.name) projExportSlug = p
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveActiveProject(); });
 window.addEventListener("pagehide", () => { saveActiveProject(); });
 
+/* v6.121.15 (James's QOL card): the box around an image's own pixels, in source px; null when empty.
+   Big images are measured on a shrunken copy so lists stay quick; small ones pixel-exact. Shared by
+   the layer panel's thumbnails and the gallery's sprite cards. */
+function artBoundsOf(src, W, H) {
+  const step = Math.max(1, Math.ceil(Math.sqrt((W * H) / 262144)));
+  let w = W, h = H, pix;
+  try {
+    if (step > 1) {
+      w = Math.max(1, Math.ceil(W / step)); h = Math.max(1, Math.ceil(H / step));
+      const sm = document.createElement("canvas"); sm.width = w; sm.height = h;
+      const sg = sm.getContext("2d"); sg.imageSmoothingEnabled = true; sg.drawImage(src, 0, 0, w, h);
+      pix = sg.getImageData(0, 0, w, h).data;
+    } else {
+      const cv = src.getContext ? src : (() => { const c = document.createElement("canvas"); c.width = W; c.height = H; c.getContext("2d").drawImage(src, 0, 0); return c; })();
+      pix = cv.getContext("2d").getImageData(0, 0, w, h).data;
+    }
+  } catch (e) { return null; }
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (pix[(y * w + x) * 4 + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return null;
+  return { x: x0 * step, y: y0 * step, w: Math.min(W, (x1 - x0 + 1) * step), h: Math.min(H, (y1 - y0 + 1) * step) };
+}
+/* The crop box for a thumbnail: the art's bounds plus a thin margin, never smaller than minW × minH source px, kept inside the image. */
+function artCropBox(b, W, H, minW, minH) {
+  const pad = Math.max(1, Math.round(Math.max(b.w, b.h) * 0.08));
+  let bw = Math.min(W, Math.max(minW, b.w + pad * 2)), bh = Math.min(H, Math.max(minH, b.h + pad * 2));
+  let bx = Math.round(b.x + b.w / 2 - bw / 2), by = Math.round(b.y + b.h / 2 - bh / 2);
+  bx = Math.max(0, Math.min(W - bw, bx)); by = Math.max(0, Math.min(H - bh, by));
+  return { x: bx, y: by, w: bw, h: bh };
+}
 function projThumbSrc(rec) {
   if (projType(rec) === "bg") return (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
   const cid = (rec.keys && rec.keys[LS.contract]) || "v1";
@@ -2598,25 +2628,37 @@ function projFmtDate(iso) {
 /* Thumbnails render through the project's remembered palette — the same
    luminance→LUT mapping tintedDecor uses. The stored PNG stays grayscale
    truth; only the gallery <img> is recolored. */
-function projTintThumb(img, rec) {
+function projTintThumb(img, rec) {   // v6.121.15: also crops a sprite project's card to its art (tint first, then crop, one load)
   const want = rec.keys && rec.keys["tessera.palsel"];
-  if (!want) return;
-  const pal = palettes.find((p) => p.name === want);
-  if (!pal || !pal.base) return;
+  const pal = want ? palettes.find((p) => p.name === want) : null;
+  const tint = !!(pal && pal.base), crop = projType(rec) === "bg";
+  if (!tint && !crop) return;
   const src = new Image();
   src.onload = () => {
     try {
-      const cv = document.createElement("canvas"); cv.width = src.width; cv.height = src.height;
-      const g = cv.getContext("2d");
+      let cv = document.createElement("canvas"); cv.width = src.width; cv.height = src.height;
+      let g = cv.getContext("2d");
       g.drawImage(src, 0, 0);
-      const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
-      const d2 = g.getImageData(0, 0, cv.width, cv.height), dd = d2.data;
-      for (let i = 0; i < dd.length; i += 4) {
-        if (dd[i + 3] === 0) continue;
-        const l = Math.min(255, Math.round(dd[i] * 0.299 + dd[i + 1] * 0.587 + dd[i + 2] * 0.114));
-        dd[i] = lut[l * 3]; dd[i + 1] = lut[l * 3 + 1]; dd[i + 2] = lut[l * 3 + 2];
+      if (tint) {
+        const lut = pal.lut || (pal.lut = buildPalLut(pal.base));
+        const d2 = g.getImageData(0, 0, cv.width, cv.height), dd = d2.data;
+        for (let i = 0; i < dd.length; i += 4) {
+          if (dd[i + 3] === 0) continue;
+          const l = Math.min(255, Math.round(dd[i] * 0.299 + dd[i + 1] * 0.587 + dd[i + 2] * 0.114));
+          dd[i] = lut[l * 3]; dd[i + 1] = lut[l * 3 + 1]; dd[i + 2] = lut[l * 3 + 2];
+        }
+        g.putImageData(d2, 0, 0);
       }
-      g.putImageData(d2, 0, 0);
+      if (crop) {
+        const b = artBoundsOf(cv, cv.width, cv.height);
+        if (!b) return;   // empty sprite: leave the card as it is
+        const c = artCropBox(b, cv.width, cv.height, 16, 12);
+        if (c.w !== cv.width || c.h !== cv.height) {
+          const cc = document.createElement("canvas"); cc.width = c.w; cc.height = c.h;
+          cc.getContext("2d").drawImage(cv, c.x, c.y, c.w, c.h, 0, 0, c.w, c.h);
+          cv = cc;
+        } else if (!tint) return;   // nothing to change
+      }
       img.src = cv.toDataURL("image/png");
     } catch (e) {}
   };
@@ -8020,11 +8062,13 @@ function bgRenderLayerList() {
   const host = $("layerList"); if (!host || !bgDoc) return;
   host.innerHTML = "";
   const svg = (k) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS[k] + '</svg>';
-  const thumbOf = (src) => {
+  const thumbOf = (src) => {   // v6.121.15 (James's QOL card): cropped to the art's bounds with a thin margin, never smaller than 16 \u00d7 9 source px
     const th = document.createElement("canvas"); th.className = "lyThumb"; th.width = 80; th.height = 45;
     const g = th.getContext("2d"); g.imageSmoothingEnabled = false;
-    const sc = Math.min(80 / TW, 45 / TH), dw = Math.max(1, Math.round(TW * sc)), dh = Math.max(1, Math.round(TH * sc));
-    g.drawImage(src, Math.floor((80 - dw) / 2), Math.floor((45 - dh) / 2), dw, dh);
+    const b = artBoundsOf(src, TW, TH); if (!b) return th;   // empty layer: just the checkerboard
+    const c = artCropBox(b, TW, TH, 16, 9);
+    const sc = Math.min(80 / c.w, 45 / c.h), dw = Math.max(1, Math.round(c.w * sc)), dh = Math.max(1, Math.round(c.h * sc));
+    g.drawImage(src, c.x, c.y, c.w, c.h, Math.floor((80 - dw) / 2), Math.floor((45 - dh) / 2), dw, dh);
     return th;
   };
   for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
@@ -8331,7 +8375,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.14";
+const APP_VERSION = "6.121.15";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
