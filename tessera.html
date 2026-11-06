@@ -265,7 +265,8 @@
   .lyRow.stacked { display: none; }   /* group members tucked under the grabbed row while it drags */
   .lyRow.stackTop { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 4px 0 -1px #505050, 0 8px 0 -2px #3e3e3e; }
   .lyRow.member { padding-left: 24px; }
-  .lyRow.folder .lyName { color: #d8c98a; }
+  .lyRow.folder .lyName { color: #8ecbff; display: inline-flex; align-items: center; gap: 6px; }   /* v6.121.23 (James): groups read blue, with a folder icon */
+  .lyRow.folder .lyName svg { width: 15px; height: 15px; flex: 0 0 auto; }
   .lyDisc svg { transition: transform .15s ease; }
   .lyDisc.closed svg { transform: rotate(-90deg); }
   .lyCount { flex: 0 0 auto; font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
@@ -4694,7 +4695,7 @@ function selRebuildEdges() {   // boundary segments in template px (also the "ha
 function wandSelect(x, y) {
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   if (selPoly) { selPoly = null; }
-  const d = edCtx.getImageData(0, 0, TW, TH).data;
+  const d = selSrcCtx().getImageData(0, 0, TW, TH).data;
   const si = (y * TW + x) * 4, t0 = d[si], t1 = d[si + 1], t2 = d[si + 2], t3 = d[si + 3];
   const shape = new Uint8Array(TW * TH), seen = new Uint8Array(TW * TH);
   const stack = [y * TW + x]; seen[stack[0]] = 1;
@@ -5159,9 +5160,9 @@ function syncSelbar() {
    rotation are pure ImageData loops — pixel-exact, no canvas transforms. */
 let float = null, floatGen = 0;
 let floatHist = [], floatRedoHist = [];   // per-op history inside Move mode
-function floatSnapState() { return { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y }; }
+function floatSnapState() { return { cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: float.x, y: float.y, parts: float.parts }; }
 function floatRestoreState(st) {
-  float.cv = st.cv; float.mask = st.mask; float.w = st.w; float.h = st.h; float.x = st.x; float.y = st.y;
+  float.cv = st.cv; float.mask = st.mask; float.w = st.w; float.h = st.h; float.x = st.x; float.y = st.y; float.parts = st.parts;
   floatGen++; blit(); drawGrid();
 }
 /* ==== canvas resize ====
@@ -5252,11 +5253,67 @@ function floatBegin() {   // cut the selection into the float
   templateChanged(); persistPng(); refreshFileSwatches();
   status(float.origMask ? "Transform \u2014 drag to move; flip and rotate below. Switching tools commits it." : "Transform");
 }
+/* ==== Group transform (v6.121.22, James's QOL card) ==================
+   With a group selected, Transform lifts every member layer's pixels under
+   the selection (or all of them when nothing is selected) into ONE float:
+   float.parts = [{ i: layer index, cv }] share the float's box, mask, position
+   and transforms; float.cv is their composite for display; flatten drops each
+   part back on its own layer. Hidden and alpha-locked members move too, as in
+   Procreate. The undo step is a whole-stack snapshot, so one tap restores
+   every layer. Copying a group float copies its flattened composite. */
+function bgGroupActive() { return APP_MODE === "bg" && !!bgDoc && isFolder(bgDoc.layers[bgDoc.active]); }
+function selSrcCtx() { return bgGroupActive() ? bgFolderComposite(bgDoc.layers[bgDoc.active].id).getContext("2d") : edCtx; }   // what a selection tool "sees": the group's composite, else the layer
+function floatGroupComposite(parts, w, h) {
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const g = cv.getContext("2d");
+  for (const p of parts) { const L = bgDoc.layers[p.i]; if (!L || !L.visible) continue; g.globalAlpha = bgOpacity(L); g.drawImage(p.cv, 0, 0); }
+  g.globalAlpha = 1;
+  return cv;
+}
+function floatBeginGroup() {
+  const F = bgDoc.layers[bgDoc.active], members = bgMembersOf(F.id);
+  if (!members.length) { status("Group \u201c" + F.name + "\u201d has no layers."); return false; }
+  let m = selMask;
+  if (!m) {   // nothing selected: every member's opaque pixels, together
+    m = new Uint8Array(TW * TH); let n = 0;
+    for (const i of members) { const d = bgLayers[i].ctx.getImageData(0, 0, TW, TH).data; for (let k = 0; k < m.length; k++) if (d[k * 4 + 3] && !m[k]) { m[k] = 1; n++; } }
+    if (!n) { status("Nothing to transform \u2014 group \u201c" + F.name + "\u201d is empty."); return false; }
+  }
+  let x0 = TW, y0 = TH, x1 = -1, y1 = -1;
+  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) if (m[y * TW + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return false;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  bgStructSnapshot();   // the one undo step for the whole move
+  const parts = [];
+  for (const i of members) {
+    const ctx = bgLayers[i].ctx, reg = ctx.getImageData(x0, y0, w, h);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const g = cv.getContext("2d"), out = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (!m[(y0 + y) * TW + (x0 + x)]) continue;
+      const k = (y * w + x) * 4;
+      out.data[k] = reg.data[k]; out.data[k+1] = reg.data[k+1]; out.data[k+2] = reg.data[k+2]; out.data[k+3] = reg.data[k+3];
+      reg.data[k] = reg.data[k+1] = reg.data[k+2] = reg.data[k+3] = 0;   // lift out of the layer
+    }
+    g.putImageData(out, 0, 0); ctx.putImageData(reg, x0, y0);
+    parts.push({ i, cv });
+  }
+  const fm = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (m[(y0 + y) * TW + (x0 + x)]) fm[y * w + x] = 1;
+  float = { cv: floatGroupComposite(parts, w, h), mask: fm, w, h, x: x0, y: y0, origMask: selMask, parts };
+  floatHist = []; floatRedoHist = [];
+  selMask = null; selEdges = null; selPoly = null;
+  floatGen++;
+  templateChanged(); persistPng(); refreshFileSwatches(); bgRenderLayerList();
+  status("Transform \u201c" + F.name + "\u201d \u2014 " + members.length + " layer" + (members.length > 1 ? "s" : "") + " move together; flip and rotate below. Switching tools commits it.");
+  return true;
+}
 function floatFlatten() {   // drop the float where it rests
   if (!float) return;
   if (float.pasted) snapshot();   // a paste has no cut snapshot; its drop is the undo step
   // (cut floats take none here: the cut's snapshot makes the whole move ONE step)
-  edCtx.drawImage(float.cv, float.x, float.y);
+  if (float.parts) { for (const p of float.parts) if (bgLayers[p.i] && bgLayers[p.i].ctx) bgLayers[p.i].ctx.drawImage(p.cv, float.x, float.y); }   // v6.121.22: a group float lands layer by layer
+  else edCtx.drawImage(float.cv, float.x, float.y);
   const m = new Uint8Array(TW * TH);   // selection re-anchors at the drop spot
   for (let y = 0; y < float.h; y++) for (let x = 0; x < float.w; x++) {
     if (!float.mask[y * float.w + x]) continue;
@@ -5269,16 +5326,13 @@ function floatFlatten() {   // drop the float where it rests
   templateChanged(); persistPng(); refreshFileSwatches();
   status("Transform committed.");
 }
-function floatXform(kind) {   // fh | fv | rot (90 CW); pixel-exact loops
-  if (!float) return;
-  floatHist.push(floatSnapState()); floatRedoHist.length = 0;   // each transform is its own undo step
-  const w = float.w, h = float.h;
-  const s2 = float.cv.getContext("2d").getImageData(0, 0, w, h);
+function floatXformOne(src, mask, w, h, kind) {   // fh | fv | rot (90 CW); pixel-exact loops; mask may be null
+  const s2 = src.getContext("2d").getImageData(0, 0, w, h);
   const nw = kind === "rot" ? h : w, nh = kind === "rot" ? w : h;
   const cv = document.createElement("canvas"); cv.width = nw; cv.height = nh;
   const g = cv.getContext("2d");
   const out = g.createImageData(nw, nh);
-  const nm = new Uint8Array(nw * nh);
+  const nm = mask ? new Uint8Array(nw * nh) : null;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let tx, ty;
     if (kind === "fh") { tx = w - 1 - x; ty = y; }
@@ -5286,9 +5340,17 @@ function floatXform(kind) {   // fh | fv | rot (90 CW); pixel-exact loops
     else { tx = h - 1 - y; ty = x; }
     const si = (y * w + x) * 4, di = (ty * nw + tx) * 4;
     out.data[di] = s2.data[si]; out.data[di+1] = s2.data[si+1]; out.data[di+2] = s2.data[si+2]; out.data[di+3] = s2.data[si+3];
-    if (float.mask[y * w + x]) nm[ty * nw + tx] = 1;
+    if (nm && mask[y * w + x]) nm[ty * nw + tx] = 1;
   }
   g.putImageData(out, 0, 0);
+  return { cv, mask: nm, w: nw, h: nh };
+}
+function floatXform(kind) {
+  if (!float) return;
+  floatHist.push(floatSnapState()); floatRedoHist.length = 0;   // each transform is its own undo step
+  const w = float.w, h = float.h;
+  const r = floatXformOne(float.cv, float.mask, w, h, kind), cv = r.cv, nm = r.mask, nw = r.w, nh = r.h;
+  if (float.parts) float.parts = float.parts.map((p) => ({ i: p.i, cv: floatXformOne(p.cv, null, w, h, kind).cv }));   // v6.121.22: every layer of a group turns with it
   const cx = float.x + w / 2, cy = float.y + h / 2;   // keep the visual center
   float.cv = cv; float.mask = nm; float.w = nw; float.h = nh;
   float.x = Math.round(cx - nw / 2); float.y = Math.round(cy - nh / 2);
@@ -5890,7 +5952,7 @@ function beginStroke(e) {
       rulesTap(Math.floor(x / TILE), Math.floor(y / TILE)); return;
     }
     if (tool === "pick") { pickAt(x, y); return; }
-    if (APP_MODE === "bg" && !bgLayerEditable()) return;   // v6.63: locked or hidden layer
+    if (APP_MODE === "bg" && !((tool === "marquee" || tool === "selmove") && bgGroupActive()) && !bgLayerEditable()) return;   // v6.63: locked or hidden layer; v6.121.22: selections and Transform work on a group
     if (tool === "outline") { status("Outline \u2014 choose Outside / Inside and a corner style in the tray, then Apply."); return; }
     if (tool === "gradient") {
       if (grad) {
@@ -6114,7 +6176,7 @@ function endStroke() {
   }
   if (stroke && stroke.kind === "float") {
     if (float && (float.x !== stroke.sx || float.y !== stroke.sy)) {
-      floatHist.push({ cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: stroke.sx, y: stroke.sy });
+      floatHist.push({ cv: float.cv, mask: float.mask, w: float.w, h: float.h, x: stroke.sx, y: stroke.sy, parts: float.parts });
       floatRedoHist.length = 0;   // each completed drag is its own undo step
     }
     stroke = null;
@@ -6953,7 +7015,8 @@ function setTool(t) {
   if (cvMode) { status("Finish the canvas size first \u2014 Done or Cancel."); return; }   // v6.121.18
   if (rulesEngaged && t !== "rules") return;   // v6.85: rules own the Template pointer while engaged; the previous tool returns on release
   if (tool === "cellSel" && t !== "cellSel" && cellSel) { cellSelClear(); drawGrid(); }   // v6.118: the selection belongs to the tool
-  if (t === "selmove" && tool !== "selmove" && !float) {   // v6.68: Transform (Procreate model)
+  if (t === "selmove" && tool !== "selmove" && !float && bgGroupActive()) { if (!floatBeginGroup()) return; }   // v6.121.22: a group moves as one piece
+  else if (t === "selmove" && tool !== "selmove" && !float) {   // v6.68: Transform (Procreate model)
     if (APP_MODE === "bg" && !bgLayerEditable()) return;
     if (!selMask) {   // nothing selected: the whole layer's opaque pixels become the float
       const d = edCtx.getImageData(0, 0, TW, TH).data, m = new Uint8Array(TW * TH);
@@ -8069,9 +8132,9 @@ function bgAlphaLocked() {   // v6.74: the selected layer (or its group) is alph
   const F = bgFolderOf(L); return !!(L.locked || (F && F.locked));
 }
 function bgToggleCollapsed(i) { bgDoc.layers[i].collapsed = !bgDoc.layers[i].collapsed; persistPng(); bgRenderLayerList(); }
-function bgSelectLayerPixels() {   // marquee = the layer's opaque pixels
+function bgSelectLayerPixels() {   // marquee = the layer's opaque pixels (a group: every member's, v6.121.22)
   if (float) floatFlatten();
-  const d = edCtx.getImageData(0, 0, TW, TH).data, m = new Uint8Array(TW * TH);
+  const d = selSrcCtx().getImageData(0, 0, TW, TH).data, m = new Uint8Array(TW * TH);
   let n = 0; for (let i = 0; i < m.length; i++) if (d[i * 4 + 3]) { m[i] = 1; n++; }
   if (!n) { status("This layer is empty \u2014 nothing to select."); return false; }
   selMask = m; selPoly = null; selRebuildEdges(); setTool("marquee"); drawGrid();
@@ -8150,7 +8213,8 @@ function bgRenderLayerList() {
     row.dataset.idx = i; if (folder) row.dataset.fid = L.id; if (F) row.dataset.folder = F.id;
     const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = folder ? "Drag to move the whole group" : "Drag to reorder \u2014 into or out of an expanded group";
     const th = thumbOf(folder ? bgFolderComposite(L.id) : bgLayers[i].canvas);
-    const nm = document.createElement("span"); nm.className = "lyName"; nm.textContent = L.name;
+    const nm = document.createElement("span"); nm.className = "lyName";
+    if (folder) { nm.innerHTML = svg("folder"); nm.appendChild(document.createTextNode(L.name)); } else nm.textContent = L.name;   // v6.121.23–25: folder icon before a group's name (James settled on the left, 2026-11-06)
     row.appendChild(grip); row.appendChild(th); row.appendChild(nm);
     if (folder) {
       const tg = document.createElement("button"); tg.className = "lyBtn lyDisc" + (L.collapsed ? " closed" : ""); tg.innerHTML = svg("chevron"); tg.title = L.collapsed ? "Expand group" : "Collapse group";
@@ -8585,7 +8649,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.21";
+const APP_VERSION = "6.121.25";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
