@@ -171,7 +171,7 @@
     padding: 5px 8px; color: var(--text); font-size: 11px; max-width: 250px; pointer-events: none; display: none; line-height: 1.45; }
 
   /* ---- Projects gallery (v6.39) ---- */
-  #projOverlay { position: fixed; inset: 0; z-index: 80; display: none; flex-direction: column; background: #121212; }
+  #projOverlay { position: absolute; inset: 0; z-index: 80; display: none; flex-direction: column; background: radial-gradient(circle at 30% -10%, var(--bg1) 0%, var(--bg0) 60%); }   /* v6.121.64: same gradient as the page and not position:fixed, so Safari's top-of-page colour sample (which tints the iPad status / tab bar; iOS 26 ignores theme-color) reads the gallery exactly as it reads a project. The near-black stays on the grid below. */
   /* v6.85: Rules tab — the Template tab's chassis. The sheet is the template
      viewport; rule modes sit in the upper tray (#rulesbar, like #varybar),
      the selected rule's properties in the lower tray (#rulesbot, like #selbar). */
@@ -254,7 +254,7 @@
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
   #projHead .spacer { flex: 1; }
-  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); grid-auto-rows: max-content; justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; min-height: 0; scrollbar-width: none; }   /* v6.121.61: rows take their content height and the grid scrolls; nothing can squeeze the cards; no scrollbar track, so a desktop browser keeps the iPad's row count */
+  #projGrid { background: #121212; flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); grid-auto-rows: max-content; justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; min-height: 0; scrollbar-width: none; }   /* v6.121.61: rows take their content height and the grid scrolls; nothing can squeeze the cards; no scrollbar track, so a desktop browser keeps the iPad's row count */
   #projGrid::-webkit-scrollbar { display: none; }   /* v6.121.58/59 (James): cards keep one size, as Procreate's do; 236 px = four per row in portrait on the 13" iPad Pro, five in landscape */
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-self: start; }
   .projCard.active { border-color: #8fb996; }
@@ -9357,7 +9357,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.63";
+const APP_VERSION = "6.121.64";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
