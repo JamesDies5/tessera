@@ -21,7 +21,9 @@
   header { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; flex-wrap: wrap; flex: 0 0 auto; }
   header h1 { font-size: 15px; margin: 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; line-height: 1; }
   .brand { display: flex; flex-direction: column; gap: 3px; margin-right: 4px; }
-  .brand #ver, .brand #bgLabel { align-self: flex-start; }
+  .brand #ver, .brand #verProj, .brand #bgLabel { align-self: flex-start; }
+  #projHead h1 { font-size: 15px; margin: 0; letter-spacing: 4px; color: var(--accent); font-weight: 700; line-height: 1; }   /* v6.121.60: the same brand as the project header */
+  #verProj { font-size: 9px; letter-spacing: 2px; color: var(--dim); opacity: .8; line-height: 1; }   /* the version under TESSERA in the Projects bar */
   .spacer { flex: 1; }
   .tab { background: none; border: 1px solid var(--line); border-bottom-width: 3px; color: var(--dim);
     border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer;
@@ -607,6 +609,10 @@
      auto-saves the open project, swaps the keys, and reloads. -->
 <div id="projOverlay">
   <div id="projHead">
+    <!-- v6.121.60 (James): the brand and version, and Reload, as in the project header -->
+    <div class="brand"><h1>TESSERA</h1><div id="verProj"></div></div>
+    <button class="ibtn" id="btnReloadProj" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
+    <span class="vsep"></span>
     <h2>Projects</h2>
     <span class="spacer"></span>
     <div id="projFilter">
@@ -9329,7 +9335,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.59";
+const APP_VERSION = "6.121.60";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -9421,11 +9427,13 @@ function flipCanvas(axis) {
 }
 $("btnCanvasFlipH").addEventListener("click", () => flipCanvas("h"));
 $("btnCanvasFlipV").addEventListener("click", () => flipCanvas("v"));
-$("btnReload").addEventListener("click", () => {
+const reloadApp = () => {
   if (float) floatFlatten();
   persistPng();   // belt and suspenders — the sheet is already persisted per stroke
   location.replace(location.pathname + "?u=" + Date.now());   // unique query defeats the HTTP cache
-});
+};
+$("btnReload").addEventListener("click", reloadApp);
+$("btnReloadProj").addEventListener("click", () => saveActiveProject().then(reloadApp, reloadApp));   // v6.121.60: from the gallery, bank the open project first
 $("btnCanvas").addEventListener("click", () => {
   if (APP_MODE === "bg") {
     const ans = (prompt("Canvas size in px (width \u00d7 height):", TW + " \u00d7 " + TH) || "").trim();
@@ -9562,7 +9570,7 @@ $("btnConvert").addEventListener("click", () => {
 });
 
 (function boot() {
-  $("ver").textContent = "v" + APP_VERSION;
+  $("ver").textContent = "v" + APP_VERSION; $("verProj").textContent = "v" + APP_VERSION;   // v6.121.60: the Projects bar shows it too
   rulesSync();   // v6.88: a persisted Rules toggle comes back up with the app
   try {
     penSeen = localStorage.getItem(LS.pen) === "1";
