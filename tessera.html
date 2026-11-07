@@ -272,6 +272,10 @@
   .ptype { position: absolute; left: 6px; top: 6px; font-size: 9px; letter-spacing: 1px; padding: 2px 6px; border-radius: 5px;
     background: rgba(0,0,0,.55); color: #ddd; border: 1px solid #555; pointer-events: none; }
   .ptype.bg { color: #f0d47a; border-color: #8a7a3a; }
+  .ptags { position: absolute; left: 6px; top: 6px; display: flex; gap: 4px; align-items: center; }   /* v6.121.55: the type tag plus, for an animated project, a film badge */
+  .ptags .ptype { position: static; }
+  .panim { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 18px; border-radius: 5px; border: 1px solid #8a7a3a; background: rgba(0,0,0,.45); color: #f0d47a; }
+  .panim svg { width: 12px; height: 12px; }
   #projFilter { display: flex; gap: 6px; }
   #projFilter .optline { color: var(--dim); }
   #projFilter .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; box-shadow: 0 0 0 1px var(--accent) inset; }
@@ -340,7 +344,7 @@
   .syncbadge.stale { background: #c9963f; }
   .syncbadge.fresh:active { background: #5c8664; }
   .syncbadge.stale:active { background: #a97e33; }
-  .projCard .thumb img { max-width: 92%; max-height: 92%; image-rendering: pixelated; }
+  .projCard .thumb img, .projCard .thumb canvas { max-width: 92%; max-height: 92%; image-rendering: pixelated; }   /* v6.121.53: an animated project's card is a playing canvas */
   .projCard .meta { padding: 8px 10px 4px; }
   .projCard .pname { font-size: 13px; color: #ddd; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .projCard .pdate { font-size: 10px; color: #8a8a8a; margin-top: 2px; }
@@ -612,6 +616,7 @@
     <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
     <button class="optline" id="btnProjSort" title="Sort — drag the cards into the order you want; tap again when done. Projects keep their place otherwise; new ones appear at the top"><span data-icon="grip"></span>Sort</button>
     <button class="optline" id="btnProjImport" title="Start a project from an existing PNG — you choose whether it becomes a tileset or a sprite project"><span data-icon="sqplus"></span>Import PNG</button>
+    <button class="optline" id="btnProjImportSheet" title="Start an animated sprite project from a sprite sheet — the sheet is cut into equal cells, one layer per frame, left to right becoming bottom to top"><span data-icon="film"></span>Import Sheet</button>
     <button class="optline" id="btnProjNew" title="Create a new, blank project — tileset or sprites"><span data-icon="sqplus"></span>New</button>
     <input type="file" id="fileProj" accept="image/png" hidden>
     <button class="optline" id="btnProjClose" title="Back to the open project"><span data-icon="sqx"></span>Close</button>
@@ -631,7 +636,7 @@
   <div id="newDlg">
     <div id="newDlgTitle" style="font-size:12px;color:#9a9a9a">New project</div>
     <div class="row"><span class="lbl">NAME</span><input type="text" id="newName" autocomplete="off" placeholder="Project name"></div>
-    <div class="row"><span class="lbl">TYPE</span><div class="seg"><button data-nt="tiles" class="on">Tileset</button><button data-nt="bg">Sprites</button></div></div>
+    <div class="row" id="newTypeRow"><span class="lbl">TYPE</span><div class="seg"><button data-nt="tiles" class="on">Tileset</button><button data-nt="bg">Sprites</button></div></div>
     <!-- v6.121.17 (James's QOL card): width and height are their own fields, always shown for a sprite project; the presets just fill them -->
     <div class="row" id="newSizeRow" style="display:none"><span class="lbl">WIDTH</span><input type="number" id="newW" min="16" max="4096" value="480" inputmode="numeric"><span class="lbl" style="flex:0 0 auto;margin-left:6px">HEIGHT</span><input type="number" id="newH" min="16" max="4096" value="270" inputmode="numeric"><span class="lbl" style="flex:0 0 auto">px</span></div>
     <div class="row" id="newPresetRow" style="display:none"><span class="lbl">PRESET</span>
@@ -642,6 +647,12 @@
         <option value="240x135">240 × 135 — quarter</option>
         <option value="custom">Custom size</option>
       </select>
+    </div>
+    <!-- v6.121.52 (James): Import Sheet — cut a sprite sheet into frames; a slicing preview like Godot's, and a guess from the transparent gaps -->
+    <div id="newSheetBlock" style="display:none;flex-direction:column;gap:8px">
+      <div class="row"><span class="lbl">ACROSS</span><input type="number" id="sheetCols" min="1" max="256" value="1" inputmode="numeric"><span class="lbl" style="flex:0 0 auto;margin-left:6px">DOWN</span><input type="number" id="sheetRows" min="1" max="256" value="1" inputmode="numeric"><button class="optline" id="sheetGuess" style="height:30px;margin-left:auto" title="Count the frames from the transparent gaps between them">GUESS</button></div>
+      <div class="row"><span class="lbl"></span><span id="sheetInfo" style="font-size:11px;color:#8fb996"></span></div>
+      <canvas id="sheetPreview" style="display:block;max-width:100%;border:1px solid #454545;border-radius:8px;background:conic-gradient(#232323 25%,#2c2c2c 0 50%,#232323 0 75%,#2c2c2c 0);background-size:12px 12px"></canvas>
     </div>
     <div id="newDlgNote" style="font-size:11px;color:#8fb996;display:none"></div>
     <div class="row" style="justify-content:flex-end">
@@ -2746,7 +2757,7 @@ function projFitThumb(img) {
   const f = pixelFit(nw, nh, box.width * 0.92, box.height * 0.92);
   img.style.width = f.w + "px"; img.style.height = f.h + "px"; img.style.imageRendering = f.smooth ? "auto" : "pixelated";
 }
-function projFitThumbs() { document.querySelectorAll("#projGrid .thumb img[data-nw]").forEach(projFitThumb); }
+function projFitThumbs() { document.querySelectorAll("#projGrid .thumb img[data-nw], #projGrid .thumb canvas[data-nw]").forEach(projFitThumb); }
 function projThumbSrc(rec) {
   if (projType(rec) === "bg") return (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
   const cid = (rec.keys && rec.keys[LS.contract]) || "v1";
@@ -2759,6 +2770,70 @@ function projFmtDate(iso) {
 /* Thumbnails render through the project's remembered palette — the same
    luminance→LUT mapping tintedDecor uses. The stored PNG stays grayscale
    truth; only the gallery <img> is recolored. */
+/* ==== Animated gallery cards (v6.121.53, James, after Procreate) ============
+   A sprite project whose animation mode is on plays on its card while the
+   gallery is open: its frames (top-level visible entries, bottom = first, as
+   the timeline reads them) are composed once from the saved layer PNGs,
+   tinted through the project's remembered palette, cropped once to the union
+   of every frame's art so the picture never jumps, and stepped at the
+   project's speed, holds and Loop / Ping-Pong. Timers stop when the gallery
+   closes or re-renders. The still card stays until the frames have decoded. */
+let projAnims = [];
+function projStopAnims() { projAnims.forEach((a) => { clearTimeout(a.t); if (a.stop) a.stop(); }); projAnims = []; }
+function tintLut(c, lut) {
+  const g = c.getContext("2d"), d2 = g.getImageData(0, 0, c.width, c.height), dd = d2.data;
+  for (let i = 0; i < dd.length; i += 4) { if (dd[i + 3] === 0) continue; const l = Math.min(255, Math.round(dd[i] * 0.299 + dd[i + 1] * 0.587 + dd[i + 2] * 0.114)); dd[i] = lut[l * 3]; dd[i + 1] = lut[l * 3 + 1]; dd[i + 2] = lut[l * 3 + 2]; }
+  g.putImageData(d2, 0, 0);
+}
+function projAnimateCard(img, rec) {
+  const raw = rec.keys && rec.keys[BG_KEYS.doc]; if (!raw || raw.indexOf('"on":true') < 0) return;   // cheap test before parsing a large document
+  let doc; try { doc = JSON.parse(raw); } catch (e) { return; }
+  if (!doc || !doc.anim || !doc.anim.on || !Array.isArray(doc.layers)) return;
+  const W = doc.w, H = doc.h, L = doc.layers, frames = [];
+  L.forEach((e) => {
+    if (e.kind === "folder") { if (e.visible) frames.push({ hold: e.hold, members: L.filter((m) => m.kind !== "folder" && m.folder === e.id && m.visible) }); }
+    else if (!e.folder && e.visible) frames.push({ hold: e.hold, members: [e] });
+  });
+  if (frames.length < 2) return;
+  const pngs = new Map(), loads = [];
+  frames.forEach((f) => f.members.forEach((m) => { if (m.png && !pngs.has(m.id)) { const im = new Image(); pngs.set(m.id, im); loads.push(new Promise((res) => { im.onload = res; im.onerror = res; im.src = m.png; })); } }));
+  const anim = { t: 0 }; projAnims.push(anim);
+  Promise.all(loads).then(() => {
+    if (!document.body.contains(img)) return;   // the gallery moved on
+    const want = rec.keys["tessera.palsel"], pal = want ? palettes.find((p) => p.name === want) : null;
+    const lut = pal && pal.base ? (pal.lut || (pal.lut = buildPalLut(pal.base))) : null;
+    const comps = frames.map((f) => {
+      const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+      f.members.forEach((m) => { const im = pngs.get(m.id); if (im && im.width) { g.globalAlpha = m.opacity === undefined ? 1 : Math.max(0, Math.min(1, m.opacity)); g.drawImage(im, 0, 0); } });
+      g.globalAlpha = 1; if (lut) tintLut(c, lut); return c;
+    });
+    let u = null;
+    comps.forEach((c) => { const b = artBoundsOf(c, W, H); if (!b) return; u = u ? { x: Math.min(u.x, b.x), y: Math.min(u.y, b.y), x2: Math.max(u.x2, b.x + b.w), y2: Math.max(u.y2, b.y + b.h) } : { x: b.x, y: b.y, x2: b.x + b.w, y2: b.y + b.h }; });
+    if (!u) return;
+    const crop = artCropBox({ x: u.x, y: u.y, w: u.x2 - u.x, h: u.y2 - u.y }, W, H);
+    const cv = document.createElement("canvas"); cv.width = crop.w; cv.height = crop.h; cv.dataset.nw = crop.w; cv.dataset.nh = crop.h;
+    img.replaceWith(cv); projFitThumb(cv);
+    const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
+    const fps = Math.max(1, Math.min(60, doc.anim.fps || 12)), mode = doc.anim.mode || "loop", n = frames.length;
+    let k = 0, dir = 1, playing = false;
+    const show = (i) => { g.clearRect(0, 0, cv.width, cv.height); g.drawImage(comps[i], crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h); };
+    const tick = () => {
+      if (!playing || !document.body.contains(cv)) return;
+      show(k);
+      const hold = Math.max(1, Math.min(120, Math.floor(frames[k].hold || 1)));
+      anim.t = setTimeout(() => {
+        if (mode === "pingpong") { if (k + dir < 0 || k + dir >= n) dir = -dir; k += dir; } else k = (k + 1) % n;   // One Shot loops on the card, with its last frame held one beat
+        tick();
+      }, (1000 / fps) * hold * (mode === "oneshot" && k === n - 1 ? 6 : 1));
+    };
+    show(0);   // v6.121.54: still card = frame 1 (the saved flat PNG is every frame stacked)
+    const start = (e) => { if (playing || (e.pointerType !== "mouse" && e.pointerType !== "pen")) return; playing = true; k = 0; dir = 1; tick(); };   // v6.121.54 (James): plays only under a mouse or Pencil hover, as Procreate does
+    const stop = () => { if (!playing) return; playing = false; clearTimeout(anim.t); k = 0; dir = 1; show(0); };
+    const th = cv.parentElement;
+    th.addEventListener("pointerenter", start); th.addEventListener("pointerleave", stop); th.addEventListener("pointercancel", stop);
+    anim.stop = stop;
+  });
+}
 function projTintThumb(img, rec) {   // v6.121.15: also crops a sprite project's card to its art (tint first, then crop, one load)
   const want = rec.keys && rec.keys["tessera.palsel"];
   const pal = want ? palettes.find((p) => p.name === want) : null;
@@ -2807,6 +2882,7 @@ document.querySelectorAll("#projFilter button").forEach((b) => b.addEventListene
   projRenderGallery();
 }));
 function projRenderGallery() {
+  projStopAnims();
   projList().then((all) => {
     /* v6.121.30 (James): a stable, hand-set order. Each record carries `order`; the gallery never
        re-sorts by date, so editing a project no longer moves its card. Records without an order
@@ -2829,8 +2905,16 @@ function projRenderGallery() {
       const th = document.createElement("div"); th.className = "thumb";
       const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
       projTintThumb(img, rec);
+      if (ptype === "bg") projAnimateCard(img, rec);   // v6.121.53: a project with animation on plays on its card
       const tag = document.createElement("span"); tag.className = "ptype " + ptype;
-      tag.textContent = ptype === "bg" ? "SPRITES" : "TILESET"; th.appendChild(tag);
+      tag.textContent = ptype === "bg" ? "SPRITES" : "TILESET";
+      const tags = document.createElement("span"); tags.className = "ptags"; tags.appendChild(tag);
+      if (ptype === "bg" && rec.keys && String(rec.keys[BG_KEYS.doc] || "").indexOf('"anim":{"on":true') >= 0) {   // v6.121.55 (James): animation mode on → a film badge beside the tag
+        const b = document.createElement("span"); b.className = "panim"; b.title = "Animation mode is on in this project";
+        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS.film + '</svg>';
+        tags.appendChild(b);
+      }
+      th.appendChild(tags);
       const meta = document.createElement("div"); meta.className = "meta";
       const nm = document.createElement("div"); nm.className = "pname";
       nm.textContent = rec.name + (rec.id === activeProjectId ? "  \u2022  open" : "");
@@ -2908,7 +2992,7 @@ $("btnProjects").addEventListener("click", () => {
   projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the open project's own kind, not All
   saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
 });
-$("btnProjClose").addEventListener("click", () => { projSortOff(); $("projOverlay").classList.remove("show"); });
+$("btnProjClose").addEventListener("click", () => { projSortOff(); projStopAnims(); $("projOverlay").classList.remove("show"); });
 /* ==== Sort mode (v6.121.30, James) ====================================
    Tap Sort: the cards take a dashed outline, their buttons sleep, and a drag
    anywhere on a card carries it; the other cards reflow live. Letting go
@@ -2994,7 +3078,10 @@ function newDlgSyncRows() {
   const isBg = newDlgType() === "bg", importing = !!newDlgImg;
   $("newSizeRow").style.display = isBg && !importing ? "flex" : "none";
   $("newPresetRow").style.display = isBg && !importing ? "flex" : "none";
+  $("newTypeRow").style.display = newDlgSheet ? "none" : "flex";   // v6.121.52: a sheet is always a sprite project
+  $("newSheetBlock").style.display = newDlgSheet ? "flex" : "none";
   const note = $("newDlgNote");
+  if (newDlgSheet) { note.style.display = "none"; sheetSync(); return; }
   if (importing) {
     const cid = tilesetContractForDims(newDlgImg.w, newDlgImg.h);
     note.textContent = isBg
@@ -3007,16 +3094,85 @@ function tilesetContractForDims(w, h) {
   const m = Object.values(CONTRACTS).filter((ct) => w === TILE * ct.TCOLS && h === TILE * ct.TROWS);
   return m.length ? m[0].id : null;
 }
-function openNewDlg(img) {
-  newDlgImg = img || null;
-  $("newDlgTitle").textContent = img ? "Import PNG as…" : "New project";
+let newDlgSheet = false, newDlgSheetPending = false;   // v6.121.52: Import Sheet uses the same dialog, locked to Sprites, with the slicing block
+function openNewDlg(img, sheet) {
+  newDlgImg = img || null; newDlgSheet = !!(img && sheet);
+  $("newDlgTitle").textContent = newDlgSheet ? "Import sheet as…" : img ? "Import PNG as…" : "New project";
   $("newName").value = img ? (img.name || "").replace(/\.png$/i, "") : "";
   $("newCreate").textContent = img ? "Import" : "Create";
+  if (newDlgSheet) { document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q.dataset.nt === "bg")); sheetGuess(); }
   newDlgSyncRows();
   $("newDlg").style.display = "flex";
   setTimeout(() => $("newName").focus(), 0);
 }
-function closeNewDlg() { $("newDlg").style.display = "none"; newDlgImg = null; }
+function closeNewDlg() { $("newDlg").style.display = "none"; newDlgImg = null; newDlgSheet = false; }
+/* ==== Import Sheet (v6.121.52, James) ==================================
+   The sheet is cut into ACROSS × DOWN equal cells. Reading order is left to
+   right, then top to bottom; cell 1 becomes the bottom layer (frame 1), as the
+   timeline counts bottom to top. GUESS counts the frames from the fully
+   transparent columns and rows between them, then prefers a count that
+   divides the sheet evenly. The preview draws the grid over the sheet. */
+function sheetCounts() {
+  const c = Math.max(1, Math.min(256, parseInt($("sheetCols").value, 10) || 1)), r = Math.max(1, Math.min(256, parseInt($("sheetRows").value, 10) || 1));
+  return { cols: c, rows: r };
+}
+function sheetPixels() {   // the decoded sheet, once
+  const img = newDlgImg; if (!img) return null;
+  if (!img.cv) { const c = document.createElement("canvas"); c.width = img.w; c.height = img.h; c.getContext("2d").drawImage(img.el, 0, 0); img.cv = c; img.px = c.getContext("2d").getImageData(0, 0, img.w, img.h).data; }
+  return img;
+}
+function sheetRuns(img, axis) {   // how many groups of opaque columns (axis "x") or rows ("y") the sheet has
+  const d = img.px, W = img.w, H = img.h, n = axis === "x" ? W : H, m = axis === "x" ? H : W;
+  let runs = 0, inRun = false;
+  for (let i = 0; i < n; i++) {
+    let opaque = false;
+    for (let j = 0; j < m && !opaque; j++) { const x = axis === "x" ? i : j, y = axis === "x" ? j : i; if (d[(y * W + x) * 4 + 3]) opaque = true; }
+    if (opaque && !inRun) runs++;
+    inRun = opaque;
+  }
+  return runs;
+}
+function sheetBestCount(runs, size) {   // the count nearest the run count that divides the size evenly (within 3), else the run count
+  if (runs < 1) return 1;
+  let best = runs, bd = 99;
+  for (let n = Math.max(1, runs - 3); n <= runs + 3; n++) if (size % n === 0 && Math.abs(n - runs) < bd) { bd = Math.abs(n - runs); best = n; }
+  return best;
+}
+function sheetGuess() {
+  const img = sheetPixels(); if (!img) return;
+  const cols = sheetBestCount(sheetRuns(img, "x"), img.w), rows = sheetBestCount(sheetRuns(img, "y"), img.h);
+  $("sheetCols").value = cols; $("sheetRows").value = rows;
+  sheetSync();
+}
+function sheetSync() {   // the cell-size line and the preview grid
+  const img = newDlgImg; if (!img || !newDlgSheet) return;
+  const { cols, rows } = sheetCounts(), cw = img.w / cols, ch = img.h / rows, even = Number.isInteger(cw) && Number.isInteger(ch);
+  $("sheetInfo").textContent = "Cell " + Math.floor(cw) + " × " + Math.floor(ch) + " px · " + (cols * rows) + " frame" + (cols * rows > 1 ? "s" : "") + (even ? "" : " — not an even split, cells are rounded down");
+  $("sheetInfo").style.color = even ? "#8fb996" : "#e0b36a";
+  const pv = $("sheetPreview"), maxW = 400, maxH = 200;
+  const k = Math.max(1, Math.min(6, Math.floor(Math.min(maxW / img.w, maxH / img.h))));   // whole-number zoom when the sheet is small, 1:1 backing when it is big
+  pv.width = img.w * k; pv.height = img.h * k;
+  const fit = Math.min(maxW / pv.width, maxH / pv.height, 1);
+  pv.style.width = Math.round(pv.width * fit) + "px"; pv.style.height = Math.round(pv.height * fit) + "px"; pv.style.imageRendering = fit < 1 ? "auto" : "pixelated";
+  const g = pv.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, pv.width, pv.height);
+  g.drawImage(img.el, 0, 0, pv.width, pv.height);
+  g.strokeStyle = "rgba(142,203,255,0.9)"; g.lineWidth = Math.max(1, k / 2); g.beginPath();
+  for (let i = 0; i <= cols; i++) { const x = Math.min(pv.width - 0.5, Math.round(Math.floor(i * cw) * k) + 0.5); g.moveTo(x, 0); g.lineTo(x, pv.height); }
+  for (let j = 0; j <= rows; j++) { const y = Math.min(pv.height - 0.5, Math.round(Math.floor(j * ch) * k) + 0.5); g.moveTo(0, y); g.lineTo(pv.width, y); }
+  g.stroke();
+}
+function sheetSplitDoc(img) {   // the layered document: one layer per cell, reading order, cell 1 at the bottom
+  const { cols, rows } = sheetCounts(), cw = Math.floor(img.w / cols), ch = Math.floor(img.h / rows);
+  const layers = []; let n = 0;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
+    cv.getContext("2d").drawImage(img.el, c * cw, r * ch, cw, ch, 0, 0, cw, ch);
+    n++; layers.push({ id: "L" + n, name: "Frame " + n, visible: true, locked: false, png: cv.toDataURL("image/png") });
+  }
+  return { doc: { tessera_bg: 1, w: cw, h: ch, active: 0, anim: { on: true, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40, onionTint: false }, layers }, flat: layers[0].png };
+}
+["sheetCols", "sheetRows"].forEach((id) => $(id).addEventListener("input", sheetSync));
+$("sheetGuess").addEventListener("click", sheetGuess);
 document.querySelectorAll("#newDlg .seg button").forEach((b) => b.addEventListener("click", () => {
   document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q === b));
   newDlgSyncRows();
@@ -3033,13 +3189,14 @@ const newDlgSizeVals = () => [Math.max(16, Math.min(4096, parseInt($("newW").val
 }));
 $("newCancel").addEventListener("click", closeNewDlg);
 $("btnProjNew").addEventListener("click", () => openNewDlg(null));
-$("btnProjImport").addEventListener("click", () => $("fileProj").click());
+$("btnProjImport").addEventListener("click", () => { newDlgSheetPending = false; $("fileProj").click(); });
+$("btnProjImportSheet").addEventListener("click", () => { newDlgSheetPending = true; $("fileProj").click(); });   // v6.121.52
 $("fileProj").addEventListener("change", (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   const rd = new FileReader();
   rd.onload = () => {
     const im = new Image();
-    im.onload = () => openNewDlg({ dataURL: rd.result, w: im.width, h: im.height, name: f.name });
+    im.onload = () => { const sheet = newDlgSheetPending; newDlgSheetPending = false; openNewDlg({ dataURL: rd.result, w: im.width, h: im.height, name: f.name, el: im }, sheet); };
     im.onerror = () => status("Couldn't decode that PNG.");
     im.src = rd.result;
   };
@@ -3052,7 +3209,11 @@ $("newCreate").addEventListener("click", () => {
   const rec = projNewRecord(name);
   rec.type = type;
   rec.keys[PROJ_TYPE_KEY] = type;
-  if (type === "bg") {
+  if (type === "bg" && newDlgSheet && img && sheetCounts().cols * sheetCounts().rows > 1) {   // v6.121.52: a sheet becomes one layer per cell, bottom = first, animation on
+    const sd = sheetSplitDoc(img);
+    rec.keys[BG_KEYS.doc] = JSON.stringify(sd.doc);
+    rec.keys[BG_KEYS.flat] = sd.flat;
+  } else if (type === "bg") {
     let w = 480, h = 270;
     if (img) { w = img.w; h = img.h; }
     else {
@@ -9117,7 +9278,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.51";
+const APP_VERSION = "6.121.55";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
