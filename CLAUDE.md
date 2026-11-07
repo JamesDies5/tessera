@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.34** (2026-11-06).
+be a change there. Current: **v6.121.36** (2026-11-06).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -177,5 +177,5 @@ project-switch save race closed and hardened with a switch marker after it bit R
 opening on the open project's kind (v6.121.21), group transform and group selections (v6.121.22), group rows with a
 folder icon and blue name (v6.121.23–25), a wider Layers panel with two-line names and 72 × 54 thumbnails
 (v6.121.26–29). A stable hand-set project order with a Sort mode in the gallery (v6.121.30–32). Verified by James through v6.121.32.
-**Awaiting his test:** v6.121.33–34, animation mode stage 1 (header button, timeline, current frame + onion skins, Loop /
+**Awaiting his test:** v6.121.33–36, animation mode stage 1 (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. **Remaining on the card:** the animation sheet export, then project folders in the gallery (mock first).

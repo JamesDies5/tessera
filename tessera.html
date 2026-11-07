@@ -127,7 +127,8 @@
   #btnConvert:active, #btnCut:active, #btnCopy:active, #btnCopyAll:active, #btnCutPaste:active, #btnPaste:active, #btnFlipH:active, #btnFlipV:active, #btnRot90:active { background: var(--line); }
 
   #stage { display: flex; flex: 1 1 auto; min-height: 0; }
-  #stageCol { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }   /* v6.113: viewport over its lower tray */
+  #stageCol { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; }   /* v6.113: viewport over its lower tray; v6.121.36: anchors the floating animation panel */
+  #stageCol.animOn #statusChip { bottom: 104px; }   /* v6.121.36: the status chip steps up above the panel */
   #rail { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px 12px; align-items: center; overflow-y: auto; flex: 0 0 auto; }
   #rail .hsep { width: 26px; height: 1px; background: var(--line); margin: 3px 0; flex: 0 0 auto; }
 
@@ -177,13 +178,23 @@
   #rulesbar .optline { height: 28px; padding: 0 10px; gap: 6px; }   /* v6.114.1: same size as Cut / Copy / Paste */
   #rulesbar .optline svg { width: 14px; height: 14px; }
   /* Animation mode (v6.121.33, James's QOL card): timeline under the viewport, two popovers */
-  #animbar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: #1a1a1a; border-top: 1px solid var(--line); flex: 0 0 auto; }
-  #animStrip { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; padding: 2px; align-items: flex-start; -webkit-overflow-scrolling: touch; }
-  .animCell { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; cursor: pointer; }
+  #animbar { display: none; position: absolute; left: 0; right: 0; bottom: 10px; z-index: 20; justify-content: center; padding: 0 12px; pointer-events: none; }   /* v6.121.35/36: Procreate's floating bar, over the canvas; taps never reach the viewport beneath */
+  #animPanel { pointer-events: auto; width: min(92%, 900px); background: rgba(24,24,24,.96); border: 1px solid var(--line); border-radius: 14px; padding: 1px 8px 3px; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+  .animTop { display: flex; align-items: center; gap: 6px; }
+  .animTop .spacer { flex: 1; }
+  .animTop button { background: none; border: none; color: var(--text); font: inherit; font-size: 10px; letter-spacing: 1px; padding: 3px 6px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .animTop button svg { width: 12px; height: 12px; }
+  .animTop button.on { color: #8ecbff; }
+  .animTop button:active { background: var(--line); }
+  #animTrack { position: relative; }
+  #animStrip { display: flex; gap: 6px; overflow-x: auto; align-items: flex-start; padding: 2px 0 0; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #animStrip::-webkit-scrollbar { display: none; }
+  #animCentre { position: absolute; left: 50%; bottom: -2px; width: 28px; height: 3px; margin-left: -14px; border-radius: 2px; background: #8ecbff; pointer-events: none; }
+  .animCell { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; cursor: pointer; scroll-snap-align: center; }
   .animCell canvas { border-radius: 5px; border: 2px solid var(--line); image-rendering: pixelated; display: block;
     background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
   .animCell.on canvas { border-color: #8ecbff; }
-  .animHold { font-size: 10px; color: #8ecbff; height: 12px; line-height: 12px; letter-spacing: 1px; }
+  .animHold { font-size: 9px; color: #8ecbff; height: 10px; line-height: 10px; letter-spacing: 1px; }
   #animbar .optline.on, #animPop .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
   #animPop, #animFramePop { position: fixed; z-index: 80; display: none; background: rgba(18,18,18,.97); border: 1px solid #454545; border-radius: 10px; padding: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); font-size: 11px; letter-spacing: 1px; color: #cfcfcf; }
   #animPop { flex-direction: column; gap: 10px; width: 300px; }
@@ -704,18 +715,22 @@
   </div>
 <!-- v6.85: Rules tab lower tray — the selected rule's editable properties -->
 <!-- Animation mode (v6.121.33): timeline under the viewport, sprite projects only -->
-<div id="animbar">
-  <button class="optline" id="animPlay" title="Play from the current frame; tap again to stop"><span data-icon="play"></span><span id="animPlayLbl">PLAY</span></button>
-  <div id="animStrip"></div>
-  <button class="optline" id="animSettings" title="Playback and onion skin settings">SETTINGS</button>
-  <button class="optline" id="animAddFrame" title="Add a blank frame after the current one"><span data-icon="plus"></span>FRAME</button>
-</div>
+<div id="animbar"><div id="animPanel">
+  <div class="animTop">
+    <button id="animPlay" title="Play from the current frame; tap again to stop"><span data-icon="play"></span><span id="animPlayLbl">PLAY</span></button>
+    <span class="spacer"></span>
+    <button id="animSettings" title="Playback and onion skin settings">SETTINGS</button>
+    <button id="animAddFrame" title="Add a blank frame after the current one">ADD FRAME</button>
+  </div>
+  <div id="animTrack"><div id="animStrip"></div><div id="animCentre"></div></div>
+</div></div>
 <div id="animPop">
   <div class="ahead">PLAYBACK</div>
   <div class="seg"><button class="optline" data-am="loop">LOOP</button><button class="optline" data-am="pingpong">PING-PONG</button><button class="optline" data-am="oneshot">ONE SHOT</button></div>
   <div class="arow"><span>FRAMES PER SECOND</span><span class="aval" id="animFpsVal">12</span></div>
   <input type="range" id="animFps" min="1" max="60" step="1" value="12">
   <div class="ahead" style="margin-top:4px">ONION SKIN</div>
+  <div class="seg"><button class="optline" data-ot="true" title="The neighbouring frames' real art, faded">TRUE</button><button class="optline" data-ot="color" title="Red before, blue after">COLOR</button></div>
   <div class="arow"><span>FRAMES EACH WAY</span><span class="aval" id="animOnionVal">1</span></div>
   <input type="range" id="animOnion" min="0" max="6" step="1" value="1">
   <div class="arow"><span>OPACITY</span><span class="aval" id="animOnionOpVal">40 %</span></div>
@@ -8670,8 +8685,8 @@ $("cvDone").addEventListener("click", cvApply);
    Playback never touches the document; stopping selects the frame it
    landed on. Export of the flattened PNG is unchanged by the mode. */
 function animCfg() {
-  if (!bgDoc) return { on: false, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40 };
-  if (!bgDoc.anim) bgDoc.anim = { on: false, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40 };
+  if (!bgDoc) return { on: false, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40, onionTint: false };
+  if (!bgDoc.anim) bgDoc.anim = { on: false, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40, onionTint: false };   // v6.121.35: "true" onion skins (real art, faded) by default; COLOR tints red / blue
   return bgDoc.anim;
 }
 function animOn() { return APP_MODE === "bg" && !!bgDoc && !!(bgDoc.anim && bgDoc.anim.on); }
@@ -8691,7 +8706,7 @@ function animFrameOf(i) {   // which frame holds layer i (a member maps to its g
 }
 let animPlay = null;   // { k, dir, timer } while playing
 function animCurrent() { if (animPlay) return animPlay.k; const k = animFrameOf(bgDoc.active); return k < 0 ? 0 : k; }
-function animDisplayKey() { const A = animCfg(); return animCurrent() + "," + A.onionFrames + "," + A.onionOpacity + "," + A.mode + "," + (animPlay ? "p" : "s"); }
+function animDisplayKey() { const A = animCfg(); return animCurrent() + "," + A.onionFrames + "," + A.onionOpacity + "," + A.mode + "," + (A.onionTint ? "t" : "a") + "," + (animPlay ? "p" : "s"); }
 const animComp = document.createElement("canvas");
 function animTinted(i, col) {
   const c = document.createElement("canvas"); c.width = TW; c.height = TH; const g = c.getContext("2d");
@@ -8714,8 +8729,8 @@ function animDisplayComposite() {
       const a = (A.onionOpacity / 100) * Math.max(0.15, 1 - (d - 1) * 0.35);
       let pIdx = k - d, qIdx = k + d;
       if (wrap) { pIdx = ((pIdx % n) + n) % n; qIdx = qIdx % n; }
-      if (pIdx >= 0 && pIdx < n && !drawn.has(pIdx)) { drawn.add(pIdx); animDrawFrame(g, fr[pIdx], a, "rgb(255,80,80)"); }
-      if (qIdx >= 0 && qIdx < n && !drawn.has(qIdx)) { drawn.add(qIdx); animDrawFrame(g, fr[qIdx], a, "rgb(80,150,255)"); }
+      if (pIdx >= 0 && pIdx < n && !drawn.has(pIdx)) { drawn.add(pIdx); animDrawFrame(g, fr[pIdx], a, A.onionTint ? "rgb(255,80,80)" : null); }
+      if (qIdx >= 0 && qIdx < n && !drawn.has(qIdx)) { drawn.add(qIdx); animDrawFrame(g, fr[qIdx], a, A.onionTint ? "rgb(80,150,255)" : null); }
     }
   }
   animDrawFrame(g, fr[k], 1, null);
@@ -8729,13 +8744,35 @@ function animFrameThumb(f) {   // one frame, whole canvas, scaled to the strip
   const g = c.getContext("2d"); g.imageSmoothingEnabled = c.width < TW; g.drawImage(full, 0, 0, c.width, c.height);
   return c;
 }
-let animStripSig = "";
+let animProgScroll = 0, animScrollT = 0;
+function animCentreOn(k, smooth) {   // v6.121.35: the current frame sits on the centre mark
+  const host = $("animStrip"), c = host.children[k]; if (!c) return;
+  const left = c.offsetLeft + c.offsetWidth / 2 - host.clientWidth / 2;
+  clearTimeout(animProgScroll); animProgScroll = setTimeout(() => { animProgScroll = 0; }, smooth ? 450 : 80);
+  host.scrollTo({ left, behavior: smooth ? "smooth" : "auto" });
+}
+function animNearestCentre() {
+  const host = $("animStrip"), r = host.getBoundingClientRect(), cx = r.left + r.width / 2;
+  let best = -1, bd = 1e9;
+  [...host.children].forEach((c, i) => { const rc = c.getBoundingClientRect(), d = Math.abs(rc.left + rc.width / 2 - cx); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+function animScrubSettle() {   // the frame under the mark becomes current while the strip glides
+  if (!animOn() || animPlay || animProgScroll) return;
+  const k = animNearestCentre(), fr = animFrames();
+  if (k < 0 || !fr[k] || k === animCurrent()) return;
+  closeAnimPops();
+  bgSelectLayer(fr[k].idx, true);
+  [...$("animStrip").children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+  blit(); drawGrid(); bgRenderLayerList();
+}
+$("animStrip").addEventListener("scroll", () => { if (animProgScroll || animPlay) return; clearTimeout(animScrollT); animScrollT = setTimeout(animScrubSettle, 60); });
 function animRenderStrip(full) {   // full === false: only move the highlight
   if (!animOn()) return;
   const host = $("animStrip"), fr = animFrames(), k = animCurrent();
   if (full === false && host.children.length === fr.length) {
     [...host.children].forEach((cell, i) => cell.classList.toggle("on", i === k));
-    const on = host.children[k]; if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+    animCentreOn(k, !animPlay);
     return;
   }
   host.innerHTML = "";
@@ -8751,14 +8788,18 @@ function animRenderStrip(full) {   // full === false: only move the highlight
     });
     host.appendChild(cell);
   });
-  const on = host.children[k]; if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const first = host.children[0];   // room at both ends so the first and last frame can reach the mark
+  const pad = first ? Math.max(0, host.clientWidth / 2 - first.offsetWidth / 2) : 0;
+  host.style.paddingLeft = pad + "px"; host.style.paddingRight = pad + "px";
+  $("animCentre").style.display = fr.length ? "" : "none";
+  animCentreOn(k, false);
 }
 function animSetOn(on, quiet) {
   const A = animCfg(); A.on = !!on;
   if (!A.on) animStop();
   closeAnimPops();
   $("btnBgAnim").classList.toggle("on", A.on);
-  $("animbar").style.display = A.on ? "flex" : "none";
+  $("animbar").style.display = A.on ? "flex" : "none"; $("stageCol").classList.toggle("animOn", A.on);   // v6.121.36: the panel floats; the status chip steps up
   if (!quiet) bgPersist();
   sizeOverlay(); fitView("ed"); blit(); drawGrid();
   if (A.on) animRenderStrip();
@@ -8806,6 +8847,7 @@ function animPlacePop(pop, anchor) {   // above the anchor, kept on screen
 function animSyncSettings() {
   const A = animCfg();
   $("animPop").querySelectorAll("[data-am]").forEach((b) => b.classList.toggle("on", b.dataset.am === A.mode));
+  $("animPop").querySelectorAll("[data-ot]").forEach((b) => b.classList.toggle("on", (b.dataset.ot === "color") === !!A.onionTint));
   $("animFps").value = A.fps; $("animFpsVal").textContent = A.fps;
   $("animOnion").value = A.onionFrames; $("animOnionVal").textContent = A.onionFrames === 0 ? "OFF" : A.onionFrames;
   $("animOnionOp").value = A.onionOpacity; $("animOnionOpVal").textContent = A.onionOpacity + " %";
@@ -8841,6 +8883,7 @@ $("animAddFrame").addEventListener("click", () => {   // a blank frame after the
   animRenderStrip(); blit();
 });
 $("animPop").querySelectorAll("[data-am]").forEach((b) => b.addEventListener("click", () => { animCfg().mode = b.dataset.am; animSyncSettings(); bgPersist(); blit(); }));
+$("animPop").querySelectorAll("[data-ot]").forEach((b) => b.addEventListener("click", () => { animCfg().onionTint = b.dataset.ot === "color"; animSyncSettings(); bgPersist(); blit(); }));
 $("animFps").addEventListener("input", () => { animCfg().fps = +$("animFps").value; $("animFpsVal").textContent = animCfg().fps; });
 $("animFps").addEventListener("change", () => bgPersist());
 $("animOnion").addEventListener("input", () => { animCfg().onionFrames = +$("animOnion").value; animSyncSettings(); blit(); });
@@ -8971,7 +9014,7 @@ function bgBoot() {
 function persistFills() { try { localStorage.setItem(LS.fills, JSON.stringify(Object.keys(fills))); } catch (e) {} }
 
 /* ---- boot ---- */
-window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); projFitThumbs(); });
+window.addEventListener("resize", () => { sizeOverlay(); fitView("ed"); fitView("pv"); projFitThumbs(); if (animOn()) animRenderStrip(); });
 /* v6.113.1: the viewport also changes size WITHOUT a window resize — a tray grows or shrinks in place
    (the Edges ring giving way to the one-row Depth tray), a side rail opens. The canvases only ever
    followed explicit show/hide calls, so the freed strip showed the viewport's plain background. Watch
@@ -8989,7 +9032,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.34";
+const APP_VERSION = "6.121.36";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
