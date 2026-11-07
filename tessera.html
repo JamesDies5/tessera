@@ -253,8 +253,9 @@
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
   #projHead .spacer { flex: 1; }
-  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; }   /* v6.121.58/59 (James): cards keep one size, as Procreate's do; 236 px = four per row in portrait on the 13" iPad Pro, five in landscape */
-  .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); grid-auto-rows: max-content; justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; min-height: 0; scrollbar-width: none; }   /* v6.121.61: rows take their content height and the grid scrolls; nothing can squeeze the cards; no scrollbar track, so a desktop browser keeps the iPad's row count */
+  #projGrid::-webkit-scrollbar { display: none; }   /* v6.121.58/59 (James): cards keep one size, as Procreate's do; 236 px = four per row in portrait on the 13" iPad Pro, five in landscape */
+  .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-self: start; }
   .projCard.active { border-color: #8fb996; }
   /* v6.121.30 (James): Sort mode — cards drag into a hand-set order; buttons and badges sleep meanwhile */
   #btnProjSort.on { color: var(--accent); border-color: var(--accent); background: #383838; }
@@ -265,7 +266,7 @@
   #projGrid.sorting .projCard { transition: transform .16s ease; }   /* v6.121.31: the other cards slide out of the way, like layer rows */
   #projGrid.sorting .projCard.dragging { transition: none; }
   .projCard.dragging { opacity: .92; z-index: 5; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
-  .projCard .thumb { position: relative; background: #262626; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .projCard .thumb { position: relative; background: #262626; height: 177px; flex: 0 0 177px; display: flex; align-items: center; justify-content: center; overflow: hidden; }   /* v6.121.61: a fixed 4:3 box (236 × 177) that no layout pressure can shrink */
   .syncbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; color: #fff; padding: 0; }
   .syncbadge svg { width: 17px; height: 17px; }
@@ -9335,7 +9336,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.60";
+const APP_VERSION = "6.121.61";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
