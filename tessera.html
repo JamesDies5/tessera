@@ -8903,6 +8903,11 @@ $("animSettings").addEventListener("click", (e) => {
   e.stopPropagation();
   if ($("animPop").style.display === "flex") { closeAnimPops(); return; }
   closeAnimPops(); animSyncSettings(); animPlacePop($("animPop"), $("animSettings"));
+  /* v6.121.46 DIAGNOSTIC (remove once the iPad short-strip scroll is understood): the strip's own measurements */
+  try {
+    const h = $("animStrip"), c0 = h.children[0], cs = getComputedStyle(h);
+    status("strip " + h.scrollWidth + "/" + h.clientWidth + " scroll " + Math.round(h.scrollLeft) + " \u00b7 " + h.children.length + " cells \u00d7 " + (c0 ? c0.offsetWidth : 0) + " \u00b7 pad " + Math.round(parseFloat(cs.paddingLeft)) + " \u00b7 h " + h.clientHeight + "/" + h.scrollHeight + " \u00b7 ta " + cs.touchAction + " \u00b7 ov " + cs.overflowX + "/" + cs.overflowY + " \u00b7 " + (navigator.maxTouchPoints || 0) + "t");
+  } catch (e) { status("strip diag failed: " + e.message); }
 });
 $("animAddFrame").addEventListener("click", () => {   // a blank frame after the current one (above it in the stack)
   if (animPlay) animStop();
@@ -9100,7 +9105,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.45";
+const APP_VERSION = "6.121.46";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
