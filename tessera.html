@@ -251,7 +251,7 @@
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
   #projHead .spacer { flex: 1; }
-  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; padding: 16px 18px; align-content: start; }
+  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; }   /* v6.121.58/59 (James): cards keep one size, as Procreate's do; 236 px = four per row in portrait on the 13" iPad Pro, five in landscape */
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
   .projCard.active { border-color: #8fb996; }
   /* v6.121.30 (James): Sort mode — cards drag into a hand-set order; buttons and badges sleep meanwhile */
@@ -9329,7 +9329,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.57";
+const APP_VERSION = "6.121.59";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
