@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.55** (2026-11-07).
+be a change there. Current: **v6.121.56** (2026-11-07).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -186,5 +186,6 @@ scrolls for 450 ms after each centring, which left the mark and highlight apart,
 which showed Safari counting no scrollable width for a narrow-celled strip; 48 replaces the end padding with real spacer items,
 verified by James; 49 removes the readout and remembers the grid toggles on the device, 50 anchors the canvas-mode guides to the frame, 51 makes the eyedropper and Copy All sample the current frame in
 animation mode, 52 adds Import Sheet on the Projects screen with a slicing preview and a guess, 53–54 play animated projects on their
-gallery cards under a mouse or Pencil hover, frame 1 as the still, 55 adds a film badge beside SPRITES on those cards) (header button, timeline, current frame + onion skins, Loop /
+gallery cards under a mouse or Pencil hover, frame 1 as the still, 55 adds a film badge beside SPRITES on those cards, 56 gives the sheet-import preview true proportions, frame numbers
+and tap-to-select ordering) (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. **Remaining on the card:** project folders in the gallery (mock first).

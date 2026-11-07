@@ -650,9 +650,9 @@
     </div>
     <!-- v6.121.52 (James): Import Sheet — cut a sprite sheet into frames; a slicing preview like Godot's, and a guess from the transparent gaps -->
     <div id="newSheetBlock" style="display:none;flex-direction:column;gap:8px">
-      <div class="row"><span class="lbl">ACROSS</span><input type="number" id="sheetCols" min="1" max="256" value="1" inputmode="numeric"><span class="lbl" style="flex:0 0 auto;margin-left:6px">DOWN</span><input type="number" id="sheetRows" min="1" max="256" value="1" inputmode="numeric"><button class="optline" id="sheetGuess" style="height:30px;margin-left:auto" title="Count the frames from the transparent gaps between them">GUESS</button></div>
+      <div class="row"><span class="lbl">ACROSS</span><input type="number" id="sheetCols" min="1" max="256" value="1" inputmode="numeric"><span class="lbl" style="flex:0 0 auto;margin-left:6px">DOWN</span><input type="number" id="sheetRows" min="1" max="256" value="1" inputmode="numeric"><button class="optline" id="sheetGuess" style="height:30px;margin-left:auto" title="Count the frames from the transparent gaps between them">GUESS</button><button class="optline" id="sheetAll" style="height:30px" title="Select every frame again, in reading order">ALL</button></div>
       <div class="row"><span class="lbl"></span><span id="sheetInfo" style="font-size:11px;color:#8fb996"></span></div>
-      <canvas id="sheetPreview" style="display:block;max-width:100%;border:1px solid #454545;border-radius:8px;background:conic-gradient(#232323 25%,#2c2c2c 0 50%,#232323 0 75%,#2c2c2c 0);background-size:12px 12px"></canvas>
+      <canvas id="sheetPreview" title="Tap a frame to leave it out; tap again to add it back at the end of the order" style="display:block;border:1px solid #454545;border-radius:8px;cursor:pointer;background:conic-gradient(#232323 25%,#2c2c2c 0 50%,#232323 0 75%,#2c2c2c 0);background-size:12px 12px"></canvas>
     </div>
     <div id="newDlgNote" style="font-size:11px;color:#8fb996;display:none"></div>
     <div class="row" style="justify-content:flex-end">
@@ -3100,9 +3100,10 @@ function openNewDlg(img, sheet) {
   $("newDlgTitle").textContent = newDlgSheet ? "Import sheet as…" : img ? "Import PNG as…" : "New project";
   $("newName").value = img ? (img.name || "").replace(/\.png$/i, "") : "";
   $("newCreate").textContent = img ? "Import" : "Create";
-  if (newDlgSheet) { document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q.dataset.nt === "bg")); sheetGuess(); }
+  if (newDlgSheet) document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q.dataset.nt === "bg"));
   newDlgSyncRows();
   $("newDlg").style.display = "flex";
+  if (newDlgSheet) sheetGuess();   // v6.121.56: after the dialog is on screen, so the preview can measure its box
   setTimeout(() => $("newName").focus(), 0);
 }
 function closeNewDlg() { $("newDlg").style.display = "none"; newDlgImg = null; newDlgSheet = false; }
@@ -3142,29 +3143,61 @@ function sheetGuess() {
   const img = sheetPixels(); if (!img) return;
   const cols = sheetBestCount(sheetRuns(img, "x"), img.w), rows = sheetBestCount(sheetRuns(img, "y"), img.h);
   $("sheetCols").value = cols; $("sheetRows").value = rows;
+  sheetOrder = null; sheetSync();
+}
+/* v6.121.56 (James, after Godot's splitter): the frames carry their number, and a tap on a cell leaves it out;
+   tapping again adds it back at the END of the order, so deselecting all and tapping frames in turn sets the order. */
+let sheetOrder = null, sheetOrderKey = "";   // cell indices (reading order) in import order; null = every cell in reading order
+function sheetEnsureOrder() {
+  const { cols, rows } = sheetCounts(), key = cols + "x" + rows;
+  if (!sheetOrder || sheetOrderKey !== key) { sheetOrderKey = key; sheetOrder = Array.from({ length: cols * rows }, (_, i) => i); }
+  return sheetOrder;
+}
+function sheetToggleCell(i) {
+  const o = sheetEnsureOrder(), at = o.indexOf(i);
+  if (at >= 0) o.splice(at, 1); else o.push(i);
   sheetSync();
 }
-function sheetSync() {   // the cell-size line and the preview grid
+$("sheetAll").addEventListener("click", () => { sheetOrder = null; sheetSync(); });
+$("sheetPreview").addEventListener("click", (e) => {
   const img = newDlgImg; if (!img || !newDlgSheet) return;
-  const { cols, rows } = sheetCounts(), cw = img.w / cols, ch = img.h / rows, even = Number.isInteger(cw) && Number.isInteger(ch);
-  $("sheetInfo").textContent = "Cell " + Math.floor(cw) + " × " + Math.floor(ch) + " px · " + (cols * rows) + " frame" + (cols * rows > 1 ? "s" : "") + (even ? "" : " — not an even split, cells are rounded down");
+  const pv = $("sheetPreview"), r = pv.getBoundingClientRect(), { cols, rows } = sheetCounts();
+  const x = (e.clientX - r.left) / r.width * img.w, y = (e.clientY - r.top) / r.height * img.h;
+  const c = Math.min(cols - 1, Math.max(0, Math.floor(x / Math.floor(img.w / cols)))), rr = Math.min(rows - 1, Math.max(0, Math.floor(y / Math.floor(img.h / rows))));
+  sheetToggleCell(rr * cols + c);
+});
+function sheetSync() {   // the cell-size line and the preview: grid, numbers, left-out cells dimmed
+  const img = newDlgImg; if (!img || !newDlgSheet) return;
+  const { cols, rows } = sheetCounts(), cw = Math.floor(img.w / cols), ch = Math.floor(img.h / rows), even = img.w % cols === 0 && img.h % rows === 0;
+  const order = sheetEnsureOrder(), picked = order.length;
+  $("sheetInfo").textContent = "Cell " + cw + " × " + ch + " px · " + picked + " of " + (cols * rows) + " frame" + (cols * rows > 1 ? "s" : "") + (even ? "" : " — not an even split, cells are rounded down");
   $("sheetInfo").style.color = even ? "#8fb996" : "#e0b36a";
-  const pv = $("sheetPreview"), maxW = 400, maxH = 200;
+  const pv = $("sheetPreview"), box = $("newSheetBlock").clientWidth || 312, maxW = Math.max(200, box), maxH = 220;   // v6.121.56: sized to the dialog, proportions kept
   const k = Math.max(1, Math.min(6, Math.floor(Math.min(maxW / img.w, maxH / img.h))));   // whole-number zoom when the sheet is small, 1:1 backing when it is big
   pv.width = img.w * k; pv.height = img.h * k;
   const fit = Math.min(maxW / pv.width, maxH / pv.height, 1);
   pv.style.width = Math.round(pv.width * fit) + "px"; pv.style.height = Math.round(pv.height * fit) + "px"; pv.style.imageRendering = fit < 1 ? "auto" : "pixelated";
   const g = pv.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, pv.width, pv.height);
   g.drawImage(img.el, 0, 0, pv.width, pv.height);
+  g.fillStyle = "rgba(0,0,0,0.6)";   // cells left out go dim
+  for (let i = 0; i < cols * rows; i++) if (order.indexOf(i) < 0) g.fillRect((i % cols) * cw * k, Math.floor(i / cols) * ch * k, cw * k, ch * k);
   g.strokeStyle = "rgba(142,203,255,0.9)"; g.lineWidth = Math.max(1, k / 2); g.beginPath();
-  for (let i = 0; i <= cols; i++) { const x = Math.min(pv.width - 0.5, Math.round(Math.floor(i * cw) * k) + 0.5); g.moveTo(x, 0); g.lineTo(x, pv.height); }
-  for (let j = 0; j <= rows; j++) { const y = Math.min(pv.height - 0.5, Math.round(Math.floor(j * ch) * k) + 0.5); g.moveTo(0, y); g.lineTo(pv.width, y); }
+  for (let i = 0; i <= cols; i++) { const x = Math.min(pv.width - 0.5, Math.round(i * cw * k) + 0.5); g.moveTo(x, 0); g.lineTo(x, pv.height); }
+  for (let j = 0; j <= rows; j++) { const y = Math.min(pv.height - 0.5, Math.round(j * ch * k) + 0.5); g.moveTo(0, y); g.lineTo(pv.width, y); }
   g.stroke();
+  const fs = Math.max(10, Math.min(28, Math.round(ch * k * 0.22 / fit)));   // the number, readable at the displayed size
+  g.font = "700 " + fs + "px ui-monospace, Menlo, monospace"; g.textBaseline = "top";
+  order.forEach((cell, n) => {
+    const x = (cell % cols) * cw * k + 2, y = Math.floor(cell / cols) * ch * k + 2, t = String(n + 1), tw = g.measureText(t).width;
+    g.fillStyle = "rgba(0,0,0,0.7)"; g.fillRect(x, y, tw + 6, fs + 2);
+    g.fillStyle = "#8ecbff"; g.fillText(t, x + 3, y + 1);
+  });
 }
 function sheetSplitDoc(img) {   // the layered document: one layer per cell, reading order, cell 1 at the bottom
   const { cols, rows } = sheetCounts(), cw = Math.floor(img.w / cols), ch = Math.floor(img.h / rows);
   const layers = []; let n = 0;
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+  for (const cell of sheetEnsureOrder()) {   // v6.121.56: the chosen cells, in the chosen order
+    const c = cell % cols, r = Math.floor(cell / cols);
     const cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
     cv.getContext("2d").drawImage(img.el, c * cw, r * ch, cw, ch, 0, 0, cw, ch);
     n++; layers.push({ id: "L" + n, name: "Frame " + n, visible: true, locked: false, png: cv.toDataURL("image/png") });
@@ -3209,7 +3242,8 @@ $("newCreate").addEventListener("click", () => {
   const rec = projNewRecord(name);
   rec.type = type;
   rec.keys[PROJ_TYPE_KEY] = type;
-  if (type === "bg" && newDlgSheet && img && sheetCounts().cols * sheetCounts().rows > 1) {   // v6.121.52: a sheet becomes one layer per cell, bottom = first, animation on
+  if (type === "bg" && newDlgSheet && img && sheetEnsureOrder().length === 0) { status("Pick at least one frame \u2014 tap ALL to take them all."); return; }
+  if (type === "bg" && newDlgSheet && img && sheetCounts().cols * sheetCounts().rows > 1) {   // v6.121.52: a sheet becomes one layer per chosen cell, bottom = first, animation on
     const sd = sheetSplitDoc(img);
     rec.keys[BG_KEYS.doc] = JSON.stringify(sd.doc);
     rec.keys[BG_KEYS.flat] = sd.flat;
@@ -9278,7 +9312,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.55";
+const APP_VERSION = "6.121.56";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
