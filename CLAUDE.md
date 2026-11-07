@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.50** (2026-11-06).
+be a change there. Current: **v6.121.51** (2026-11-06).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -184,5 +184,6 @@ off the home-gesture edge, 40 puts the hold count above its frame, 41 adds the s
 `pointer-events: none` ancestor that stopped iOS from touch-scrolling the strip at all, 45 stops the strip ignoring
 scrolls for 450 ms after each centring, which left the mark and highlight apart, 46–47 were a diagnostic readout in SETTINGS,
 which showed Safari counting no scrollable width for a narrow-celled strip; 48 replaces the end padding with real spacer items,
-verified by James; 49 removes the readout and remembers the grid toggles on the device, 50 anchors the canvas-mode guides to the frame) (header button, timeline, current frame + onion skins, Loop /
+verified by James; 49 removes the readout and remembers the grid toggles on the device, 50 anchors the canvas-mode guides to the frame, 51 makes the eyedropper and Copy All sample the current frame in
+animation mode) (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. **Remaining on the card:** project folders in the gallery (mock first).

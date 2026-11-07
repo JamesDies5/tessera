@@ -5550,7 +5550,7 @@ function doCopy(all) {   // v6.72.1: all === true copies the merged, visible ima
   const w = x1 - x0 + 1, h = y1 - y0 + 1;
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const g = cv.getContext("2d");
-  const reg = (all === true && APP_MODE === "bg" ? bgComposite().getContext("2d") : edCtx).getImageData(x0, y0, w, h);
+  const reg = (all === true && APP_MODE === "bg" ? bgSeenComposite().getContext("2d") : edCtx).getImageData(x0, y0, w, h);   // v6.121.51: in animation mode, the current frame
   const out = g.createImageData(w, h);
   const fm = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -5700,7 +5700,16 @@ function cellFill(x, y) {
 /* v6.65.1: the eyedropper samples what you SEE — in a background project
    that is the merged stack (visible layers through folder visibility), not
    the selected layer. Tilesets are single-canvas, so nothing changes there. */
-function pickCtx() { return APP_MODE === "bg" ? bgComposite().getContext("2d") : edCtx; }
+function pickCtx() { return APP_MODE === "bg" ? bgSeenComposite().getContext("2d") : edCtx; }
+/* v6.121.51 (James): what the eyedropper and Copy All "see" in a sprite project — the whole visible stack, or in
+   animation mode just the current frame (onion skins are not part of the picture), cached per frame and edit. */
+let bgSeenKey = "", bgSeenCv = null;
+function bgSeenComposite() {
+  if (!animOn()) return bgComposite();
+  const key = edGen + "|" + animCurrent() + "|" + TW + "x" + TH;
+  if (bgSeenKey !== key || !bgSeenCv) { bgSeenKey = key; bgSeenCv = animFrameCanvas(animCurrent()); }
+  return bgSeenCv;
+}
 function pickAt(x, y) {
   if (x < 0 || y < 0 || x >= TW || y >= TH) return;
   const d = pickCtx().getImageData(x, y, 1, 1).data;
@@ -9108,7 +9117,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.50";
+const APP_VERSION = "6.121.51";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
