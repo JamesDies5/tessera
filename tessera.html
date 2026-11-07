@@ -358,6 +358,8 @@
 
   /* ---- GitHub sync (v6.40) ---- */
   #projSyncPanel { display: none; border-bottom: 1px solid var(--line); padding: 10px 18px; }
+  #projImportPop { position: fixed; z-index: 95; display: none; flex-direction: column; gap: 6px; padding: 8px; background: rgba(18,18,18,.97); border: 1px solid #454545; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }   /* v6.121.57 */
+  #projImportPop .optline { justify-content: flex-start; height: 36px; gap: 10px; padding: 0 12px; }
   #projSyncPanel.show { display: block; }
   .syncRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   #ghTokenInput { flex: 1; max-width: 420px; background: #1d1d1d; border: 1px solid var(--line); border-radius: 8px;
@@ -615,11 +617,14 @@
     <span class="spacer"></span>
     <button class="optline" id="btnProjSync" title="GitHub sync — push projects to the tessera repo and pull them back; token stays on this device only"><span data-icon="cloud"></span>Sync</button>
     <button class="optline" id="btnProjSort" title="Sort — drag the cards into the order you want; tap again when done. Projects keep their place otherwise; new ones appear at the top"><span data-icon="grip"></span>Sort</button>
-    <button class="optline" id="btnProjImport" title="Start a project from an existing PNG — you choose whether it becomes a tileset or a sprite project"><span data-icon="sqplus"></span>Import PNG</button>
-    <button class="optline" id="btnProjImportSheet" title="Start an animated sprite project from a sprite sheet — the sheet is cut into equal cells, one layer per frame, left to right becoming bottom to top"><span data-icon="film"></span>Import Sheet</button>
-    <button class="optline" id="btnProjNew" title="Create a new, blank project — tileset or sprites"><span data-icon="sqplus"></span>New</button>
+    <button class="optline" id="btnProjImport" title="Import — a PNG as it is, or a sprite sheet cut into frames"><span data-icon="upload"></span>Import</button>
+    <button class="optline ico" id="btnProjNew" title="New project — tileset or sprites"><span data-icon="sqplus"></span></button>
     <input type="file" id="fileProj" accept="image/png" hidden>
-    <button class="optline" id="btnProjClose" title="Back to the open project"><span data-icon="sqx"></span>Close</button>
+  </div>
+  <!-- v6.121.57: Import choice, hanging from the Import button's right edge -->
+  <div id="projImportPop">
+    <button class="optline" id="impPng" title="A PNG as it is — a tileset or a sprite project"><span data-icon="sqplus"></span>PNG</button>
+    <button class="optline" id="impSheet" title="A sprite sheet cut into frames, one layer each, animation on"><span data-icon="film"></span>Sprite Sheet</button>
   </div>
   <!-- GitHub sync (v6.40): the token is stored ONLY in device localStorage
        (tessera.ghtoken) — never in project snapshots, never pushed. -->
@@ -2979,7 +2984,7 @@ function projRenderGallery() {
       card.appendChild(th); card.appendChild(meta); card.appendChild(acts); card.appendChild(bar); card.appendChild(note);
       card.addEventListener("click", () => {
         if (projSortMode) return;   // v6.121.30: in Sort mode a tap is the start of a drag, not an open
-        if (rec.id === activeProjectId) { $("projOverlay").classList.remove("show"); return; }
+        if (rec.id === activeProjectId) { projSortOff(); projStopAnims(); closeImportPop(); $("projOverlay").classList.remove("show"); return; }   // v6.121.57: the open card is the way back
         projSwitch(rec);
       });
       if (projSortMode) projSortBind(card);
@@ -2992,7 +2997,7 @@ $("btnProjects").addEventListener("click", () => {
   projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the open project's own kind, not All
   saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
 });
-$("btnProjClose").addEventListener("click", () => { projSortOff(); projStopAnims(); $("projOverlay").classList.remove("show"); });
+/* v6.121.57: no Close button — tapping the open project's card is the way back, as in Procreate */
 /* ==== Sort mode (v6.121.30, James) ====================================
    Tap Sort: the cards take a dashed outline, their buttons sleep, and a drag
    anywhere on a card carries it; the other cards reflow live. Letting go
@@ -3095,6 +3100,7 @@ function tilesetContractForDims(w, h) {
   return m.length ? m[0].id : null;
 }
 let newDlgSheet = false, newDlgSheetPending = false;   // v6.121.52: Import Sheet uses the same dialog, locked to Sprites, with the slicing block
+let newDlgAnchorId = "btnProjNew";   // v6.121.57: the dialog hangs right-aligned under the button that opened it
 function openNewDlg(img, sheet) {
   newDlgImg = img || null; newDlgSheet = !!(img && sheet);
   $("newDlgTitle").textContent = newDlgSheet ? "Import sheet as…" : img ? "Import PNG as…" : "New project";
@@ -3102,7 +3108,10 @@ function openNewDlg(img, sheet) {
   $("newCreate").textContent = img ? "Import" : "Create";
   if (newDlgSheet) document.querySelectorAll("#newDlg .seg button").forEach((q) => q.classList.toggle("on", q.dataset.nt === "bg"));
   newDlgSyncRows();
-  $("newDlg").style.display = "flex";
+  const dlg = $("newDlg"), a = $(newDlgAnchorId), ar = a ? a.getBoundingClientRect() : null;
+  dlg.style.display = "flex";
+  if (ar && ar.width) { dlg.style.transform = "none"; dlg.style.left = "auto"; dlg.style.right = Math.max(8, window.innerWidth - ar.right) + "px"; dlg.style.top = (ar.bottom + 8) + "px"; }
+  else { dlg.style.transform = ""; dlg.style.left = ""; dlg.style.right = ""; dlg.style.top = ""; }
   if (newDlgSheet) sheetGuess();   // v6.121.56: after the dialog is on screen, so the preview can measure its box
   setTimeout(() => $("newName").focus(), 0);
 }
@@ -3221,9 +3230,17 @@ const newDlgSizeVals = () => [Math.max(16, Math.min(4096, parseInt($("newW").val
   sel.value = [...sel.options].some((o) => o.value === key) ? key : "custom";
 }));
 $("newCancel").addEventListener("click", closeNewDlg);
-$("btnProjNew").addEventListener("click", () => openNewDlg(null));
-$("btnProjImport").addEventListener("click", () => { newDlgSheetPending = false; $("fileProj").click(); });
-$("btnProjImportSheet").addEventListener("click", () => { newDlgSheetPending = true; $("fileProj").click(); });   // v6.121.52
+$("btnProjNew").addEventListener("click", () => { newDlgAnchorId = "btnProjNew"; openNewDlg(null); });
+function closeImportPop() { $("projImportPop").style.display = "none"; }
+$("btnProjImport").addEventListener("click", (e) => {   // v6.121.57: one Import button, a panel of ways in
+  e.stopPropagation();
+  const pop = $("projImportPop"); if (pop.style.display === "flex") { closeImportPop(); return; }
+  const r = $("btnProjImport").getBoundingClientRect();
+  pop.style.display = "flex"; pop.style.right = Math.max(8, window.innerWidth - r.right) + "px"; pop.style.left = "auto"; pop.style.top = (r.bottom + 8) + "px";
+});
+$("impPng").addEventListener("click", () => { closeImportPop(); newDlgAnchorId = "btnProjImport"; newDlgSheetPending = false; $("fileProj").click(); });
+$("impSheet").addEventListener("click", () => { closeImportPop(); newDlgAnchorId = "btnProjImport"; newDlgSheetPending = true; $("fileProj").click(); });   // v6.121.52
+document.addEventListener("pointerdown", (e) => { if (!e.target.closest("#projImportPop, #btnProjImport")) closeImportPop(); }, true);
 $("fileProj").addEventListener("change", (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   const rd = new FileReader();
@@ -9312,7 +9329,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.56";
+const APP_VERSION = "6.121.57";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
