@@ -176,6 +176,24 @@
   #rulesbar .rulesFlank { flex: 1 1 0; min-width: max-content; display: flex; justify-content: flex-end; }   /* max-content: the right flank never shrinks under its button, so it pushes rather than overlaps */   /* v6.114.1: flanks absorb the slack; Reset sits at the end of the right one */
   #rulesbar .optline { height: 28px; padding: 0 10px; gap: 6px; }   /* v6.114.1: same size as Cut / Copy / Paste */
   #rulesbar .optline svg { width: 14px; height: 14px; }
+  /* Animation mode (v6.121.33, James's QOL card): timeline under the viewport, two popovers */
+  #animbar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: #1a1a1a; border-top: 1px solid var(--line); flex: 0 0 auto; }
+  #animStrip { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; padding: 2px; align-items: flex-start; -webkit-overflow-scrolling: touch; }
+  .animCell { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; cursor: pointer; }
+  .animCell canvas { border-radius: 5px; border: 2px solid var(--line); image-rendering: pixelated; display: block;
+    background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
+  .animCell.on canvas { border-color: #8ecbff; }
+  .animHold { font-size: 10px; color: #8ecbff; height: 12px; line-height: 12px; letter-spacing: 1px; }
+  #animbar .optline.on, #animPop .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
+  #animPop, #animFramePop { position: fixed; z-index: 80; display: none; background: rgba(18,18,18,.97); border: 1px solid #454545; border-radius: 10px; padding: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); font-size: 11px; letter-spacing: 1px; color: #cfcfcf; }
+  #animPop { flex-direction: column; gap: 10px; width: 300px; }
+  #animPop .ahead { font-size: 10px; color: #9a9a9a; }
+  #animPop .arow { display: flex; justify-content: space-between; align-items: center; }
+  #animPop .aval { color: #8ecbff; }
+  #animPop .seg { display: flex; gap: 6px; }
+  #animPop input[type=range] { width: 100%; margin: 0; }
+  #animFramePop { flex-direction: row; align-items: center; gap: 8px; }
+  #animFramePop .aval { color: #8ecbff; min-width: 24px; text-align: center; font-size: 13px; }
   #rulesbot { display: none; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); font-size: 12px; color: var(--text); }
   #rulesbot .rulesChip canvas { image-rendering: pixelated; display: block; border: 1px solid var(--line); border-radius: 4px; }
@@ -349,6 +367,7 @@
     <option value="v4">7&times;7</option>
   </select>
   <button class="ibtn" id="btnOptions" data-icon="wrench" title="Options — template canvas, export, import, and reset"></button>
+  <button class="ibtn" id="btnBgAnim" data-icon="film" title="Animation — every layer or group is a frame, bottom to top; a timeline with playback, holds and onion skins appears below. Remembered in the project" style="display:none"></button>
   <button class="ibtn" id="btnBgTiled" data-icon="tiled" title="Tiled preview — repeat the canvas into the space around it" style="display:none"></button>
   <button class="ibtn" id="btnBgSym" data-icon="symmetry" title="Symmetry — mirror strokes across the canvas center" style="display:none"></button>
   <div class="ctx" id="ctxLevel" style="display:none">
@@ -684,6 +703,31 @@
     <div id="statusChip"></div>
   </div>
 <!-- v6.85: Rules tab lower tray — the selected rule's editable properties -->
+<!-- Animation mode (v6.121.33): timeline under the viewport, sprite projects only -->
+<div id="animbar">
+  <button class="optline" id="animPlay" title="Play from the current frame; tap again to stop"><span data-icon="play"></span><span id="animPlayLbl">PLAY</span></button>
+  <div id="animStrip"></div>
+  <button class="optline" id="animSettings" title="Playback and onion skin settings">SETTINGS</button>
+  <button class="optline" id="animAddFrame" title="Add a blank frame after the current one"><span data-icon="plus"></span>FRAME</button>
+</div>
+<div id="animPop">
+  <div class="ahead">PLAYBACK</div>
+  <div class="seg"><button class="optline" data-am="loop">LOOP</button><button class="optline" data-am="pingpong">PING-PONG</button><button class="optline" data-am="oneshot">ONE SHOT</button></div>
+  <div class="arow"><span>FRAMES PER SECOND</span><span class="aval" id="animFpsVal">12</span></div>
+  <input type="range" id="animFps" min="1" max="60" step="1" value="12">
+  <div class="ahead" style="margin-top:4px">ONION SKIN</div>
+  <div class="arow"><span>FRAMES EACH WAY</span><span class="aval" id="animOnionVal">1</span></div>
+  <input type="range" id="animOnion" min="0" max="6" step="1" value="1">
+  <div class="arow"><span>OPACITY</span><span class="aval" id="animOnionOpVal">40 %</span></div>
+  <input type="range" id="animOnionOp" min="0" max="100" step="5" value="40">
+  <div class="ahead"><span style="display:inline-block;width:10px;height:10px;background:rgba(255,80,80,.85);border-radius:2px;vertical-align:middle"></span> before &nbsp; <span style="display:inline-block;width:10px;height:10px;background:rgba(80,150,255,.85);border-radius:2px;vertical-align:middle"></span> after</div>
+</div>
+<div id="animFramePop">
+  <span>HOLD</span><button class="optline ico" id="animHoldMinus" title="One frame shorter"><span data-icon="minus"></span></button><span class="aval" id="animHoldVal">1</span><button class="optline ico" id="animHoldPlus" title="One frame longer"><span data-icon="plus"></span></button>
+  <span class="vsep"></span>
+  <button class="optline" id="animDup" title="Duplicate this frame beside it"><span data-icon="copy"></span>DUPLICATE</button>
+  <button class="optline" id="animDel" title="Delete this frame"><span data-icon="sqx"></span>DELETE</button>
+</div>
 <div id="rulesbot">
   <div class="rulesRow" id="rulesDepthRow" style="display:none"><span class="rulesLab">Border depth</span><span id="rulesDepthBtns" style="display:contents"></span></div>
   <div id="rulesRim" style="display:contents"></div>
@@ -2480,6 +2524,9 @@ const ICONS = {
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  film: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4"/><path d="M11 10l3 2-3 2z" fill="currentColor"/>',
+  play: '<path d="M7 5l12 7-12 7z" fill="currentColor"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>',
   folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>',
@@ -3625,10 +3672,10 @@ const SMIN = 0.4, SMAX = 32;
 const edTint = document.createElement("canvas");
 let edTintKey = "", edGen = 0;
 function edDisplay() {
-  const src = APP_MODE === "bg" ? bgComposite() : ed;   // v6.63: backgrounds show the layer stack
+  const src = APP_MODE === "bg" ? (animOn() ? animDisplayComposite() : bgComposite()) : ed;   // v6.63: backgrounds show the layer stack; v6.121.33: in animation mode, the current frame with onion skins
   const pal = palettes[palIdx];
   if (!pal.base) return src;
-  const key = palIdx + "|" + CT.id + "|" + edGen;
+  const key = palIdx + "|" + CT.id + "|" + edGen + (animOn() ? "|" + animDisplayKey() : "");
   if (edTintKey !== key) {
     edTintKey = key;
     edTint.width = TW; edTint.height = TH;
@@ -7965,6 +8012,7 @@ function bgFolderComposite(fid, w, h) {   // members only, for thumbnails and gr
 }
 function bgPersist() {
   if (!bgDoc) return;
+  if (animOn()) animRenderStrip();   // v6.121.33: strokes and structure changes reach the timeline
   if ($("layerMenu").style.display === "flex" && !lyDrag) bgRenderLayerList();   // open panel: refresh thumbnails after each edit
   try {
     const A = bgLayers[bgDoc.active]; if (A && A.canvas) A.png = null;   // the stroke landed here; other layers keep their cached PNGs
@@ -7984,7 +8032,7 @@ function bgSelectLayer(i, quiet) {   // point the shared editor at entry i (fold
     bgScratch.ctx.clearRect(0, 0, TW, TH);
     ed = bgScratch.canvas; edCtx = bgScratch.ctx;
   } else { ed = bgLayers[i].canvas; edCtx = bgLayers[i].ctx; }
-  if (!quiet) { bgRenderLayerList(); refreshFileSwatches(); drawGrid(); }
+  if (!quiet) { bgRenderLayerList(); refreshFileSwatches(); drawGrid(); if (animOn()) { blit(); animRenderStrip(false); } }   // v6.121.33: the frame follows the layer
 }
 function bgSetDims(w, h) {   // (re)allocate every layer at w×h, keeping existing art top-left
   bgLayers = bgDoc.layers.map((L, i) => {
@@ -8611,6 +8659,200 @@ $("cvDone").addEventListener("click", cvApply);
   });
   $(id).addEventListener("change", () => { cvSetSize($("cvW").value, $("cvH").value); cvSyncFields(); });
 });
+/* ==== Animation mode (v6.121.33, James's QOL card) =====================
+   Procreate's Animation Assist, for sprite projects. Every top-level entry
+   (a plain layer outside any group, or a group) is a frame, bottom of the
+   stack = frame 1; hidden entries are skipped. The canvas shows only the
+   current frame (the one holding the active layer), with onion skins of the
+   frames before (red) and after (blue) behind it, opacity falling off with
+   distance (after Aseprite). Settings live in bgDoc.anim and each entry's
+   `hold` (how many frame-times it stays), so they travel with the project.
+   Playback never touches the document; stopping selects the frame it
+   landed on. Export of the flattened PNG is unchanged by the mode. */
+function animCfg() {
+  if (!bgDoc) return { on: false, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40 };
+  if (!bgDoc.anim) bgDoc.anim = { on: false, fps: 12, mode: "loop", onionFrames: 1, onionOpacity: 40 };
+  return bgDoc.anim;
+}
+function animOn() { return APP_MODE === "bg" && !!bgDoc && !!(bgDoc.anim && bgDoc.anim.on); }
+function animHold(L) { const h = L && L.hold ? Math.floor(L.hold) : 1; return Math.max(1, Math.min(120, h || 1)); }
+function animFrames() {   // [{ idx, L, members }], bottom to top, visible entries only
+  const out = [];
+  bgDoc.layers.forEach((L, i) => {
+    if (isFolder(L)) { if (L.visible) out.push({ idx: i, L, members: bgMembersOf(L.id).filter((k) => bgDoc.layers[k].visible) }); }
+    else if (!L.folder && L.visible) out.push({ idx: i, L, members: [i] });
+  });
+  return out;
+}
+function animFrameOf(i) {   // which frame holds layer i (a member maps to its group); -1 when hidden
+  const L = bgDoc.layers[i]; if (!L) return -1;
+  const top = L.folder ? bgDoc.layers.findIndex((F) => isFolder(F) && F.id === L.folder) : i;
+  return animFrames().findIndex((f) => f.idx === top);
+}
+let animPlay = null;   // { k, dir, timer } while playing
+function animCurrent() { if (animPlay) return animPlay.k; const k = animFrameOf(bgDoc.active); return k < 0 ? 0 : k; }
+function animDisplayKey() { const A = animCfg(); return animCurrent() + "," + A.onionFrames + "," + A.onionOpacity + "," + A.mode + "," + (animPlay ? "p" : "s"); }
+const animComp = document.createElement("canvas");
+function animTinted(i, col) {
+  const c = document.createElement("canvas"); c.width = TW; c.height = TH; const g = c.getContext("2d");
+  g.drawImage(bgLayers[i].canvas, 0, 0); g.globalCompositeOperation = "source-atop"; g.fillStyle = col; g.fillRect(0, 0, TW, TH);
+  return c;
+}
+function animDrawFrame(g, f, alpha, tint) {
+  for (const i of f.members) { if (!bgLayers[i] || !bgLayers[i].canvas) continue; g.globalAlpha = alpha * bgOpacity(bgDoc.layers[i]); g.drawImage(tint ? animTinted(i, tint) : bgLayers[i].canvas, 0, 0); }
+  g.globalAlpha = 1;
+}
+function animDisplayComposite() {
+  const A = animCfg(), fr = animFrames(), n = fr.length;
+  animComp.width = TW; animComp.height = TH;
+  const g = animComp.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, TW, TH);
+  if (!n) return animComp;
+  const k = Math.min(animCurrent(), n - 1);
+  if (!animPlay && A.onionFrames > 0 && A.onionOpacity > 0 && n > 1) {   // onion skins, farthest first so nearer ones sit on top
+    const wrap = A.mode !== "oneshot", drawn = new Set([k]);
+    for (let d = A.onionFrames; d >= 1; d--) {
+      const a = (A.onionOpacity / 100) * Math.max(0.15, 1 - (d - 1) * 0.35);
+      let pIdx = k - d, qIdx = k + d;
+      if (wrap) { pIdx = ((pIdx % n) + n) % n; qIdx = qIdx % n; }
+      if (pIdx >= 0 && pIdx < n && !drawn.has(pIdx)) { drawn.add(pIdx); animDrawFrame(g, fr[pIdx], a, "rgb(255,80,80)"); }
+      if (qIdx >= 0 && qIdx < n && !drawn.has(qIdx)) { drawn.add(qIdx); animDrawFrame(g, fr[qIdx], a, "rgb(80,150,255)"); }
+    }
+  }
+  animDrawFrame(g, fr[k], 1, null);
+  return animComp;
+}
+function animFrameThumb(f) {   // one frame, whole canvas, scaled to the strip
+  const maxW = 44, maxH = 56, sc = Math.min(maxW / TW, maxH / TH), cw = Math.max(8, Math.round(TW * sc)), ch = Math.max(8, Math.round(TH * sc));
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const c = document.createElement("canvas"); c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr); c.style.width = cw + "px"; c.style.height = ch + "px";
+  const full = document.createElement("canvas"); full.width = TW; full.height = TH; animDrawFrame(full.getContext("2d"), f, 1, null);
+  const g = c.getContext("2d"); g.imageSmoothingEnabled = c.width < TW; g.drawImage(full, 0, 0, c.width, c.height);
+  return c;
+}
+let animStripSig = "";
+function animRenderStrip(full) {   // full === false: only move the highlight
+  if (!animOn()) return;
+  const host = $("animStrip"), fr = animFrames(), k = animCurrent();
+  if (full === false && host.children.length === fr.length) {
+    [...host.children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+    const on = host.children[k]; if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  host.innerHTML = "";
+  fr.forEach((f, i) => {
+    const cell = document.createElement("div"); cell.className = "animCell" + (i === k ? " on" : ""); cell.title = f.L.name + (isFolder(f.L) ? " (group)" : "");
+    cell.appendChild(animFrameThumb(f));
+    const h = document.createElement("span"); h.className = "animHold"; const hold = animHold(f.L); h.textContent = hold > 1 ? String(hold) : ""; cell.appendChild(h);
+    cell.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (animPlay) animStop();
+      if (i === animCurrent()) { animFramePopOpen(cell, i); return; }   // Procreate: tap the selected frame for its options
+      closeAnimPops(); bgSelectLayer(f.idx);
+    });
+    host.appendChild(cell);
+  });
+  const on = host.children[k]; if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+function animSetOn(on, quiet) {
+  const A = animCfg(); A.on = !!on;
+  if (!A.on) animStop();
+  closeAnimPops();
+  $("btnBgAnim").classList.toggle("on", A.on);
+  $("animbar").style.display = A.on ? "flex" : "none";
+  if (!quiet) bgPersist();
+  sizeOverlay(); fitView("ed"); blit(); drawGrid();
+  if (A.on) animRenderStrip();
+  if (!quiet) status(A.on ? "Animation — every layer or group is a frame, bottom to top. Tap a frame to select it; tap it again for its hold." : "Animation off — all layers show again.");
+}
+function animStart() {
+  const fr = animFrames(); if (fr.length < 2) { status("Add at least two frames to play."); return; }
+  closeAnimPops();
+  animPlay = { k: Math.min(animCurrent(), fr.length - 1), dir: 1, timer: 0 };
+  $("animPlayLbl").textContent = "STOP"; $("animPlay").classList.add("on");
+  animTick();
+}
+function animTick() {
+  if (!animPlay) return;
+  const A = animCfg(), fr = animFrames(), n = fr.length; if (!n) { animStop(); return; }
+  if (animPlay.k >= n) animPlay.k = 0;
+  blit(); animRenderStrip(false);
+  const ms = (1000 / Math.max(1, A.fps)) * animHold(fr[animPlay.k].L);
+  animPlay.timer = setTimeout(() => {
+    if (!animPlay) return;
+    let k = animPlay.k, dir = animPlay.dir;
+    if (A.mode === "loop") k = (k + 1) % n;
+    else if (A.mode === "pingpong") { if (n > 1) { if (k + dir < 0 || k + dir >= n) dir = -dir; k += dir; } }
+    else { if (k + 1 >= n) { animStop(); return; } k += 1; }   // one shot: stop on the last frame
+    animPlay.k = k; animPlay.dir = dir; animTick();
+  }, ms);
+}
+function animStop() {
+  if (!animPlay) return;
+  clearTimeout(animPlay.timer);
+  const k = animPlay.k; animPlay = null;
+  const fr = animFrames(); if (fr[k]) bgSelectLayer(fr[k].idx, true);
+  $("animPlayLbl").textContent = "PLAY"; $("animPlay").classList.remove("on");
+  blit(); drawGrid(); bgRenderLayerList(); animRenderStrip();
+}
+function closeAnimPops() { $("animPop").style.display = "none"; $("animFramePop").style.display = "none"; }
+function animPlacePop(pop, anchor) {   // above the anchor, kept on screen
+  const r = anchor.getBoundingClientRect();
+  pop.style.display = "flex";
+  const pw = pop.offsetWidth;
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + "px";
+  pop.style.bottom = (window.innerHeight - r.top + 8) + "px";
+  pop.style.right = "auto";
+}
+function animSyncSettings() {
+  const A = animCfg();
+  $("animPop").querySelectorAll("[data-am]").forEach((b) => b.classList.toggle("on", b.dataset.am === A.mode));
+  $("animFps").value = A.fps; $("animFpsVal").textContent = A.fps;
+  $("animOnion").value = A.onionFrames; $("animOnionVal").textContent = A.onionFrames === 0 ? "OFF" : A.onionFrames;
+  $("animOnionOp").value = A.onionOpacity; $("animOnionOpVal").textContent = A.onionOpacity + " %";
+}
+let animFramePopK = -1;
+function animFramePopOpen(cell, k) {
+  closeAnimPops(); animFramePopK = k;
+  const fr = animFrames(); if (!fr[k]) return;
+  $("animHoldVal").textContent = animHold(fr[k].L);
+  animPlacePop($("animFramePop"), cell);
+}
+function animHoldAdjust(d) {
+  const fr = animFrames(), f = fr[animFramePopK]; if (!f) return;
+  const h = Math.max(1, Math.min(120, animHold(f.L) + d));
+  if (h === 1) delete f.L.hold; else f.L.hold = h;
+  $("animHoldVal").textContent = h;
+  bgPersist(); animRenderStrip();
+  status(h > 1 ? "“" + f.L.name + "” holds for " + h + " frames." : "“" + f.L.name + "” holds for one frame.");
+}
+$("btnBgAnim").addEventListener("click", () => { closeColorMenu(); closeBrushMenu(); closeOptMenu(); closeLayerMenu(); closeBgViewMenu(); animSetOn(!animCfg().on); });
+$("animPlay").addEventListener("click", () => { if (animPlay) animStop(); else animStart(); });
+$("animSettings").addEventListener("click", (e) => {
+  e.stopPropagation();
+  if ($("animPop").style.display === "flex") { closeAnimPops(); return; }
+  closeAnimPops(); animSyncSettings(); animPlacePop($("animPop"), $("animSettings"));
+});
+$("animAddFrame").addEventListener("click", () => {   // a blank frame after the current one (above it in the stack)
+  if (animPlay) animStop();
+  closeAnimPops();
+  const fr = animFrames(), k = animCurrent();
+  if (fr[k]) bgSelectLayer(fr[k].idx, true);   // adding above a group header lands outside the group
+  bgAddLayer(null, bgNextName("Frame "));
+  animRenderStrip(); blit();
+});
+$("animPop").querySelectorAll("[data-am]").forEach((b) => b.addEventListener("click", () => { animCfg().mode = b.dataset.am; animSyncSettings(); bgPersist(); blit(); }));
+$("animFps").addEventListener("input", () => { animCfg().fps = +$("animFps").value; $("animFpsVal").textContent = animCfg().fps; });
+$("animFps").addEventListener("change", () => bgPersist());
+$("animOnion").addEventListener("input", () => { animCfg().onionFrames = +$("animOnion").value; animSyncSettings(); blit(); });
+$("animOnion").addEventListener("change", () => bgPersist());
+$("animOnionOp").addEventListener("input", () => { animCfg().onionOpacity = +$("animOnionOp").value; animSyncSettings(); blit(); });
+$("animOnionOp").addEventListener("change", () => bgPersist());
+$("animHoldMinus").addEventListener("click", () => animHoldAdjust(-1));
+$("animHoldPlus").addEventListener("click", () => animHoldAdjust(1));
+$("animDup").addEventListener("click", () => { const f = animFrames()[animFramePopK]; closeAnimPops(); if (!f) return; bgSelectLayer(f.idx, true); bgDuplicateLayer(); animRenderStrip(); blit(); });
+$("animDel").addEventListener("click", () => { const f = animFrames()[animFramePopK]; closeAnimPops(); if (!f) return; bgSelectLayer(f.idx, true); bgDeleteSelected(); animRenderStrip(); blit(); });
+["animPop", "animFramePop"].forEach((id) => $(id).addEventListener("click", (e) => e.stopPropagation()));
+document.addEventListener("pointerdown", (e) => { if (!animOn()) return; if (e.target.closest("#animPop, #animFramePop, #animSettings, .animCell")) return; closeAnimPops(); }, true);
 const BG_VIEWS = { tiled: { btn: "btnBgTiled", tray: "tiledbar" }, sym: { btn: "btnBgSym", tray: "symbar" } };
 function bgViewSync() {
   if (!bgDoc) return;
@@ -8706,6 +8948,7 @@ function bgBoot() {
   $("btnLayers").style.display = ""; $("btnCopyAll").style.display = ""; $("btnCutPaste").style.display = "";
   $("btnBgCanvas").style.display = ""; $("btnCanvas").style.display = "none";   // v6.121.18: canvas size lives in the header for sprites, not under the wrench
   $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
+  $("btnBgAnim").style.display = ""; if (animCfg().on) animSetOn(true, true);   // v6.121.33: the mode is remembered in the project
   $("btnSave").title = "Export the flattened sprite PNG";
   $("btnProjects").title = "Projects — tilesets and sprites; opening this gallery or switching auto-saves the open one";
   $("btnCellGrid").title = "16px tile grid over the canvas";
@@ -8713,7 +8956,7 @@ function bgBoot() {
   projGet(activeProjectId).then((rec) => { if (rec && rec.name) BG_CT.filename = projSlug(rec) + ".png"; }).catch(() => {});
   // decode every layer's PNG into its canvas, then show the stack
   let pending = 0;
-  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); const n = bgDoc.layers.filter((L) => L.kind !== "folder").length; status("Sprites \u2014 " + TW + " \u00d7 " + TH + " px, " + n + " layer" + (n > 1 ? "s" : "") + "."); };
+  const finish = () => { refreshFileSwatches(); edGen++; blit(); drawGrid(); bgRenderLayerList(); if (animOn()) animRenderStrip(); const n = bgDoc.layers.filter((L) => L.kind !== "folder").length; status("Sprites \u2014 " + TW + " \u00d7 " + TH + " px, " + n + " layer" + (n > 1 ? "s" : "") + "."); };   // v6.121.34: the timeline thumbnails wait for the decoded layers
   bgDoc.layers.forEach((L, i) => {
     if (!L.png) return;
     pending++;
@@ -8746,7 +8989,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.32";
+const APP_VERSION = "6.121.34";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

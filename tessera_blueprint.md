@@ -1,12 +1,12 @@
 # Tessera Blueprint
 
-**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.32. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
+**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.34. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
 **Purpose:** what Tessera is today and why it is built that way.
 **Sibling documents:** `CLAUDE.md` (how to work here, and where things are in the file) · `tessera_roadmap.md` (what is next, in order; the old §4, §5 plan, §7 and §10 moved there) · `tessera_history.md` (the old blueprint, frozen: the build-by-build record; never take current state from it). In the game repo (`/Users/jamesdies/platformer-test`): `atlas/atlas-roadmap.md` for ATLAS, and `global/palettes/palette_canon.md`, the only palette canon.
 
 ---
 
-## 1. What Tessera is today (v6.121.32)
+## 1. What Tessera is today (v6.121.34)
 
 One HTML file, no build step, used on an iPad from a Home Screen shortcut with touch and Apple Pencil. It is not a keyboard app (James 2026-10-03: he only ever types file names); never design around keyboard shortcuts.
 
@@ -112,7 +112,7 @@ A canvas of any size from 16 to 4096 px a side. The New dialog shows width and h
 
 **Export** saves the visible layers flattened to one PNG. Any single layer or group can be exported on its own from its options.
 
-There is no animation: no frames, no timeline, no onion skin.
+**Animation mode** (v6.121.33, Procreate's Animation Assist; James's QOL card). A header button right of the wrench turns it on for the project; the mode and its settings are saved in the document and travel with a push. Every top-level entry is a frame: a plain layer outside any group, or a group (its members composite into one frame); the bottom of the stack is frame 1; hidden entries are skipped. A timeline under the canvas shows one thumbnail per frame with the current frame outlined, PLAY / STOP, SETTINGS and + FRAME. The canvas shows only the current frame (the one holding the active layer), with onion skins behind it: frames before tinted red, frames after tinted blue, opacity falling off with distance and wrapping around in Loop and Ping-Pong (after Aseprite's onion skin, which also draws behind and fades by distance; colours follow Aseprite's red/blue). Tap a frame to select it; tap the selected frame again for its options: HOLD − / + (how many frame-times it stays, shown as a number under the thumbnail only when above 1, as Godot shows it; no grey ghost frames), DUPLICATE, DELETE. SETTINGS: Loop / Ping-Pong / One Shot, 1–60 frames per second (default 12), onion frames each way 0–6 (default 1) and opacity (default 40 %). Playback never changes the document; stopping selects the frame it landed on. Drawing, selections and the layer panel work as usual on the active layer; turning the mode off shows every layer again. The flattened PNG export is unchanged by the mode; the sprite-sheet export is the next step.
 
 ### 1.9 Projects and cloud saves
 
