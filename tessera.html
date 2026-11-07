@@ -179,8 +179,8 @@
   #rulesbar .optline { height: 28px; padding: 0 10px; gap: 6px; }   /* v6.114.1: same size as Cut / Copy / Paste */
   #rulesbar .optline svg { width: 14px; height: 14px; }
   /* Animation mode (v6.121.33, James's QOL card): timeline under the viewport, two popovers */
-  #animbar { display: none; position: absolute; left: 0; right: 0; bottom: 30px; z-index: 20;   /* v6.121.39: lifted clear of the iPad home-gesture edge, as Procreate's sits */ justify-content: center; padding: 0 12px; pointer-events: none; }   /* v6.121.35/36: Procreate's floating bar, over the canvas; taps never reach the viewport beneath */
-  #animPanel { pointer-events: auto; width: min(92%, 900px); background: rgba(24,24,24,.96); border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px 3px; box-shadow: 0 6px 24px rgba(0,0,0,.45); }   /* v6.121.37: a little air above the buttons */
+  #animbar { display: none; position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); width: min(92%, 900px); z-index: 20; }   /* v6.121.39: lifted clear of the iPad home-gesture edge; v6.121.44: sized to the panel itself — an ancestor with pointer-events: none stops iOS from touch-scrolling the strip */   /* v6.121.35/36: Procreate's floating bar, over the canvas; taps never reach the viewport beneath */
+  #animPanel { width: 100%; background: rgba(24,24,24,.96); border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px 3px; box-shadow: 0 6px 24px rgba(0,0,0,.45); }   /* v6.121.37: a little air above the buttons */
   .animTop { display: flex; align-items: center; gap: 6px; }
   .animTop .spacer { flex: 1; }
   .animTop button { background: none; border: none; color: var(--text); font: inherit; font-size: 10px; letter-spacing: 1px; padding: 3px 6px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
@@ -188,10 +188,10 @@
   .animTop button.on { color: #8ecbff; }
   .animTop button:active { background: var(--line); }
   #animTrack { position: relative; }
-  #animStrip { display: flex; gap: 6px; overflow-x: auto; align-items: flex-end; padding: 0 0 7px; scroll-snap-type: x mandatory;   /* v6.121.40: a 7 px gap under the frames holds the centre mark */ -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #animStrip { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; align-items: flex-end; padding: 0 calc(50% - var(--cellW, 22px) / 2) 7px; overscroll-behavior-x: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch;   /* v6.121.43: the end padding is a live percentage, so the first and last frame stop exactly on the mark at any width */   /* v6.121.40: a 7 px gap under the frames holds the centre mark; v6.121.42: no CSS scroll-snap (iOS fought it on short tracks), the app snaps when the strip rests */ -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   #animStrip::-webkit-scrollbar { display: none; }
   #animCentre { position: absolute; left: 50%; bottom: 2px; width: 28px; height: 3px;   /* v6.121.40: centred between the frames and the panel's bottom edge */ margin-left: -14px; border-radius: 2px; background: #8ecbff; pointer-events: none; }
-  .animCell { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; cursor: pointer; scroll-snap-align: center; }
+  .animCell { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; cursor: pointer; }
   .animCell canvas { border-radius: 5px; border: 2px solid var(--line); image-rendering: pixelated; display: block;
     background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
   .animCell.on canvas { border-color: #8ecbff; }
@@ -8777,19 +8777,23 @@ function animScrubFrame() {   // every scroll frame: show whatever is under the 
     blit();
   }
 }
-function animScrubSettle() {   // the strip has come to rest: the frame under the mark becomes the selected layer
+function animScrubSettle() {   // the strip has come to rest: the frame under the mark becomes the selected layer, and snaps onto the mark
   if (!animOn() || animPlay) return;
   const fr = animFrames(), k = animScrub ? animScrub.k : animNearestCentre();
   animScrub = null;
   if (k < 0 || !fr[k]) { blit(); return; }
+  const host = $("animStrip"), c = host.children[k], hr = host.getBoundingClientRect();
+  const off = c ? (c.getBoundingClientRect().left + c.offsetWidth / 2) - (hr.left + host.clientWidth / 2) : 0;   // how far frame k sits from the mark
+  if (animFrameOf(bgDoc.active) === k && Math.abs(off) < 1) return;   // v6.121.45: already selected and on the mark — nothing to do, and no scroll loop
   closeAnimPops();
   if (animFrameOf(bgDoc.active) !== k) bgSelectLayer(fr[k].idx, true);
-  [...$("animStrip").children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+  [...host.children].forEach((cell, i) => cell.classList.toggle("on", i === k));
   blit(); drawGrid(); bgRenderLayerList();
+  if (Math.abs(off) >= 1) animCentreOn(k, true);   // v6.121.42: the snap is ours, not CSS's
 }
-$("animStrip").addEventListener("scroll", () => {
-  if (animProgScroll || animPlay) return;
-  if (!animScrubRaf) animScrubRaf = requestAnimationFrame(animScrubFrame);
+$("animStrip").addEventListener("scroll", () => {   // v6.121.45: a user's scroll is never ignored — the old guard dropped any scroll within 450 ms of a centring, which left the mark and the highlight apart
+  if (animPlay) return;
+  if (!animProgScroll && !animScrubRaf) animScrubRaf = requestAnimationFrame(animScrubFrame);   // live frame display only for the user's own scrolling
   clearTimeout(animScrollT); animScrollT = setTimeout(animScrubSettle, 120);
 });
 function animRenderStrip(full) {   // full === false: only move the highlight
@@ -8813,9 +8817,9 @@ function animRenderStrip(full) {   // full === false: only move the highlight
     });
     host.appendChild(cell);
   });
-  const first = host.children[0];   // room at both ends so the first and last frame can reach the mark
-  const pad = first ? Math.max(0, host.clientWidth / 2 - first.offsetWidth / 2) : 0;
-  host.style.paddingLeft = pad + "px"; host.style.paddingRight = pad + "px";
+  const first = host.children[0];   // room at both ends so the first and last frame can reach the mark: half the strip minus half a cell, computed live by CSS (v6.121.43)
+  host.style.paddingLeft = ""; host.style.paddingRight = "";
+  host.style.setProperty("--cellW", (first ? first.offsetWidth : 44) + "px");
   $("animCentre").style.display = fr.length ? "" : "none";
   animCentreOn(k, false);
 }
@@ -9096,7 +9100,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.41";
+const APP_VERSION = "6.121.45";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
