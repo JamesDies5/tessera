@@ -739,7 +739,6 @@
   <div class="arow"><span>OPACITY</span><span class="aval" id="animOnionOpVal">40 %</span></div>
   <input type="range" id="animOnionOp" min="0" max="100" step="5" value="40">
   <div class="ahead"><span style="display:inline-block;width:10px;height:10px;background:rgba(255,80,80,.85);border-radius:2px;vertical-align:middle"></span> before &nbsp; <span style="display:inline-block;width:10px;height:10px;background:rgba(80,150,255,.85);border-radius:2px;vertical-align:middle"></span> after</div>
-  <div class="ahead" id="animDiag" style="font-size:9px;letter-spacing:0;color:#6f6f6f;user-select:text;-webkit-user-select:text"></div>
 </div>
 <div id="animFramePop">
   <span>HOLD</span><button class="optline ico" id="animHoldMinus" title="One frame shorter"><span data-icon="minus"></span></button><span class="aval" id="animHoldVal">1</span><button class="optline ico" id="animHoldPlus" title="One frame longer"><span data-icon="plus"></span></button>
@@ -3768,6 +3767,9 @@ function sizeOverlay() {
 /* Per-tab grid visibility: template defaults to cell lines on, level starts
    clean. The two rail buttons always act on the active tab's state. */
 const gridOn = { ed: { cell: true, px: false }, pv: { cell: false, px: false }, rules: { cell: true, px: false } };   // v6.82: the Rules tab has its own grid state
+/* v6.121.49 (James): the grid toggles are remembered on this device, like the canvas background — not per project */
+try { const g = JSON.parse(localStorage.getItem("tessera.gridon") || "null"); if (g) for (const t of ["ed", "pv", "rules"]) if (g[t]) { gridOn[t].cell = !!g[t].cell; gridOn[t].px = !!g[t].px; } } catch (e) {}
+function persistGridOn() { try { localStorage.setItem("tessera.gridon", JSON.stringify(gridOn)); } catch (e) {} }
 const gridTab = () => (rulesEngaged ? "rules" : activeTab);   // v6.85/v6.88: rules on the Template sheet keep their own grid state
 let hover = null;   // { x, y } world px under a hovering pen/mouse tip
 function drawGrid() {
@@ -3785,7 +3787,7 @@ function drawGrid() {
     for (let j = -po + 1; j < H + po; j++) { const y = v.y + j * v.s; if (y > y0 && y < y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
     ovCtx.stroke();
   }
-  if (g.cell) {
+  if (g.cell && !(APP_MODE === "bg" && cvMode)) {   // v6.121.50: in canvas-size mode the frame-anchored guides replace the canvas grid
     ovCtx.strokeStyle = "rgba(255,255,255,0.28)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
     for (let i = -po / TILE; i <= (W + po) / TILE; i++) { const x = v.x + i * TILE * v.s; if (x >= x0 && x <= x1) { ovCtx.moveTo(x, y0); ovCtx.lineTo(x, y1); } }
     for (let j = -po / TILE; j <= (H + po) / TILE; j++) { const y = v.y + j * TILE * v.s; if (y >= y0 && y <= y1) { ovCtx.moveTo(x0, y); ovCtx.lineTo(x1, y); } }
@@ -7314,8 +7316,8 @@ $("btnCellMode").addEventListener("click", () => {
 /* v6.8: Playfield/Zoo toggle retired — setTab owns layoutMode. */
 $("btnUndo").addEventListener("click", undo);
 $("btnRedo").addEventListener("click", redo);
-$("btnCellGrid").addEventListener("click", () => { const t = gridTab(); gridOn[t].cell = !gridOn[t].cell; syncGridButtons(); drawGrid(); rulesRender(); });
-$("btnPxGrid").addEventListener("click", () => { const t = gridTab(); gridOn[t].px = !gridOn[t].px; syncGridButtons(); drawGrid(); });
+$("btnCellGrid").addEventListener("click", () => { const t = gridTab(); gridOn[t].cell = !gridOn[t].cell; persistGridOn(); syncGridButtons(); drawGrid(); rulesRender(); });
+$("btnPxGrid").addEventListener("click", () => { const t = gridTab(); gridOn[t].px = !gridOn[t].px; persistGridOn(); syncGridButtons(); drawGrid(); });
 $("btnRoles").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); });
 $("btnCoords").addEventListener("click", (e) => { e.currentTarget.classList.toggle("on"); drawGrid(); rulesRender(); });   // drawGrid covers both tabs
 $("btnFit").addEventListener("click", () => fitView(activeTab));
@@ -8622,8 +8624,9 @@ function cvDraw() {
   if (gridOn.ed.cell && TILE * v.s >= 4) {   // v6.121.19 (James): with the cell grid on, the 16 px guides run past the canvas so the frame can be lined up with them; dragging stays free
     const r = viewport.getBoundingClientRect(), st = TILE * v.s;
     ovCtx.strokeStyle = "rgba(255,255,255,0.22)"; ovCtx.lineWidth = 1; ovCtx.beginPath();
-    for (let i = Math.floor(-v.x / st), i1 = Math.ceil((r.width - v.x) / st); i <= i1; i++) { const x = Math.round(v.x + i * st) + 0.5; ovCtx.moveTo(x, 0); ovCtx.lineTo(x, r.height); }
-    for (let j = Math.floor(-v.y / st), j1 = Math.ceil((r.height - v.y) / st); j <= j1; j++) { const y = Math.round(v.y + j * st) + 0.5; ovCtx.moveTo(0, y); ovCtx.lineTo(r.width, y); }
+    // v6.121.50 (James): anchored to the FRAME's corner, not the art — that is where the new canvas's grid will start, and it stays put while the art is dragged inside
+    for (let i = Math.floor(-x0 / st), i1 = Math.ceil((r.width - x0) / st); i <= i1; i++) { const x = Math.round(x0 + i * st) + 0.5; ovCtx.moveTo(x, 0); ovCtx.lineTo(x, r.height); }
+    for (let j = Math.floor(-y0 / st), j1 = Math.ceil((r.height - y0) / st); j <= j1; j++) { const y = Math.round(y0 + j * st) + 0.5; ovCtx.moveTo(0, y); ovCtx.lineTo(r.width, y); }
     ovCtx.stroke();
   }
   ovCtx.strokeStyle = "#8ecbff"; ovCtx.setLineDash([6, 4]); ovCtx.lineWidth = 2; ovCtx.strokeRect(x0, y0, w, h); ovCtx.setLineDash([]);
@@ -8908,11 +8911,6 @@ $("animSettings").addEventListener("click", (e) => {
   e.stopPropagation();
   if ($("animPop").style.display === "flex") { closeAnimPops(); return; }
   closeAnimPops(); animSyncSettings(); animPlacePop($("animPop"), $("animSettings"));
-  /* v6.121.46 DIAGNOSTIC (remove once the iPad short-strip scroll is understood): the strip's own measurements */
-  try {   // v6.121.47: shown inside the popover, where it stays
-    const h = $("animStrip"), c0 = h.children[0], cs = getComputedStyle(h);
-    $("animDiag").textContent = "v" + APP_VERSION + " strip " + h.scrollWidth + "/" + h.clientWidth + " scroll " + Math.round(h.scrollLeft) + " \u00b7 " + animCells().length + " cells \u00d7 " + (animCells()[0] ? animCells()[0].offsetWidth : 0) + " \u00b7 room " + (c0 ? c0.offsetWidth : 0) + " \u00b7 h " + h.clientHeight + "/" + h.scrollHeight + " \u00b7 ta " + cs.touchAction + " \u00b7 ov " + cs.overflowX + "/" + cs.overflowY + " \u00b7 " + (navigator.maxTouchPoints || 0) + "t \u00b7 " + TW + "\u00d7" + TH;
-  } catch (e) { $("animDiag").textContent = "diag failed: " + e.message; }
 });
 $("animAddFrame").addEventListener("click", () => {   // a blank frame after the current one (above it in the stack)
   if (animPlay) animStop();
@@ -9110,7 +9108,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.48";
+const APP_VERSION = "6.121.50";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
