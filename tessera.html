@@ -197,14 +197,14 @@
   .animCell.on canvas { border-color: #8ecbff; }
   .animHold { font-size: 9px; color: #8ecbff; height: 10px; line-height: 10px; letter-spacing: 1px; }   /* v6.121.40: sits above its frame */
   #animbar .optline.on, #animPop .optline.on { color: var(--accent); border-color: var(--accent); background: #383838; }
-  #animPop, #animFramePop { position: fixed; z-index: 80; display: none; background: rgba(18,18,18,.97); border: 1px solid #454545; border-radius: 10px; padding: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); font-size: 11px; letter-spacing: 1px; color: #cfcfcf; }
+  #animPop, #animFramePop, #animExportPop { position: fixed; z-index: 80; display: none; background: rgba(18,18,18,.97); border: 1px solid #454545; border-radius: 10px; padding: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); font-size: 11px; letter-spacing: 1px; color: #cfcfcf; }
   #animPop { flex-direction: column; gap: 10px; width: 300px; }
   #animPop .ahead { font-size: 10px; color: #9a9a9a; }
   #animPop .arow { display: flex; justify-content: space-between; align-items: center; }
   #animPop .aval { color: #8ecbff; }
   #animPop .seg { display: flex; gap: 6px; }
   #animPop input[type=range] { width: 100%; margin: 0; }
-  #animFramePop { flex-direction: row; align-items: center; gap: 8px; }
+  #animFramePop, #animExportPop { flex-direction: row; align-items: center; gap: 8px; }   /* v6.121.41: export choice under the Export button */
   #animFramePop .aval { color: #8ecbff; min-width: 24px; text-align: center; font-size: 13px; }
   #rulesbot { display: none; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 12px; flex: 0 0 auto;
     background: #1a1a1a; border-top: 1px solid var(--line); font-size: 12px; color: var(--text); }
@@ -744,6 +744,10 @@
   <span class="vsep"></span>
   <button class="optline" id="animDup" title="Duplicate this frame beside it"><span data-icon="copy"></span>DUPLICATE</button>
   <button class="optline" id="animDel" title="Delete this frame"><span data-icon="sqx"></span>DELETE</button>
+</div>
+<div id="animExportPop">
+  <button class="optline" id="animExportSheet" title="Every visible frame in one row of equal cells, left to right; holds are not repeated (Godot keeps durations per frame)"><span data-icon="share"></span><span id="animExportSheetLbl">SPRITE SHEET</span></button>
+  <button class="optline" id="animExportFrame" title="Just the current frame, canvas-sized"><span data-icon="share"></span>CURRENT FRAME</button>
 </div>
 <div id="rulesbot">
   <div class="rulesRow" id="rulesDepthRow" style="display:none"><span class="rulesLab">Border depth</span><span id="rulesDepthBtns" style="display:contents"></span></div>
@@ -7952,6 +7956,7 @@ function syncSaveLabel() {
     : APP_MODE === "bg" ? "Export the flattened sprite PNG" : "Export the tile sheet as a PNG named after the project";
 }
 $("btnSave").addEventListener("click", () => {
+  if (APP_MODE === "bg" && animOn()) { animExportMenu(); return; }   // v6.121.41: sheet or current frame
   if (APP_MODE === "bg") { if (float) floatFlatten(); sharePng(bgComposite().toDataURL("image/png"), CT.filename); return; }   // flattened stack
   if (roomExportActive()) {
     if (!resolved || !Object.keys(resolved).length) { status("Nothing to export — the Level is empty."); return; }
@@ -8820,6 +8825,7 @@ function animSetOn(on, quiet) {
   closeAnimPops();
   $("btnBgAnim").classList.toggle("on", A.on);
   $("animbar").style.display = A.on ? "flex" : "none"; $("stageCol").classList.toggle("animOn", A.on);   // v6.121.36: the panel floats; the status chip steps up
+  $("btnSave").title = A.on ? "Export \u2014 a sprite sheet of the frames, or the current frame" : "Export the flattened sprite PNG";   // v6.121.41
   if (!quiet) bgPersist();
   sizeOverlay(); fitView("ed"); blit(); drawGrid();
   if (A.on) animRenderStrip();
@@ -8855,7 +8861,7 @@ function animStop() {
   $("animPlayLbl").textContent = "PLAY"; $("animPlay").classList.remove("on");
   blit(); drawGrid(); bgRenderLayerList(); animRenderStrip();
 }
-function closeAnimPops() { $("animPop").style.display = "none"; $("animFramePop").style.display = "none"; }
+function closeAnimPops() { $("animPop").style.display = "none"; $("animFramePop").style.display = "none"; $("animExportPop").style.display = "none"; }
 function animPlacePop(pop, anchor) {   // above the anchor, kept on screen
   const r = anchor.getBoundingClientRect();
   pop.style.display = "flex";
@@ -8914,8 +8920,46 @@ $("animHoldMinus").addEventListener("click", () => animHoldAdjust(-1));
 $("animHoldPlus").addEventListener("click", () => animHoldAdjust(1));
 $("animDup").addEventListener("click", () => { const f = animFrames()[animFramePopK]; closeAnimPops(); if (!f) return; bgSelectLayer(f.idx, true); bgDuplicateLayer(); animRenderStrip(); blit(); });
 $("animDel").addEventListener("click", () => { const f = animFrames()[animFramePopK]; closeAnimPops(); if (!f) return; bgSelectLayer(f.idx, true); bgDeleteSelected(); animRenderStrip(); blit(); });
-["animPop", "animFramePop"].forEach((id) => $(id).addEventListener("click", (e) => e.stopPropagation()));
-document.addEventListener("pointerdown", (e) => { if (!animOn()) return; if (e.target.closest("#animPop, #animFramePop, #animSettings, .animCell")) return; closeAnimPops(); }, true);
+/* ---- export (v6.121.41): a sprite sheet of the visible frames, or the current frame ---- */
+function animSheetCanvas() {   // one row of canvas-sized cells, frame 1 at the left; hidden frames left out; holds not repeated
+  const fr = animFrames(), c = document.createElement("canvas");
+  c.width = Math.max(1, TW * fr.length); c.height = TH;
+  const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+  fr.forEach((f, i) => { g.save(); g.translate(i * TW, 0); animDrawFrame(g, f, 1, null); g.restore(); });
+  return { canvas: c, frames: fr.length };
+}
+function animFrameCanvas(k) {
+  const fr = animFrames(), c = document.createElement("canvas"); c.width = TW; c.height = TH;
+  if (fr[k]) animDrawFrame(c.getContext("2d"), fr[k], 1, null);
+  return c;
+}
+function animExportMenu() {
+  if (float) floatFlatten();
+  const pop = $("animExportPop");
+  if (pop.style.display === "flex") { closeAnimPops(); return; }
+  closeAnimPops();
+  const n = animFrames().length;
+  $("animExportSheetLbl").textContent = "SPRITE SHEET — " + n + " × " + TW + " × " + TH;
+  pop.style.display = "flex"; pop.style.bottom = "auto";
+  const r = $("btnSave").getBoundingClientRect(), pw = pop.offsetWidth;
+  if (!r.width) { pop.style.left = Math.round((window.innerWidth - pw) / 2) + "px"; pop.style.top = "64px"; return; }   // Export reached without its tray on screen: centre it
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.right - pw)) + "px";
+  pop.style.top = (r.bottom + 8) + "px";
+}
+$("animExportSheet").addEventListener("click", () => {
+  closeAnimPops();
+  const sh = animSheetCanvas(); if (!sh.frames) { status("No visible frames to export."); return; }
+  sharePng(sh.canvas.toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + ".sheet.png");
+  status("Sprite sheet — " + sh.frames + " frame" + (sh.frames > 1 ? "s" : "") + ", " + sh.canvas.width + " × " + sh.canvas.height + " px.");
+});
+$("animExportFrame").addEventListener("click", () => {
+  closeAnimPops();
+  const k = animCurrent();
+  sharePng(animFrameCanvas(k).toDataURL("image/png"), CT.filename.replace(/\.png$/, "") + ".frame" + (k + 1) + ".png");
+  status("Frame " + (k + 1) + " exported.");
+});
+["animPop", "animFramePop", "animExportPop"].forEach((id) => $(id).addEventListener("click", (e) => e.stopPropagation()));
+document.addEventListener("pointerdown", (e) => { if (!animOn()) return; if (e.target.closest("#animPop, #animFramePop, #animExportPop, #animSettings, #btnSave, .animCell")) return; closeAnimPops(); }, true);
 const BG_VIEWS = { tiled: { btn: "btnBgTiled", tray: "tiledbar" }, sym: { btn: "btnBgSym", tray: "symbar" } };
 function bgViewSync() {
   if (!bgDoc) return;
@@ -9012,7 +9056,7 @@ function bgBoot() {
   $("btnBgCanvas").style.display = ""; $("btnCanvas").style.display = "none";   // v6.121.18: canvas size lives in the header for sprites, not under the wrench
   $("btnBgTiled").style.display = ""; $("btnBgSym").style.display = ""; bgViewSync();
   $("btnBgAnim").style.display = ""; if (animCfg().on) animSetOn(true, true);   // v6.121.33: the mode is remembered in the project
-  $("btnSave").title = "Export the flattened sprite PNG";
+  if (!animOn()) $("btnSave").title = "Export the flattened sprite PNG";   // v6.121.41: animation mode sets its own wording
   $("btnProjects").title = "Projects — tilesets and sprites; opening this gallery or switching auto-saves the open one";
   $("btnCellGrid").title = "16px tile grid over the canvas";
   document.querySelector('.tool[data-tool="fill"]').title = "Fill — flood the contiguous region";
@@ -9052,7 +9096,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.40";
+const APP_VERSION = "6.121.41";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
