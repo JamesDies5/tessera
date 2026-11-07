@@ -188,10 +188,11 @@
   .animTop button.on { color: #8ecbff; }
   .animTop button:active { background: var(--line); }
   #animTrack { position: relative; }
-  #animStrip { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; align-items: flex-end; padding: 0 calc(50% - var(--cellW, 22px) / 2) 7px; overscroll-behavior-x: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch;   /* v6.121.43: the end padding is a live percentage, so the first and last frame stop exactly on the mark at any width */   /* v6.121.40: a 7 px gap under the frames holds the centre mark; v6.121.42: no CSS scroll-snap (iOS fought it on short tracks), the app snaps when the strip rests */ -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #animStrip { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; align-items: flex-end; padding: 0 0 7px; overscroll-behavior-x: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch;   /* v6.121.48: end room comes from two real spacer items (Safari did not count end padding toward the scrollable width for narrow cells) */   /* v6.121.43: the end padding is a live percentage, so the first and last frame stop exactly on the mark at any width */   /* v6.121.40: a 7 px gap under the frames holds the centre mark; v6.121.42: no CSS scroll-snap (iOS fought it on short tracks), the app snaps when the strip rests */ -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   #animStrip::-webkit-scrollbar { display: none; }
   #animCentre { position: absolute; left: 50%; bottom: 2px; width: 28px; height: 3px;   /* v6.121.40: centred between the frames and the panel's bottom edge */ margin-left: -14px; border-radius: 2px; background: #8ecbff; pointer-events: none; }
   .animCell { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; cursor: pointer; }
+  .animSpacer { flex: 0 0 auto; height: 1px; }
   .animCell canvas { border-radius: 5px; border: 2px solid var(--line); image-rendering: pixelated; display: block;
     background: conic-gradient(#232323 25%, #2c2c2c 0 50%, #232323 0 75%, #2c2c2c 0); background-size: 8px 8px; }
   .animCell.on canvas { border-color: #8ecbff; }
@@ -8755,8 +8756,9 @@ function animFrameThumb(f) {   // one frame, whole canvas, scaled to the strip
   return c;
 }
 let animProgScroll = 0, animScrollT = 0;
+const animCells = () => [...$("animStrip").querySelectorAll(".animCell")];   // v6.121.48: the frame cells, spacers excluded
 function animCentreOn(k, smooth) {   // v6.121.35: the current frame sits on the centre mark
-  const host = $("animStrip"), c = host.children[k]; if (!c) return;
+  const host = $("animStrip"), c = animCells()[k]; if (!c) return;
   const left = c.offsetLeft + c.offsetWidth / 2 - host.clientWidth / 2;
   clearTimeout(animProgScroll); animProgScroll = setTimeout(() => { animProgScroll = 0; }, smooth ? 450 : 80);
   host.scrollTo({ left, behavior: smooth ? "smooth" : "auto" });
@@ -8764,7 +8766,7 @@ function animCentreOn(k, smooth) {   // v6.121.35: the current frame sits on the
 function animNearestCentre() {
   const host = $("animStrip"), r = host.getBoundingClientRect(), cx = r.left + r.width / 2;
   let best = -1, bd = 1e9;
-  [...host.children].forEach((c, i) => { const rc = c.getBoundingClientRect(), d = Math.abs(rc.left + rc.width / 2 - cx); if (d < bd) { bd = d; best = i; } });
+  animCells().forEach((c, i) => { const rc = c.getBoundingClientRect(), d = Math.abs(rc.left + rc.width / 2 - cx); if (d < bd) { bd = d; best = i; } });
   return best;
 }
 let animScrubRaf = 0;
@@ -8774,7 +8776,7 @@ function animScrubFrame() {   // every scroll frame: show whatever is under the 
   const k = animNearestCentre(); if (k < 0) return;
   if (!animScrub || animScrub.k !== k) {
     animScrub = { k };
-    [...$("animStrip").children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+    animCells().forEach((cell, i) => cell.classList.toggle("on", i === k));
     blit();
   }
 }
@@ -8783,12 +8785,12 @@ function animScrubSettle() {   // the strip has come to rest: the frame under th
   const fr = animFrames(), k = animScrub ? animScrub.k : animNearestCentre();
   animScrub = null;
   if (k < 0 || !fr[k]) { blit(); return; }
-  const host = $("animStrip"), c = host.children[k], hr = host.getBoundingClientRect();
+  const host = $("animStrip"), c = animCells()[k], hr = host.getBoundingClientRect();
   const off = c ? (c.getBoundingClientRect().left + c.offsetWidth / 2) - (hr.left + host.clientWidth / 2) : 0;   // how far frame k sits from the mark
   if (animFrameOf(bgDoc.active) === k && Math.abs(off) < 1) return;   // v6.121.45: already selected and on the mark — nothing to do, and no scroll loop
   closeAnimPops();
   if (animFrameOf(bgDoc.active) !== k) bgSelectLayer(fr[k].idx, true);
-  [...host.children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+  animCells().forEach((cell, i) => cell.classList.toggle("on", i === k));
   blit(); drawGrid(); bgRenderLayerList();
   if (Math.abs(off) >= 1) animCentreOn(k, true);   // v6.121.42: the snap is ours, not CSS's
 }
@@ -8800,8 +8802,8 @@ $("animStrip").addEventListener("scroll", () => {   // v6.121.45: a user's scrol
 function animRenderStrip(full) {   // full === false: only move the highlight
   if (!animOn()) return;
   const host = $("animStrip"), fr = animFrames(), k = animCurrent();
-  if (full === false && host.children.length === fr.length) {
-    [...host.children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+  if (full === false && animCells().length === fr.length) {
+    animCells().forEach((cell, i) => cell.classList.toggle("on", i === k));
     animCentreOn(k, !animPlay);
     return;
   }
@@ -8818,9 +8820,11 @@ function animRenderStrip(full) {   // full === false: only move the highlight
     });
     host.appendChild(cell);
   });
-  const first = host.children[0];   // room at both ends so the first and last frame can reach the mark: half the strip minus half a cell, computed live by CSS (v6.121.43)
-  host.style.paddingLeft = ""; host.style.paddingRight = "";
-  host.style.setProperty("--cellW", (first ? first.offsetWidth : 44) + "px");
+  const first = host.children[0];   // v6.121.48: room at both ends so the first and last frame can reach the mark — two real spacer items (real content counts toward the scrollable width in every browser)
+  const w0 = first ? first.offsetWidth : 44, room = Math.max(0, Math.round(host.clientWidth / 2 - w0 / 2 - 6));   // minus the flex gap beside the spacer
+  const spL = document.createElement("div"), spR = document.createElement("div");
+  spL.className = spR.className = "animSpacer"; spL.style.width = spR.style.width = room + "px";
+  host.insertBefore(spL, host.firstChild); host.appendChild(spR);
   $("animCentre").style.display = fr.length ? "" : "none";
   animCentreOn(k, false);
 }
@@ -8907,7 +8911,7 @@ $("animSettings").addEventListener("click", (e) => {
   /* v6.121.46 DIAGNOSTIC (remove once the iPad short-strip scroll is understood): the strip's own measurements */
   try {   // v6.121.47: shown inside the popover, where it stays
     const h = $("animStrip"), c0 = h.children[0], cs = getComputedStyle(h);
-    $("animDiag").textContent = "v" + APP_VERSION + " strip " + h.scrollWidth + "/" + h.clientWidth + " scroll " + Math.round(h.scrollLeft) + " \u00b7 " + h.children.length + " cells \u00d7 " + (c0 ? c0.offsetWidth : 0) + " \u00b7 pad " + Math.round(parseFloat(cs.paddingLeft)) + " \u00b7 h " + h.clientHeight + "/" + h.scrollHeight + " \u00b7 ta " + cs.touchAction + " \u00b7 ov " + cs.overflowX + "/" + cs.overflowY + " \u00b7 " + (navigator.maxTouchPoints || 0) + "t \u00b7 " + TW + "\u00d7" + TH;
+    $("animDiag").textContent = "v" + APP_VERSION + " strip " + h.scrollWidth + "/" + h.clientWidth + " scroll " + Math.round(h.scrollLeft) + " \u00b7 " + animCells().length + " cells \u00d7 " + (animCells()[0] ? animCells()[0].offsetWidth : 0) + " \u00b7 room " + (c0 ? c0.offsetWidth : 0) + " \u00b7 h " + h.clientHeight + "/" + h.scrollHeight + " \u00b7 ta " + cs.touchAction + " \u00b7 ov " + cs.overflowX + "/" + cs.overflowY + " \u00b7 " + (navigator.maxTouchPoints || 0) + "t \u00b7 " + TW + "\u00d7" + TH;
   } catch (e) { $("animDiag").textContent = "diag failed: " + e.message; }
 });
 $("animAddFrame").addEventListener("click", () => {   // a blank frame after the current one (above it in the stack)
@@ -9106,7 +9110,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.47";
+const APP_VERSION = "6.121.48";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

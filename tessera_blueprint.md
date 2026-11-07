@@ -1,12 +1,12 @@
 # Tessera Blueprint
 
-**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.47. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
+**Status:** rebuilt 2026-10-03 against `tessera.html` v6.121.10 (the first documentation sweep in Claude Code); current build v6.121.48. §1 describes the app as it is, checked against the file. §2, §3, §6, §6a, §6b and §8 are the standing design decisions, carried over word for word from the 2026-09-10 blueprint under their old numbers, so older references still land. §9 is the invariants, brought up to date.
 **Purpose:** what Tessera is today and why it is built that way.
 **Sibling documents:** `CLAUDE.md` (how to work here, and where things are in the file) · `tessera_roadmap.md` (what is next, in order; the old §4, §5 plan, §7 and §10 moved there) · `tessera_history.md` (the old blueprint, frozen: the build-by-build record; never take current state from it). In the game repo (`/Users/jamesdies/platformer-test`): `atlas/atlas-roadmap.md` for ATLAS, and `global/palettes/palette_canon.md`, the only palette canon.
 
 ---
 
-## 1. What Tessera is today (v6.121.47)
+## 1. What Tessera is today (v6.121.48)
 
 One HTML file, no build step, used on an iPad from a Home Screen shortcut with touch and Apple Pencil. It is not a keyboard app (James 2026-10-03: he only ever types file names); never design around keyboard shortcuts.
 
