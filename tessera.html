@@ -179,7 +179,7 @@
   #rulesbar .optline svg { width: 14px; height: 14px; }
   /* Animation mode (v6.121.33, James's QOL card): timeline under the viewport, two popovers */
   #animbar { display: none; position: absolute; left: 0; right: 0; bottom: 10px; z-index: 20; justify-content: center; padding: 0 12px; pointer-events: none; }   /* v6.121.35/36: Procreate's floating bar, over the canvas; taps never reach the viewport beneath */
-  #animPanel { pointer-events: auto; width: min(92%, 900px); background: rgba(24,24,24,.96); border: 1px solid var(--line); border-radius: 14px; padding: 1px 8px 3px; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+  #animPanel { pointer-events: auto; width: min(92%, 900px); background: rgba(24,24,24,.96); border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px 3px; box-shadow: 0 6px 24px rgba(0,0,0,.45); }   /* v6.121.37: a little air above the buttons */
   .animTop { display: flex; align-items: center; gap: 6px; }
   .animTop .spacer { flex: 1; }
   .animTop button { background: none; border: none; color: var(--text); font: inherit; font-size: 10px; letter-spacing: 1px; padding: 3px 6px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
@@ -8705,7 +8705,8 @@ function animFrameOf(i) {   // which frame holds layer i (a member maps to its g
   return animFrames().findIndex((f) => f.idx === top);
 }
 let animPlay = null;   // { k, dir, timer } while playing
-function animCurrent() { if (animPlay) return animPlay.k; const k = animFrameOf(bgDoc.active); return k < 0 ? 0 : k; }
+let animScrub = null;   // { k } while the strip is being scrubbed: the canvas follows the mark at once, the layer selection catches up when it settles (v6.121.37)
+function animCurrent() { if (animPlay) return animPlay.k; if (animScrub) return animScrub.k; const k = animFrameOf(bgDoc.active); return k < 0 ? 0 : k; }
 function animDisplayKey() { const A = animCfg(); return animCurrent() + "," + A.onionFrames + "," + A.onionOpacity + "," + A.mode + "," + (A.onionTint ? "t" : "a") + "," + (animPlay ? "p" : "s"); }
 const animComp = document.createElement("canvas");
 function animTinted(i, col) {
@@ -8757,16 +8758,32 @@ function animNearestCentre() {
   [...host.children].forEach((c, i) => { const rc = c.getBoundingClientRect(), d = Math.abs(rc.left + rc.width / 2 - cx); if (d < bd) { bd = d; best = i; } });
   return best;
 }
-function animScrubSettle() {   // the frame under the mark becomes current while the strip glides
+let animScrubRaf = 0;
+function animScrubFrame() {   // every scroll frame: show whatever is under the mark, nothing heavier (v6.121.37)
+  animScrubRaf = 0;
   if (!animOn() || animPlay || animProgScroll) return;
-  const k = animNearestCentre(), fr = animFrames();
-  if (k < 0 || !fr[k] || k === animCurrent()) return;
+  const k = animNearestCentre(); if (k < 0) return;
+  if (!animScrub || animScrub.k !== k) {
+    animScrub = { k };
+    [...$("animStrip").children].forEach((cell, i) => cell.classList.toggle("on", i === k));
+    blit();
+  }
+}
+function animScrubSettle() {   // the strip has come to rest: the frame under the mark becomes the selected layer
+  if (!animOn() || animPlay) return;
+  const fr = animFrames(), k = animScrub ? animScrub.k : animNearestCentre();
+  animScrub = null;
+  if (k < 0 || !fr[k]) { blit(); return; }
   closeAnimPops();
-  bgSelectLayer(fr[k].idx, true);
+  if (animFrameOf(bgDoc.active) !== k) bgSelectLayer(fr[k].idx, true);
   [...$("animStrip").children].forEach((cell, i) => cell.classList.toggle("on", i === k));
   blit(); drawGrid(); bgRenderLayerList();
 }
-$("animStrip").addEventListener("scroll", () => { if (animProgScroll || animPlay) return; clearTimeout(animScrollT); animScrollT = setTimeout(animScrubSettle, 60); });
+$("animStrip").addEventListener("scroll", () => {
+  if (animProgScroll || animPlay) return;
+  if (!animScrubRaf) animScrubRaf = requestAnimationFrame(animScrubFrame);
+  clearTimeout(animScrollT); animScrollT = setTimeout(animScrubSettle, 120);
+});
 function animRenderStrip(full) {   // full === false: only move the highlight
   if (!animOn()) return;
   const host = $("animStrip"), fr = animFrames(), k = animCurrent();
@@ -9032,7 +9049,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.36";
+const APP_VERSION = "6.121.37";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
