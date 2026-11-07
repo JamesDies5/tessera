@@ -2626,6 +2626,7 @@ const projType = (rec) => (rec && (rec.type === "bg" || (rec.keys && rec.keys[PR
 const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const PROJ_ACTIVE = "tessera.activeProject";
 const PROJ_SWITCHING = "tessera.projSwitching";   // v6.121.21: the id of a project whose keys are being loaded; present at boot = the switch was cut short
+const PROJ_GALLERY = "tessera.galleryOpen";   // v6.121.62: "1" while the Projects view is the place the user is; a reload comes back to it
 /* v6.106 — exports carry the project's name (James 2026-09-07): <slug>.png,
    <slug>.rules.json, <slug>.room.json — the same names the GitHub sync uses,
    instead of the format's generic autotile_template / tessera_v3 names. */
@@ -2670,6 +2671,7 @@ function projNewRecord(name) {
   return { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, createdAt: now, savedAt: now, keys: {} };
 }
 let projReloading = false;   // v6.121.20: set once another project's keys are in localStorage and a reload is coming; saves stand down until then
+try { if (localStorage.getItem(PROJ_GALLERY) === "1") $("projOverlay").classList.add("show"); } catch (e) {}   // v6.121.62: straight back into the gallery, before the project behind it has even drawn
 function saveActiveProject() {
   if (!activeProjectId || projReloading) return Promise.resolve();
   return projGet(activeProjectId).then((rec) => {
@@ -2684,7 +2686,7 @@ function projLoadKeys(rec) {
      write the new project's art into the old project's record (Rope Sprites got Mini Sentry's
      art, 2026-11-06). So: the active id follows the keys at once, and saves stand down. */
   activeProjectId = rec.id; projReloading = true;
-  try { localStorage.setItem(PROJ_SWITCHING, rec.id); } catch (e) {}   // v6.121.21: if the app dies before the last line below, boot finishes the switch from the library
+  try { localStorage.setItem(PROJ_SWITCHING, rec.id); localStorage.removeItem(PROJ_GALLERY); } catch (e) {}   // v6.121.21: if the app dies before the last line below, boot finishes the switch from the library; v6.121.62: opening a project leaves the gallery
   for (const k of PROJECT_KEYS) {
     try {
       if (rec.keys && rec.keys[k] !== undefined) localStorage.setItem(k, rec.keys[k]);
@@ -2912,7 +2914,7 @@ function projRenderGallery() {
       const ptype = projType(rec);
       if (projFilter !== "all" && ptype !== projFilter) continue;
       const card = document.createElement("div");
-      card.className = "projCard" + (rec.id === activeProjectId ? " active" : "");
+      card.className = "projCard";   // v6.121.62: no "open" marker — in the gallery nothing is open
       card.dataset.pid = rec.id;
       const th = document.createElement("div"); th.className = "thumb";
       const img = document.createElement("img"); img.src = projThumbSrc(rec); th.appendChild(img);
@@ -2929,7 +2931,7 @@ function projRenderGallery() {
       th.appendChild(tags);
       const meta = document.createElement("div"); meta.className = "meta";
       const nm = document.createElement("div"); nm.className = "pname";
-      nm.textContent = rec.name + (rec.id === activeProjectId ? "  \u2022  open" : "");
+      nm.textContent = rec.name;
       const dt = document.createElement("div"); dt.className = "pdate"; dt.textContent = projFmtDate(rec.savedAt);
       meta.appendChild(nm); meta.appendChild(dt);
       const acts = document.createElement("div"); acts.className = "pacts";
@@ -2955,7 +2957,7 @@ function projRenderGallery() {
       });
       mk("Delete", () => projGet(rec.id).then((fresh) => {   // v6.84.2: fresh record, so a project pushed since render is removed from the repo too
         const r = fresh || rec;
-        if (r.id === activeProjectId) { status("The open project can't be deleted \u2014 switch to another one first."); return; }
+        /* v6.121.62: the project loaded behind the gallery can be deleted too — the next one (or a fresh Untitled) takes its place and the gallery comes back */
         /* v6.84.1: a project that has been pushed (or pulled) has a folder in
            the repo; Delete removes that too. Repo first, then the record, so a
            failed repo delete leaves the project in the library to retry from. */
@@ -2964,7 +2966,15 @@ function projRenderGallery() {
         const list = folders.map((x) => x + "/").join(", ");
         const where = remote ? " from Tessera and from GitHub (" + list + ")" : (folders.length ? " from Tessera (no GitHub token set — the repo folder " + list + " stays)" : "");
         if (!confirm('Delete "' + r.name + '" forever' + where + '? This cannot be undone.')) return;
-        const local = () => projDel(r.id).then(projRenderGallery).catch(() => status("Delete failed."));
+        const local = () => projDel(r.id).then(() => {
+          if (r.id !== activeProjectId) return projRenderGallery();
+          return projList().then((all) => {
+            all.sort((a, b) => (typeof a.order === "number" ? a.order : 0) - (typeof b.order === "number" ? b.order : 0));
+            const go = (nrec) => { projLoadKeys(nrec); try { localStorage.setItem(PROJ_GALLERY, "1"); } catch (e) {} location.reload(); };
+            if (all[0]) return go(all[0]);
+            const fresh = projNewRecord("Untitled Project"); return projPut(fresh).then(() => go(fresh));
+          });
+        }).catch(() => status("Delete failed."));
         if (!remote) { local(); return; }
         status("Removing " + list + " from GitHub…");
         let del = Promise.resolve();
@@ -2991,7 +3001,7 @@ function projRenderGallery() {
       card.appendChild(th); card.appendChild(meta); card.appendChild(acts); card.appendChild(bar); card.appendChild(note);
       card.addEventListener("click", () => {
         if (projSortMode) return;   // v6.121.30: in Sort mode a tap is the start of a drag, not an open
-        if (rec.id === activeProjectId) { projSortOff(); projStopAnims(); closeImportPop(); $("projOverlay").classList.remove("show"); return; }   // v6.121.57: the open card is the way back
+        if (rec.id === activeProjectId) { closeGallery(); return; }   // the project loaded behind the gallery: no reload needed
         projSwitch(rec);
       });
       if (projSortMode) projSortBind(card);
@@ -2999,10 +3009,20 @@ function projRenderGallery() {
     }
   }).catch(() => status("Couldn't read the project library."));
 }
+function openGallery(atBoot) {   // v6.121.62: the Projects view is a place of its own; a reload comes back to it
+  try { localStorage.setItem(PROJ_GALLERY, "1"); } catch (e) {}
+  projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the loaded project's own kind, not All
+  const show = () => { projRenderGallery(); $("projOverlay").classList.add("show"); setTimeout(projFitThumbs, 50); };
+  if (atBoot) show(); else saveActiveProject().then(show);
+}
+function closeGallery() {
+  try { localStorage.removeItem(PROJ_GALLERY); } catch (e) {}
+  projSortOff(); projStopAnims(); closeImportPop();
+  $("projOverlay").classList.remove("show");
+}
 $("btnProjects").addEventListener("click", () => {
   if (typeof cvMode !== "undefined" && cvMode) cvCancel();   // v6.121.18
-  projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the open project's own kind, not All
-  saveActiveProject().then(() => { projRenderGallery(); $("projOverlay").classList.add("show"); projFitThumbs(); });
+  openGallery(false);
 });
 /* v6.121.57: no Close button — tapping the open project's card is the way back, as in Procreate */
 /* ==== Sort mode (v6.121.30, James) ====================================
@@ -9336,7 +9356,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.61";
+const APP_VERSION = "6.121.62";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -9638,6 +9658,7 @@ $("btnConvert").addEventListener("click", () => {
   setContract(choice);
   sizeOverlay(); fitView("pv");
 })();
+try { if (localStorage.getItem(PROJ_GALLERY) === "1") openGallery(true); } catch (e) {}   // v6.121.62: the Projects view is where the user was
 </script>
 </body>
 </html>
