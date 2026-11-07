@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.62** (2026-11-07).
+be a change there. Current: **v6.121.63** (2026-11-07).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -190,5 +190,6 @@ gallery cards under a mouse or Pencil hover, frame 1 as the still, 55 adds a fil
 and tap-to-select ordering, 57 tidies the gallery bar: one Import button with a panel, a plus for New, no Close, 58–59 fix gallery cards at 236 px
 so they never shrink and the 13" iPad shows four per row in portrait, 60 puts the brand, version and Reload in the
 Projects bar, 61 makes card height rigid too so the gallery scrolls instead of squeezing, 62 makes the Projects view a remembered
-top-level state with no open marker) (header button, timeline, current frame + onion skins, Loop /
+top-level state with no open marker, 63 adds a `theme-color` tag so Safari's status bar stays dark gray behind the Projects view
+instead of going white) (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. **Remaining on the card:** project folders in the gallery (mock first).
