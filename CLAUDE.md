@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.64** (2026-11-07).
+be a change there. Current: **v6.121.65** (2026-11-07).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -151,9 +151,10 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
   is how it handles slopes (blueprint §1.2, §8; roadmap §1h).
 - `RIM_WEDGES: "terminate"` on the 5×5 sets is the chosen look, not a gap.
 - The Level margin cells render at 37.5 % opacity by design; Export Room PNG leaves them out by design.
-- The iPad status / tab bar colour is **sampled by Safari from the top row of page pixels** (iOS 26 ignores
-  `theme-color`; WebKit's `PageColorSampler`). Anything painted at the top of the page in any view must be the
-  page's own gray gradient, not a fixed overlay with another colour, or the bar goes white (v6.121.63–64).
+- The iPad status / tab bar colour comes from **the page's solid `background-color`** on html/body (iOS 26 ignores
+  `theme-color` and gradients; a transparent page colour gives a white bar), and a **position:fixed element at the
+  top edge takes over** with its own colour, a full-screen one counting as a dimming backdrop. Keep the solid colour
+  on html/body and keep full-screen overlays position:absolute (v6.121.63–65; roadmap §0 has the sources).
 - A Home Screen web app on iOS has **its own storage**: projects and the GitHub token live in the
   shortcut, not in Safari. Never add `apple-mobile-web-app-capable`. Never advise deleting/re-adding
   the shortcut without a push first.
@@ -193,6 +194,6 @@ gallery cards under a mouse or Pencil hover, frame 1 as the still, 55 adds a fil
 and tap-to-select ordering, 57 tidies the gallery bar: one Import button with a panel, a plus for New, no Close, 58–59 fix gallery cards at 236 px
 so they never shrink and the 13" iPad shows four per row in portrait, 60 puts the brand, version and Reload in the
 Projects bar, 61 makes card height rigid too so the gallery scrolls instead of squeezing, 62 makes the Projects view a remembered
-top-level state with no open marker, 63 adds a `theme-color` tag for the status bar, which iOS 26 ignores, so 64 gives the Projects view the page's own gray
-gradient behind its bar and drops its position:fixed, because Safari now samples the top row of pixels for the bar colour) (header button, timeline, current frame + onion skins, Loop /
+top-level state with no open marker, 63 adds a `theme-color` tag for the status bar, which iOS 26 ignores, 64 drops the gallery overlay's position:fixed, and 65 gives the page a solid
+background-color under its gradient, the one thing iPad Safari 26 reads for the bar colour) (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. **Remaining on the card:** project folders in the gallery (mock first).

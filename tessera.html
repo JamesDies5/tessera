@@ -16,6 +16,7 @@
   * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   html, body { margin: 0; height: 100dvh; overflow: hidden; overscroll-behavior: none;
     background: radial-gradient(circle at 30% -10%, var(--bg1) 0%, var(--bg0) 60%);
+    background-color: var(--bg0);   /* v6.121.65: a solid colour under the gradient. iPad Safari 26 colours its status / tab bar from the page's background-color (it ignores gradients and theme-color); with none set the bar fell back to white. */
     color: var(--text); font-family: ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 13px; }
   body { display: flex; flex-direction: column; }
 
@@ -171,7 +172,7 @@
     padding: 5px 8px; color: var(--text); font-size: 11px; max-width: 250px; pointer-events: none; display: none; line-height: 1.45; }
 
   /* ---- Projects gallery (v6.39) ---- */
-  #projOverlay { position: absolute; inset: 0; z-index: 80; display: none; flex-direction: column; background: radial-gradient(circle at 30% -10%, var(--bg1) 0%, var(--bg0) 60%); }   /* v6.121.64: same gradient as the page and not position:fixed, so Safari's top-of-page colour sample (which tints the iPad status / tab bar; iOS 26 ignores theme-color) reads the gallery exactly as it reads a project. The near-black stays on the grid below. */
+  #projOverlay { position: absolute; inset: 0; z-index: 80; display: none; flex-direction: column; background: #121212; }   /* v6.121.64: not position:fixed — iPad Safari 26 lets a fixed layer at the top edge take over the status / tab bar colour and treated this full-screen one as a dimming backdrop (white bar). As ordinary content it leaves the bar alone. */
   /* v6.85: Rules tab — the Template tab's chassis. The sheet is the template
      viewport; rule modes sit in the upper tray (#rulesbar, like #varybar),
      the selected rule's properties in the lower tray (#rulesbot, like #selbar). */
@@ -254,7 +255,7 @@
   #projHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
   #projHead h2 { font-size: 16px; margin: 0; color: #ddd; font-weight: 600; }
   #projHead .spacer { flex: 1; }
-  #projGrid { background: #121212; flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); grid-auto-rows: max-content; justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; min-height: 0; scrollbar-width: none; }   /* v6.121.61: rows take their content height and the grid scrolls; nothing can squeeze the cards; no scrollbar track, so a desktop browser keeps the iPad's row count */
+  #projGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, 236px); grid-auto-rows: max-content; justify-content: start; gap: 14px; padding: 16px 18px; align-content: start; min-height: 0; scrollbar-width: none; }   /* v6.121.61: rows take their content height and the grid scrolls; nothing can squeeze the cards; no scrollbar track, so a desktop browser keeps the iPad's row count */
   #projGrid::-webkit-scrollbar { display: none; }   /* v6.121.58/59 (James): cards keep one size, as Procreate's do; 236 px = four per row in portrait on the 13" iPad Pro, five in landscape */
   .projCard { background: #1d1d1d; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-self: start; }
   .projCard.active { border-color: #8fb996; }
@@ -9357,7 +9358,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.64";
+const APP_VERSION = "6.121.65";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
