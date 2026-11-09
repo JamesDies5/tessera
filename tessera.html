@@ -315,6 +315,9 @@
   .lyRow.stackTop { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 4px 0 -1px #505050, 0 8px 0 -2px #3e3e3e; }
   .lyRow.member { padding-left: 24px; }
   .lyRow.folder .lyName { color: #8ecbff; display: flex; align-items: flex-start; gap: 6px; overflow: visible; -webkit-line-clamp: unset; }   /* v6.121.23/28 (James): groups read blue, with a folder icon; a wrapped name hangs under the text, not the icon */
+  .lyRow.pin .lyName { color: #ff8fb8; display: flex; align-items: flex-start; gap: 6px; overflow: visible; -webkit-line-clamp: unset; }   /* v6.121.66 (James): a layer pinned to every frame reads pink, with a pin icon */
+  .lyRow.pin .lyName svg { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; }
+  .lyRow.pin .lyName .lyText { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .lyRow.folder .lyName svg { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; }
   .lyRow.folder .lyName .lyText { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .lyDisc svg { transition: transform .15s ease; }
@@ -2571,6 +2574,7 @@ const ICONS = {
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
   film: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4"/><path d="M11 10l3 2-3 2z" fill="currentColor"/>',
   play: '<path d="M7 5l12 7-12 7z" fill="currentColor"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>',
@@ -2807,6 +2811,7 @@ function projAnimateCard(img, rec) {
   if (!doc || !doc.anim || !doc.anim.on || !Array.isArray(doc.layers)) return;
   const W = doc.w, H = doc.h, L = doc.layers, frames = [];
   L.forEach((e) => {
+    if (e.pin && !e.folder) return;   // v6.121.66: a pinned reference layer is not a frame and stays off the card
     if (e.kind === "folder") { if (e.visible) frames.push({ hold: e.hold, members: L.filter((m) => m.kind !== "folder" && m.folder === e.id && m.visible) }); }
     else if (!e.folder && e.visible) frames.push({ hold: e.hold, members: [e] });
   });
@@ -5948,7 +5953,7 @@ let bgSeenKey = "", bgSeenCv = null;
 function bgSeenComposite() {
   if (!animOn()) return bgComposite();
   const key = edGen + "|" + animCurrent() + "|" + TW + "x" + TH;
-  if (bgSeenKey !== key || !bgSeenCv) { bgSeenKey = key; bgSeenCv = animFrameCanvas(animCurrent()); }
+  if (bgSeenKey !== key || !bgSeenCv) { bgSeenKey = key; bgSeenCv = animFrameCanvas(animCurrent(), true); }
   return bgSeenCv;
 }
 function pickAt(x, y) {
@@ -8592,6 +8597,7 @@ function openLayerOpts(row) {
   const add = (label, fn, cls) => { const b = document.createElement("button"); b.textContent = label; if (cls) b.className = cls; b.addEventListener("click", () => { closeLayerOpts(); fn(); }); o.appendChild(b); };
   const rule = () => o.appendChild(document.createElement("hr"));
   add("Rename", bgRenameLayer);
+  if (animOn() && !L.folder && !multi) add(L.pin ? "Unpin" : "Pin to All Frames", animTogglePin);   // v6.121.66
   if (!folder) {
     add("Select", () => { if (bgSelectLayerPixels()) status("Selected the layer\u2019s pixels."); });
     add("Copy", () => { if (bgSelectLayerPixels()) doCopy(); });
@@ -8628,15 +8634,15 @@ function bgRenderLayerList() {
     return th;
   };
   for (let i = bgDoc.layers.length - 1; i >= 0; i--) {   // top of the stack first, like Procreate
-    const L = bgDoc.layers[i], folder = isFolder(L), F = folder ? null : bgFolderOf(L);
+    const L = bgDoc.layers[i], folder = isFolder(L), F = folder ? null : bgFolderOf(L), pinned = animOn() && animIsPin(L);
     if (F && F.collapsed) continue;   // tucked away under its header
     const row = document.createElement("div");
-    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (bgMulti.has(L.id) ? " multi" : "") + (L.visible ? "" : " hidden") + (folder ? " folder" : "") + (F ? " member" : "");
+    row.className = "lyRow" + (i === bgDoc.active ? " on" : "") + (bgMulti.has(L.id) ? " multi" : "") + (L.visible ? "" : " hidden") + (folder ? " folder" : "") + (F ? " member" : "") + (pinned ? " pin" : "");
     row.dataset.idx = i; if (folder) row.dataset.fid = L.id; if (F) row.dataset.folder = F.id;
     const grip = document.createElement("span"); grip.className = "lyGrip"; grip.innerHTML = svg("grip"); grip.title = folder ? "Drag to move the whole group" : "Drag to reorder \u2014 into or out of an expanded group";
     const th = thumbOf(folder ? bgFolderComposite(L.id) : bgLayers[i].canvas);
     const nm = document.createElement("span"); nm.className = "lyName";
-    if (folder) { nm.innerHTML = svg("folder"); const t = document.createElement("span"); t.className = "lyText"; t.textContent = L.name; nm.appendChild(t); } else nm.textContent = L.name;   // v6.121.23–28: folder icon, then the name in its own wrapping box
+    if (folder || pinned) { nm.innerHTML = svg(pinned ? "pin" : "folder"); const t = document.createElement("span"); t.className = "lyText"; t.textContent = L.name; nm.appendChild(t); } else nm.textContent = L.name;   // v6.121.23–28: folder icon, then the name in its own wrapping box
     row.appendChild(grip); row.appendChild(th); row.appendChild(nm);
     if (folder) {
       const tg = document.createElement("button"); tg.className = "lyBtn lyDisc" + (L.collapsed ? " closed" : ""); tg.innerHTML = svg("chevron"); tg.title = L.collapsed ? "Expand group" : "Collapse group";
@@ -8957,10 +8963,36 @@ function animHold(L) { const h = L && L.hold ? Math.floor(L.hold) : 1; return Ma
 function animFrames() {   // [{ idx, L, members }], bottom to top, visible entries only
   const out = [];
   bgDoc.layers.forEach((L, i) => {
+    if (animIsPin(L)) return;   // v6.121.66: a pinned layer shows on every frame and is not one itself
     if (isFolder(L)) { if (L.visible) out.push({ idx: i, L, members: bgMembersOf(L.id).filter((k) => bgDoc.layers[k].visible) }); }
     else if (!L.folder && L.visible) out.push({ idx: i, L, members: [i] });
   });
   return out;
+}
+/* ---- pinned layers (v6.121.66, James): a top-level layer or group marked `pin` is a reference that shows on every
+   frame — his "piece sheet" of character parts, off to the side at the bottom of the stack. It is not a frame, not in
+   the timeline, and never exported (sheet, frame, gallery card). Only meaningful in animation mode. ---- */
+function animIsPin(L) { return !!L && !!L.pin && !L.folder; }   // top-level entries only; a member of a group is never pinned
+function animPins() {   // [{ idx, L, members }], bottom to top, visible ones only
+  const out = [];
+  bgDoc.layers.forEach((L, i) => { if (animIsPin(L) && L.visible) out.push({ idx: i, L, members: isFolder(L) ? bgMembersOf(L.id).filter((k) => bgDoc.layers[k].visible) : [i] }); });
+  return out;
+}
+function animPinActive() {   // is the selected layer (or its group) pinned?
+  const L = bgDoc.layers[bgDoc.active]; if (!L) return false;
+  return animIsPin(L.folder ? bgDoc.layers.find((F) => isFolder(F) && F.id === L.folder) : L);
+}
+let animLastK = 0;   // the frame last shown: it stays on screen while a pinned (or hidden) layer is the selected one
+function animTogglePin() {
+  const L = bgDoc.layers[bgDoc.active]; if (!L || L.folder || !animOn()) return;
+  if (animPlay) animStop();
+  if (float) floatFlatten();
+  const k = animCurrent();
+  bgStructSnapshot();
+  if (L.pin) delete L.pin; else L.pin = true;
+  animLastK = Math.max(0, Math.min(animFrames().length - 1, k));
+  edGen++; bgPersist(); bgRenderLayerList(); animRenderStrip(); blit(); drawGrid();
+  status(L.pin ? "\u201c" + L.name + "\u201d is pinned \u2014 it shows on every frame, stays out of the timeline and is never exported." : "\u201c" + L.name + "\u201d is unpinned \u2014 it is a frame again.");
 }
 function animFrameOf(i) {   // which frame holds layer i (a member maps to its group); -1 when hidden
   const L = bgDoc.layers[i]; if (!L) return -1;
@@ -8969,7 +9001,11 @@ function animFrameOf(i) {   // which frame holds layer i (a member maps to its g
 }
 let animPlay = null;   // { k, dir, timer } while playing
 let animScrub = null;   // { k } while the strip is being scrubbed: the canvas follows the mark at once, the layer selection catches up when it settles (v6.121.37)
-function animCurrent() { if (animPlay) return animPlay.k; if (animScrub) return animScrub.k; const k = animFrameOf(bgDoc.active); return k < 0 ? 0 : k; }
+function animCurrent() {
+  if (animPlay) return animPlay.k; if (animScrub) return animScrub.k;
+  const k = animFrameOf(bgDoc.active); if (k >= 0) { animLastK = k; return k; }
+  return Math.max(0, Math.min(animFrames().length - 1, animLastK));   // v6.121.66: a pinned layer is selected — keep showing the frame we were on
+}
 function animDisplayKey() { const A = animCfg(); return animCurrent() + "," + A.onionFrames + "," + A.onionOpacity + "," + A.mode + "," + (A.onionTint ? "t" : "a") + "," + (animPlay ? "p" : "s"); }
 const animComp = document.createElement("canvas");
 function animTinted(i, col) {
@@ -8985,6 +9021,8 @@ function animDisplayComposite() {
   const A = animCfg(), fr = animFrames(), n = fr.length;
   animComp.width = TW; animComp.height = TH;
   const g = animComp.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, TW, TH);
+  const pins = animPins(), lowest = n ? fr[0].idx : Infinity;   // v6.121.66
+  pins.forEach((p) => { if (p.idx < lowest) animDrawFrame(g, p, 1, null); });
   if (!n) return animComp;
   const k = Math.min(animCurrent(), n - 1);
   if (!animPlay && A.onionFrames > 0 && A.onionOpacity > 0 && n > 1) {   // onion skins, farthest first so nearer ones sit on top
@@ -8998,6 +9036,7 @@ function animDisplayComposite() {
     }
   }
   animDrawFrame(g, fr[k], 1, null);
+  pins.forEach((p) => { if (p.idx > lowest) animDrawFrame(g, p, 1, null); });
   return animComp;
 }
 function animFrameThumb(f) {   // one frame, whole canvas, scaled to the strip
@@ -9040,9 +9079,11 @@ function animScrubSettle() {   // the strip has come to rest: the frame under th
   if (k < 0 || !fr[k]) { blit(); return; }
   const host = $("animStrip"), c = animCells()[k], hr = host.getBoundingClientRect();
   const off = c ? (c.getBoundingClientRect().left + c.offsetWidth / 2) - (hr.left + host.clientWidth / 2) : 0;   // how far frame k sits from the mark
-  if (animFrameOf(bgDoc.active) === k && Math.abs(off) < 1) return;   // v6.121.45: already selected and on the mark — nothing to do, and no scroll loop
+  const held = animPinActive();   // v6.121.66: a pinned layer stays selected; only the frame shown with it changes
+  if ((held ? animLastK : animFrameOf(bgDoc.active)) === k && Math.abs(off) < 1) return;   // v6.121.45: already selected and on the mark — nothing to do, and no scroll loop
   closeAnimPops();
-  if (animFrameOf(bgDoc.active) !== k) bgSelectLayer(fr[k].idx, true);
+  if (held) animLastK = k;
+  else if (animFrameOf(bgDoc.active) !== k) bgSelectLayer(fr[k].idx, true);
   animCells().forEach((cell, i) => cell.classList.toggle("on", i === k));
   blit(); drawGrid(); bgRenderLayerList();
   if (Math.abs(off) >= 1) animCentreOn(k, true);   // v6.121.42: the snap is ours, not CSS's
@@ -9068,7 +9109,7 @@ function animRenderStrip(full) {   // full === false: only move the highlight
     cell.addEventListener("click", (e) => {
       e.stopPropagation();
       if (animPlay) animStop();
-      if (i === animCurrent()) { animFramePopOpen(cell, i); return; }   // Procreate: tap the selected frame for its options
+      if (i === animCurrent() && !animPinActive()) { animFramePopOpen(cell, i); return; }   // Procreate: tap the selected frame for its options (v6.121.66: from a pinned layer the tap goes to the frame first)
       closeAnimPops(); bgSelectLayer(f.idx);
     });
     host.appendChild(cell);
@@ -9091,6 +9132,7 @@ function animSetOn(on, quiet) {
   if (!quiet) bgPersist();
   sizeOverlay(); fitView("ed"); blit(); drawGrid();
   if (A.on) animRenderStrip();
+  bgRenderLayerList();   // v6.121.66: pinned rows show their pink only in animation mode
   if (!quiet) status(A.on ? "Animation — every layer or group is a frame, bottom to top. Tap a frame to select it; tap it again for its hold." : "Animation off — all layers show again.");
 }
 function animStart() {
@@ -9119,7 +9161,9 @@ function animStop() {
   if (!animPlay) return;
   clearTimeout(animPlay.timer);
   const k = animPlay.k; animPlay = null;
-  const fr = animFrames(); if (fr[k]) bgSelectLayer(fr[k].idx, true);
+  const fr = animFrames();
+  if (animPinActive()) animLastK = Math.max(0, Math.min(fr.length - 1, k));   // v6.121.66
+  else if (fr[k]) bgSelectLayer(fr[k].idx, true);
   $("animPlayLbl").textContent = "PLAY"; $("animPlay").classList.remove("on");
   blit(); drawGrid(); bgRenderLayerList(); animRenderStrip();
 }
@@ -9190,9 +9234,12 @@ function animSheetCanvas() {   // one row of canvas-sized cells, frame 1 at the 
   fr.forEach((f, i) => { g.save(); g.translate(i * TW, 0); animDrawFrame(g, f, 1, null); g.restore(); });
   return { canvas: c, frames: fr.length };
 }
-function animFrameCanvas(k) {
+function animFrameCanvas(k, withPins) {   // withPins: what is on screen (eyedropper, Copy All); without: the frame's own art (exports)
   const fr = animFrames(), c = document.createElement("canvas"); c.width = TW; c.height = TH;
-  if (fr[k]) animDrawFrame(c.getContext("2d"), fr[k], 1, null);
+  const g = c.getContext("2d"), pins = withPins ? animPins() : [], lowest = fr.length ? fr[0].idx : Infinity;
+  pins.forEach((p) => { if (p.idx < lowest) animDrawFrame(g, p, 1, null); });
+  if (fr[k]) animDrawFrame(g, fr[k], 1, null);
+  pins.forEach((p) => { if (p.idx > lowest) animDrawFrame(g, p, 1, null); });
   return c;
 }
 function animExportMenu() {
@@ -9358,7 +9405,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.65";
+const APP_VERSION = "6.121.66";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
