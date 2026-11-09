@@ -3540,7 +3540,7 @@ function ghPushProject(rec) {
   }
   projPushUI(rec.id, 0.05, "Building artifacts…");
   ghArtifactsFromRecord(rec, slug)
-    .then((files) => ghPushFiles(rec, base, files));
+    .then((files) => (GH_ONE_COMMIT ? ghPushTree(rec, base, files) : ghPushFiles(rec, base, files)));
 }
 /* v6.121.12 — the ONLY files a push may remove from its own folder: this
    project's per-layer PNGs (<slug>.layerN.png) that the push did not write,
@@ -3588,6 +3588,88 @@ function ghPushFiles(rec, base, files) {
       status("Pushed “" + rec.name + "” to GitHub." + (cleared ? " Removed " + cleared + " old layer file" + (cleared > 1 ? "s" : "") + "." : "") + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
     })
     .catch((e) => { projPushUI(rec.id, 1, "Push failed: " + e.message, "err"); status("Push failed: " + e.message); });
+}
+/* ---- one-commit push (v6.121.68, James 2026-11-09: a push took a minute or more and had to be airtight) ----
+   The Contents API path above (ghPushFiles) makes one commit per file, 0.7 s apart: slow for a sprite project with
+   many layer PNGs, and a push that dies half-way leaves the folder mixed (new project.json, old layers). This path
+   uses the Git Data API instead:
+     1. list the project's folder (and any old folders a rename left) — the blob SHAs of what GitHub holds now;
+     2. hash every file locally the way git does (SHA-1 over "blob <size>\0" + bytes); upload as blobs only the
+        files whose hash differs — unchanged layers are not sent at all; a blob upload writes nothing to the branch;
+     3. read the branch head, build ONE tree on top of it (new/changed files, stale layer files and old folders
+        removed), make ONE commit, and move the branch to it. The ref update is GitHub's compare-and-swap: it
+        refuses if the branch moved since we read it, and then the whole step 3 is simply redone.
+   So the branch only ever goes from one complete state to the next, and nothing is written to it until the end.
+   GH_ONE_COMMIT = false returns to the per-file path unchanged. */
+const GH_ONE_COMMIT = true;
+function ghBlobSha(b64) {   // git's blob id for these bytes, so unchanged files can be recognised without uploading them
+  const bin = atob(b64), head = "blob " + bin.length + "\0";
+  const bytes = new Uint8Array(head.length + bin.length);
+  for (let i = 0; i < head.length; i++) bytes[i] = head.charCodeAt(i);
+  for (let i = 0; i < bin.length; i++) bytes[head.length + i] = bin.charCodeAt(i);
+  return crypto.subtle.digest("SHA-1", bytes).then((buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join(""));
+}
+function ghGit(path, opts) {   // one Git Data API call; resolves with the JSON, rejects with the response on any failure
+  return ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/git" + path, opts).then((r) => (r.ok ? r.json() : Promise.reject(r)));
+}
+function ghErrOf(e) { return e && typeof e.status === "number" ? ghErr(e) : (e instanceof Error ? e : new Error(String(e))); }
+function ghParallel(items, limit, fn) {   // run fn over items, at most `limit` at a time, in order of start
+  let i = 0; const out = new Array(items.length);
+  const next = () => { if (i >= items.length) return Promise.resolve(); const k = i++; return Promise.resolve(fn(items[k], k)).then((v) => { out[k] = v; return next(); }); };
+  return Promise.all(Array.from({ length: Math.min(limit, items.length) }, next)).then(() => out);
+}
+function ghPushTree(rec, base, files) {
+  const slug = base.split("/").pop();
+  const olds = (rec.oldSlugs || []).filter((x) => x && x !== slug);
+  let stale = [], moved = [], uploaded = 0, reused = 0;
+  projPushUI(rec.id, 0.08, "Checking what GitHub holds…");
+  return Promise.all([ghListSub(base)].concat(olds.map((o) => ghListSub(GH.dir + "/" + o).then((es) => (es || []).filter((f) => f.type === "file").map((f) => f.path)))))
+    .then(([entries, ...oldLists]) => {
+      const have = {}; for (const f of entries || []) if (f.type === "file") have[f.name] = f.sha;
+      stale = ghStaleLayerFiles(entries, slug, files).map((f) => f.path);
+      moved = olds.filter((o, k) => oldLists[k].length); const oldPaths = [].concat(...oldLists);
+      // 2. hash, then upload only what differs
+      return Promise.all(files.map((f) => ghBlobSha(f.b64))).then((shas) => {
+        const todo = files.filter((f, k) => { f.sha = shas[k]; if (have[f.name] === f.sha) { reused++; return false; } return true; });
+        return ghParallel(todo, 4, (f) => {
+          projPushUI(rec.id, 0.15 + 0.6 * (uploaded / Math.max(1, todo.length)), "Uploading " + f.name + "…");
+          return ghGit("/blobs", { method: "POST", body: JSON.stringify({ content: f.b64, encoding: "base64" }) })
+            .then((b) => { f.sha = b.sha; uploaded++; });
+        }).then(() => ({ changed: todo, dels: stale.concat(oldPaths) }));
+      });
+    })
+    .then(({ changed, dels }) => {
+      if (!changed.length && !dels.length) return { nothing: true };
+      // 3. one tree, one commit, one atomic branch move — redone from the head read if the branch moved meanwhile
+      const attempt = (n) => {
+        projPushUI(rec.id, 0.82, n > 1 ? "Branch moved — committing again (" + n + ")…" : "Committing…");
+        return ghGit("/ref/heads/" + GH.branch).then((ref) => {
+          const head = ref.object.sha;
+          return ghGit("/commits/" + head).then((c) => {
+            const tree = changed.map((f) => ({ path: base + "/" + f.name, mode: "100644", type: "blob", sha: f.sha }))
+              .concat(dels.map((path) => ({ path, mode: "100644", type: "blob", sha: null })));
+            return ghGit("/trees", { method: "POST", body: JSON.stringify({ base_tree: c.tree.sha, tree }) });
+          }).then((t) => ghGit("/commits", { method: "POST", body: JSON.stringify({ message: "TESSERA: " + rec.name + " — " + changed.length + " file" + (changed.length === 1 ? "" : "s") + (dels.length ? ", " + dels.length + " removed" : ""), tree: t.sha, parents: [head] }) }))
+            .then((cm) => ghGit("/refs/heads/" + GH.branch, { method: "PATCH", body: JSON.stringify({ sha: cm.sha, force: false }) }));
+        }).catch((e) => {
+          const st = e && e.status;
+          if ((st === 409 || st === 422 || st >= 500) && n < GH_RETRY_ATTEMPTS) return new Promise((res) => setTimeout(res, GH_RETRY_MS * n)).then(() => attempt(n + 1));
+          throw ghErrOf(e);
+        });
+      };
+      return attempt(1).then(() => ({ nothing: false }));
+    })
+    .then(({ nothing }) => {
+      rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));
+      rec.oldSlugs = [];   // old folders went in the same commit (or had nothing in them)
+      projPut(rec).catch(() => {});
+      const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
+      if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
+      const what = projType(rec) === "bg" ? (files.length > 2 ? "project + PNG + layers" : "project + PNG") : "project + PNG + rules";
+      projPushUI(rec.id, 1, nothing ? "Already up to date ✓" : "Pushed ✓ " + what + (reused ? " (" + reused + " unchanged)" : ""), "ok");
+      status(nothing ? "“" + rec.name + "” already matches GitHub — nothing to push." : "Pushed “" + rec.name + "” to GitHub in one commit: " + uploaded + " file" + (uploaded === 1 ? "" : "s") + " uploaded, " + reused + " unchanged." + (stale.length ? " Removed " + stale.length + " old layer file" + (stale.length > 1 ? "s" : "") + "." : "") + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
+    })
+    .catch((e) => { const err = ghErrOf(e); projPushUI(rec.id, 1, "Push failed: " + err.message, "err"); status("Push failed: " + err.message + " — nothing was changed on GitHub."); });
 }
 function ghPullProject(slug, legacy) {
   status("Pulling " + slug + "…");
@@ -5712,6 +5794,7 @@ function floatBeginGroup() {
       reg.data[k] = reg.data[k+1] = reg.data[k+2] = reg.data[k+3] = 0;   // lift out of the layer
     }
     g.putImageData(out, 0, 0); ctx.putImageData(reg, x0, y0);
+    bgLayers[i].png = null;   // v6.121.67: this member changed — its cached PNG must not be saved again (the group header is the selected entry, so bgPersist's own invalidation misses every member)
     parts.push({ i, cv });
   }
   const fm = new Uint8Array(w * h);
@@ -5728,7 +5811,7 @@ function floatFlatten() {   // drop the float where it rests
   if (!float) return;
   if (float.pasted) snapshot();   // a paste has no cut snapshot; its drop is the undo step
   // (cut floats take none here: the cut's snapshot makes the whole move ONE step)
-  if (float.parts) { for (const p of float.parts) if (bgLayers[p.i] && bgLayers[p.i].ctx) bgLayers[p.i].ctx.drawImage(p.cv, float.x, float.y); }   // v6.121.22: a group float lands layer by layer
+  if (float.parts) { for (const p of float.parts) if (bgLayers[p.i] && bgLayers[p.i].ctx) { bgLayers[p.i].ctx.drawImage(p.cv, float.x, float.y); bgLayers[p.i].png = null; } }   // v6.121.22: a group float lands layer by layer; v6.121.67: and each landing layer re-encodes at the next save (Charge, 2026-11-08: members kept their pre-move PNGs)
   else edCtx.drawImage(float.cv, float.x, float.y);
   const m = new Uint8Array(TW * TH);   // selection re-anchors at the drop spot
   for (let y = 0; y < float.h; y++) for (let x = 0; x < float.w; x++) {
@@ -9405,7 +9488,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.66";
+const APP_VERSION = "6.121.68";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */

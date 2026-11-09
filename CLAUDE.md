@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.66** (2026-11-08).
+be a change there. Current: **v6.121.68** (2026-11-09).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -126,8 +126,11 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
   project library is an IndexedDB database (`tessera-projects`), each record a snapshot of the
   project's `localStorage` keys (`PROJECT_KEYS`). Palettes, brush, pen settings and the GitHub
   token stay on the device and never travel with a project.
-- GitHub sync pushes to `JamesDies5/tessera` under `projects/<slug>/`, one commit per file, 0.7 s
-  apart, up to 5 tries on a 409 or a server error, with a fresh SHA each try (v6.121.10). A tileset
+- GitHub sync pushes to `JamesDies5/tessera` under `projects/<slug>/`. Since v6.121.68 a push is **one commit**
+  via the Git Data API (`ghPushTree`): list the folder, hash every file as git does, upload only the changed ones as
+  blobs, then one tree + one commit + an atomic branch update, the commit step redone up to 5 times if the branch
+  moved; nothing touches the branch until that last step. `GH_ONE_COMMIT = false` returns to the older per-file
+  path (`ghPushFiles`: one commit per file, 0.7 s apart, 5 tries on a 409 with a fresh SHA each, v6.121.10). A tileset
   pushes `project.json` + `<slug>.png` + `<slug>.rules.json`; a background pushes `project.json` +
   the flattened `<slug>.png` + one `<slug>.layerN.png` per layer when it has more than one, and no
   rules file; since v6.121.12 a push also removes leftover `<slug>.layerN.png` files it no longer
@@ -159,6 +162,9 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
 - A Home Screen web app on iOS has **its own storage**: projects and the GitHub token live in the
   shortcut, not in Safari. Never add `apple-mobile-web-app-capable`. Never advise deleting/re-adding
   the shortcut without a push first.
+- Each layer keeps a cached PNG (`bgLayers[i].png`) so a save re-encodes only what changed; `bgPersist` clears the
+  **selected** layer's cache only. Anything that writes to another layer's canvas must set that layer's `png = null`
+  itself (merges, flip-all and canvas resize do; the group move did not until v6.121.67, which lost Charge's move).
 - GitHub pushes: one project at a time, wait for green. A 409 means the branch moved or a stale
   SHA, not a token problem.
 - Any slope or joint change is a per-set switch, default off, so older sheets such as Lavune Cave
@@ -197,5 +203,6 @@ so they never shrink and the 13" iPad shows four per row in portrait, 60 puts th
 Projects bar, 61 makes card height rigid too so the gallery scrolls instead of squeezing, 62 makes the Projects view a remembered
 top-level state with no open marker, 63 adds a `theme-color` tag for the status bar, which iOS 26 ignores, 64 drops the gallery overlay's position:fixed, and 65 gives the page a solid
 background-color under its gradient, the one thing iPad Safari 26 reads for the bar colour, verified by James 2026-11-08; 66 adds Pin,
-a reference layer shown on every frame, for his piece sheet) (header button, timeline, current frame + onion skins, Loop /
+a reference layer shown on every frame, for his piece sheet; 67 makes a group move save every member's art, after Charge lost a
+two-pixel shift on reload; 68 makes a push one commit, uploading only changed files) (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. **Remaining on the card:** project folders in the gallery (mock first).
