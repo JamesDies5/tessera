@@ -359,6 +359,21 @@
   .projCard .pacts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 8px; }
   .projCard .pacts button { background: #262626; border: 1px solid var(--line); color: #cfcfcf; font-size: 11px; padding: 5px 9px; cursor: pointer; border-radius: 7px; }
   .projCard .pacts button:active { background: #3a3a3a; }
+  /* v6.121.69 (James's QOL card, last item): project folders in the gallery, one level deep */
+  .projCard.pfolder { border-color: #3f5468; }
+  .projCard.pfolder .thumb { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 84px 84px; gap: 3px; padding: 3px; background: #1b1b1b; align-items: stretch; justify-items: stretch; }
+  .projCard.pfolder .fcell { background: #262626 center / 86% 86% no-repeat; border-radius: 4px; min-width: 0; min-height: 0; image-rendering: pixelated; display: flex; align-items: center; justify-content: center; }
+  .projCard.pfolder .fcell.more { color: #9a9a9a; font-size: 13px; font-weight: 600; }
+  .projCard.pfolder .ptype { color: #cfe6ff; border-color: #3f5468; }
+  .projCard.pfolder .pname { color: #8ecbff; display: flex; align-items: center; gap: 6px; }
+  .projCard.pfolder .pname svg { width: 14px; height: 14px; flex: 0 0 auto; }
+  .projCard.dropTarget { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fbadge { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 8px; display: none; align-items: center; justify-content: center; border: none; color: #fff; background: #2f4f6f; padding: 0; cursor: pointer; }
+  .fbadge svg { width: 17px; height: 17px; }
+  .fbadge:active { background: #3d6388; }
+  #projGrid.sorting .fbadge { display: flex; pointer-events: auto; }   /* the folder button takes the sync badge's corner while sorting (James: a temporary button, like the sync one) */
+  #projGrid.sorting .syncbadge { display: none; }
+  #projTitle svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; color: #8ecbff; }
   .projCard .pushbar { height: 4px; background: #262626; }
   .projCard .pushfill { height: 100%; width: 0%; background: #8fb996; transition: width .25s; }
   .projCard .pushfill.err { background: #c96a6a; }
@@ -619,7 +634,7 @@
     <div class="brand"><h1>TESSERA</h1><div id="verProj"></div></div>
     <button class="ibtn" id="btnReloadProj" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
     <span class="vsep"></span>
-    <h2>Projects</h2>
+    <button class="optline" id="btnProjBack" title="Back to all projects" style="display:none">&#8249; Projects</button><h2 id="projTitle">Projects</h2>   <!-- v6.121.69: inside a folder the bar shows the way back and the folder's name -->
     <span class="spacer"></span>
     <div id="projFilter">
       <button class="optline on" data-pf="all">All</button>
@@ -2902,6 +2917,70 @@ document.querySelectorAll("#projFilter button").forEach((b) => b.addEventListene
   projSetFilter(b.dataset.pf);
   projRenderGallery();
 }));
+/* ==== Project folders (v6.121.69, James's QOL card) ==================================================
+   One level deep, like layer groups. A project record carries `folder` (the folder's id) and `folderName`
+   (its last known name), and both go into project.json on a push, so a pull on any device files the project
+   again and recreates the folder if it is unknown there; a push by this build writes `folder: null` for an
+   unfiled project, and a project.json without the key (an older push) leaves the local filing alone. The
+   device keeps the folder list and its display order in PROJ_FOLDERS; a folder with no members is dropped.
+   The open folder is remembered in PROJ_FOLDER_OPEN so a Reload comes back inside it. */
+const PROJ_FOLDERS = "tessera.projFolders", PROJ_FOLDER_OPEN = "tessera.galleryFolder";
+let projFolderOpen = null; try { projFolderOpen = localStorage.getItem(PROJ_FOLDER_OPEN) || null; } catch (e) {}
+function projFolders() { try { const a = JSON.parse(localStorage.getItem(PROJ_FOLDERS) || "[]"); return Array.isArray(a) ? a.filter((f) => f && f.id) : []; } catch (e) { return []; } }
+function projFoldersSave(list) { try { localStorage.setItem(PROJ_FOLDERS, JSON.stringify(list)); } catch (e) {} }
+function projFolderName(id) { const f = projFolders().find((x) => x.id === id); return f ? f.name : null; }
+function projFolderEnsure(id, name) { const list = projFolders(); if (!id || list.some((f) => f.id === id)) return; list.push({ id, name: name || "Folder" }); projFoldersSave(list); }
+function projFolderRename(id, name) { const list = projFolders(), f = list.find((x) => x.id === id); if (!f) return; f.name = name; projFoldersSave(list); }
+function projNewFolder(name) { const f = { id: "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name }; const list = projFolders(); list.unshift(f); projFoldersSave(list); return f; }
+function projSetFolder(rec, id) {   // id null: top level
+  if (id) { rec.folder = id; rec.folderName = projFolderName(id) || rec.folderName || "Folder"; } else { delete rec.folder; delete rec.folderName; }
+}
+function projSyncHash(rec) {   // what the sync badge compares — the keys, plus the folder when there is one, so filing a project is a change to push; unfiled projects hash exactly as before
+  return fnv1aStr(JSON.stringify(rec.keys || {}) + (rec.folder ? "|folder:" + rec.folder + ":" + (rec.folderName || "") : ""));
+}
+function projOpenFolder(id) {
+  projFolderOpen = id || null;
+  try { if (id) localStorage.setItem(PROJ_FOLDER_OPEN, id); else localStorage.removeItem(PROJ_FOLDER_OPEN); } catch (e) {}
+  projRenderGallery();
+}
+const projSvg = (paths) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+const ICON_FOLDER_PLUS = ICONS.folder + '<path d="M12 10v6M9 13h6"/>', ICON_FOLDER_OUT = ICONS.folder + '<path d="M12 17v-7M9 13l3-3 3 3"/>';
+function projRenderHead() {
+  const f = projFolderOpen ? projFolders().find((x) => x.id === projFolderOpen) : null;
+  if (projFolderOpen && !f) { projFolderOpen = null; try { localStorage.removeItem(PROJ_FOLDER_OPEN); } catch (e) {} }
+  $("btnProjBack").style.display = f ? "" : "none";
+  const t = $("projTitle"); t.innerHTML = f ? projSvg(ICONS.folder) + "<span></span>" : "Projects"; if (f) t.lastChild.textContent = f.name;
+}
+$("btnProjBack").addEventListener("click", () => { closeImportPop(); projOpenFolder(null); });
+function projFolderCard(f, mem) {   // a folder as a card: a 2×2 look inside, the count, Rename / Dissolve
+  const card = document.createElement("div"); card.className = "projCard pfolder"; card.dataset.fid = f.id;
+  const th = document.createElement("div"); th.className = "thumb";
+  mem.slice(0, 4).forEach((r, i) => {
+    const cell = document.createElement("div"); cell.className = "fcell";
+    if (i === 3 && mem.length > 4) { cell.classList.add("more"); cell.textContent = "+" + (mem.length - 3); }
+    else cell.style.backgroundImage = "url(" + projThumbSrc(r) + ")";
+    th.appendChild(cell);
+  });
+  const tags = document.createElement("span"); tags.className = "ptags"; const tag = document.createElement("span"); tag.className = "ptype"; tag.textContent = "FOLDER"; tags.appendChild(tag); th.appendChild(tags);
+  const meta = document.createElement("div"); meta.className = "meta";
+  const nm = document.createElement("div"); nm.className = "pname"; nm.innerHTML = projSvg(ICONS.folder) + "<span></span>"; nm.lastChild.textContent = f.name;
+  const dt = document.createElement("div"); dt.className = "pdate"; dt.textContent = mem.length + (mem.length === 1 ? " project" : " projects");
+  meta.appendChild(nm); meta.appendChild(dt);
+  const acts = document.createElement("div"); acts.className = "pacts";
+  const mk = (label, fn) => { const b = document.createElement("button"); b.textContent = label; b.addEventListener("click", (e) => { e.stopPropagation(); fn(); }); acts.appendChild(b); };
+  mk("Rename", () => { const name = (prompt("Rename folder:", f.name) || "").trim(); if (!name || name === f.name) return; projFolderRename(f.id, name); projRenderGallery(); });
+  mk("Dissolve", () => {   // the projects go back to the top level; nothing is deleted
+    if (!confirm('Dissolve "' + f.name + '"? Its ' + mem.length + ' project' + (mem.length === 1 ? '' : 's') + ' return to the top level. Nothing is deleted.')) return;
+    projList().then((all) => Promise.all(all.filter((r) => r.folder === f.id).map((r) => { projSetFolder(r, null); return projPut(r); })))
+      .then(() => { projFoldersSave(projFolders().filter((x) => x.id !== f.id)); status("Dissolved “" + f.name + "”."); projRenderGallery(); })
+      .catch(() => status("Couldn’t dissolve the folder."));
+  });
+  const bar = document.createElement("div"); bar.className = "pushbar"; const note = document.createElement("div"); note.className = "pushnote";
+  card.appendChild(th); card.appendChild(meta); card.appendChild(acts); card.appendChild(bar); card.appendChild(note);
+  card.addEventListener("click", () => { if (projSortMode) return; closeImportPop(); projOpenFolder(f.id); });
+  if (projSortMode) projSortBind(card);
+  return card;
+}
 function projRenderGallery() {
   projStopAnims();
   projList().then((all) => {
@@ -2915,11 +2994,20 @@ function projRenderGallery() {
     for (const r of missing) { r.order = --min; fixes.push(projPut(r)); }
     if (fixes.length) Promise.all(fixes).catch(() => {});
     all.sort((a, b) => a.order - b.order);
+    /* v6.121.69: folders. Records name folders this device has never seen (a pull, or a record from another
+       device): add them. Names follow the device list. A folder nobody is in disappears. */
+    for (const r of all) if (r.folder) { projFolderEnsure(r.folder, r.folderName); const nm = projFolderName(r.folder); if (nm && r.folderName !== nm) { r.folderName = nm; projPut(r).catch(() => {}); } }
+    const used = new Set(all.map((r) => r.folder).filter(Boolean)), fl = projFolders();
+    if (fl.some((f) => !used.has(f.id))) projFoldersSave(fl.filter((f) => used.has(f.id)));
+    projRenderHead();
+    const level = projFolderOpen || null, shown = (r) => projFilter === "all" || projType(r) === projFilter;
     const grid = $("projGrid"); grid.innerHTML = "";
     grid.classList.toggle("sorting", projSortMode);
+    if (!level) for (const f of projFolders()) { const mem = all.filter((r) => r.folder === f.id && shown(r)); if (mem.length) grid.appendChild(projFolderCard(f, mem)); }
     for (const rec of all) {
       const ptype = projType(rec);
-      if (projFilter !== "all" && ptype !== projFilter) continue;
+      if ((rec.folder || null) !== level) continue;   // the top level shows the unfiled projects; a folder shows its own
+      if (!shown(rec)) continue;
       const card = document.createElement("div");
       card.className = "projCard";   // v6.121.62: no "open" marker — in the gallery nothing is open
       card.dataset.pid = rec.id;
@@ -2958,6 +3046,7 @@ function projRenderGallery() {
         const name = (prompt("Name for the copy:", rec.name + " copy") || "").trim();   // v6.84: name first; slug derives from it on the first push
         if (!name) return;
         const copy = projNewRecord(name);
+        if (rec.folder) projSetFolder(copy, rec.folder);   // v6.121.69: the copy stays in the same folder
         if (typeof rec.order === "number") copy.order = rec.order + 0.5;   // v6.121.30: the copy sits right after its source
         copy.keys = JSON.parse(JSON.stringify(rec.keys || {}));
         projPut(copy).then(projRenderGallery).catch(() => status("Duplicate failed."));
@@ -2991,7 +3080,7 @@ function projRenderGallery() {
           .catch((e) => { projPushUI(r.id, 1, "Removal failed: " + e.message, "err"); status("GitHub removal failed: " + e.message + " — “" + r.name + "” was kept so you can retry."); });   // v6.84.3: clear the card's bar on failure
       }));
       const badge = document.createElement("button");
-      const curHash = fnv1aStr(JSON.stringify(rec.keys || {}));
+      const curHash = projSyncHash(rec);
       const inSync = rec.pushedHash === curHash && !projSlugStale(rec);   // v6.84.4: a pending folder move counts as out of sync
       badge.className = "syncbadge " + (inSync ? "fresh" : "stale");
       badge.title = inSync ? "In sync with GitHub" : projSlugStale(rec) ? "Repo folder " + rec.slug + "/ will move to " + slugFromName(rec.name) + "/ on push" : "Changes since last push — tap to push";
@@ -3002,6 +3091,20 @@ function projRenderGallery() {
         if (rec.id === activeProjectId) saveActiveProject().then(doPush); else doPush();
       });
       th.appendChild(badge);
+      const fb = document.createElement("button"); fb.className = "fbadge";   // v6.121.69 (James): shows only in Sort mode — makes a folder from this card, or moves it out of the open one
+      fb.title = level ? "Move out of this folder" : "Put in a new folder"; fb.innerHTML = projSvg(level ? ICON_FOLDER_OUT : ICON_FOLDER_PLUS);
+      fb.addEventListener("pointerdown", (e) => e.stopPropagation());
+      fb.addEventListener("click", (e) => {
+        e.stopPropagation();
+        projGet(rec.id).then((fresh) => {
+          const r = fresh || rec;
+          if (level) { projSetFolder(r, null); return projPut(r).then(() => { status("Moved \u201c" + r.name + "\u201d out of the folder."); projRenderGallery(); }); }
+          const name = (prompt("Name for the new folder:", "New Folder") || "").trim(); if (!name) return;
+          const f = projNewFolder(name); projSetFolder(r, f.id);
+          return projPut(r).then(() => { status("\u201c" + r.name + "\u201d is now in \u201c" + name + "\u201d \u2014 drag other cards onto the folder to add them."); projRenderGallery(); });
+        }).catch(() => status("Couldn\u2019t change the folder."));
+      });
+      th.appendChild(fb);
       const bar = document.createElement("div"); bar.className = "pushbar";
       const fill = document.createElement("div"); fill.className = "pushfill"; bar.appendChild(fill);
       const note = document.createElement("div"); note.className = "pushnote";
@@ -3020,7 +3123,8 @@ function openGallery(atBoot) {   // v6.121.62: the Projects view is a place of i
   try { localStorage.setItem(PROJ_GALLERY, "1"); } catch (e) {}
   projSetFilter(APP_MODE === "bg" ? "bg" : "tiles");   // v6.121.21 (James): the gallery opens on the loaded project's own kind, not All
   const show = () => { projRenderGallery(); $("projOverlay").classList.add("show"); setTimeout(projFitThumbs, 50); };
-  if (atBoot) show(); else saveActiveProject().then(show);
+  const place = () => projGet(activeProjectId).then((r) => { projFolderOpen = r && r.folder ? r.folder : null; try { if (projFolderOpen) localStorage.setItem(PROJ_FOLDER_OPEN, projFolderOpen); else localStorage.removeItem(PROJ_FOLDER_OPEN); } catch (e) {} }).catch(() => {});   // v6.121.69: the gallery opens where the loaded project lives
+  if (atBoot) show(); else saveActiveProject().then(place).then(show);
 }
 function closeGallery() {
   try { localStorage.removeItem(PROJ_GALLERY); } catch (e) {}
@@ -3042,12 +3146,12 @@ function projSortOff() { if (!projSortMode) return; projSortMode = false; $("btn
 $("btnProjSort").addEventListener("click", () => {
   projSortMode = !projSortMode; $("btnProjSort").classList.toggle("on", projSortMode);
   projRenderGallery();
-  status(projSortMode ? "Sort \u2014 drag the cards into order; tap Sort again when done." : "Order kept.");
+  status(projSortMode ? (projFolderOpen ? "Sort \u2014 drag the cards into order; the corner button moves one out of the folder. Tap Sort again when done." : "Sort \u2014 drag the cards into order, or onto a folder to file them; the corner button makes a new folder from a card. Tap Sort again when done.") : "Order kept.");
 });
 function projSortBind(card) {
   card.addEventListener("pointerdown", (e) => {
-    if (!projSortMode || e.button) return;
-    projDrag = { card, x0: e.clientX, y0: e.clientY, start: card.getBoundingClientRect(), moved: false };
+    if (!projSortMode || e.button || e.target.closest(".fbadge")) return;
+    projDrag = { card, x0: e.clientX, y0: e.clientY, start: card.getBoundingClientRect(), moved: false, over: null };
     card.classList.add("dragging");
     card.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -3062,12 +3166,18 @@ function projSortBind(card) {
       const m = t && t !== "none" ? new DOMMatrixReadOnly(t) : { e: 0, f: 0 };
       return { left: r.left - m.e, right: r.right - m.e, top: r.top - m.f, bottom: r.bottom - m.f };
     };
-    let target = null;
+    let target = null, over = null;
+    const isFolder = card.classList.contains("pfolder");
     for (const c of grid.querySelectorAll(".projCard")) {   // the card whose slot is under the finger gives it up
       if (c === card) continue;
       const r = layoutRect(c);
-      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) { target = c; break; }
+      if (!(e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom)) continue;
+      if (c.classList.contains("pfolder") !== isFolder) { if (!isFolder) over = c; }   // v6.121.69: a project over a folder is a drop, not a swap; folders and projects never trade slots
+      else target = c;
+      break;
     }
+    if (d.over && d.over !== over) d.over.classList.remove("dropTarget");
+    d.over = over; if (over) over.classList.add("dropTarget");
     if (target) {
       const list = [...grid.querySelectorAll(".projCard")], others = list.filter((c) => c !== card);
       const was = new Map(others.map((c) => [c, c.getBoundingClientRect()]));   // v6.121.31: remember where each card was...
@@ -3089,12 +3199,23 @@ function projSortBind(card) {
   const end = () => {
     const d = projDrag; if (!d || d.card !== card) return; projDrag = null;
     card.classList.remove("dragging"); card.style.transform = "";
+    if (d.over) {   // v6.121.69: let go over a folder — file the project there
+      const fid = d.over.dataset.fid, pid = card.dataset.pid; d.over.classList.remove("dropTarget");
+      if (fid && pid) {
+        projGet(pid).then((r) => { if (!r) return; projSetFolder(r, fid); return projPut(r); })
+          .then(() => { status("Filed into \u201c" + (projFolderName(fid) || "folder") + "\u201d."); projRenderGallery(); })
+          .catch(() => status("Couldn\u2019t file the project."));
+        return;
+      }
+    }
     if (d.moved) projSortPersist();
   };
   card.addEventListener("pointerup", end); card.addEventListener("pointercancel", end);
 }
 function projSortPersist() {   // the visible cards' new order, merged with the filtered-out ones in place
-  const visIds = [...$("projGrid").querySelectorAll(".projCard")].map((c) => c.dataset.pid);
+  const visIds = [...$("projGrid").querySelectorAll(".projCard[data-pid]")].map((c) => c.dataset.pid);   // v6.121.69: project cards only…
+  const fids = [...$("projGrid").querySelectorAll(".projCard.pfolder")].map((c) => c.dataset.fid);         // …folders keep their own order
+  if (fids.length) { const list = projFolders(), seen = new Set(fids); projFoldersSave(fids.map((id) => list.find((f) => f.id === id)).filter(Boolean).concat(list.filter((f) => !seen.has(f.id)))); }
   projList().then((all) => {
     const ord = (r) => (typeof r.order === "number" ? r.order : 0);
     all.sort((a, b) => ord(a) - ord(b));
@@ -3291,6 +3412,7 @@ $("newCreate").addEventListener("click", () => {
   if (!name) { status("A project needs a name \u2014 nothing created."); return; }
   const type = newDlgType(), img = newDlgImg;
   const rec = projNewRecord(name);
+  if (projFolderOpen) projSetFolder(rec, projFolderOpen);   // v6.121.69: made inside a folder, lands in it
   rec.type = type;
   rec.keys[PROJ_TYPE_KEY] = type;
   if (type === "bg" && newDlgSheet && img && sheetEnsureOrder().length === 0) { status("Pick at least one frame \u2014 tap ALL to take them all."); return; }
@@ -3504,12 +3626,13 @@ function ghRulesFromRecord(rec, cid, dims, hash) {
     deepVariants: dv.map((p) => ({ ...p })),
   };
 }
+function ghRecFolder(rec) { return rec.folder ? { id: rec.folder, name: rec.folderName || projFolderName(rec.folder) || "Folder" } : null; }   // v6.121.69: the folder rides along in project.json; null = top level, absent = an older push
 function ghArtifactsFromRecord(rec, slug) {
   if (projType(rec) === "bg") {   // v6.62: project.json + flat PNG (+ one PNG per layer once there are several); no rules file
     const doc = ghRecJSON(rec, BG_KEYS.doc);
     const flat = (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
     const files = [
-      { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, type: "bg", app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
+      { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, type: "bg", app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, folder: ghRecFolder(rec), keys: rec.keys || {} })) },
       { name: slug + ".png", b64: flat.split(",")[1] },
     ];
     const layers = ((doc && doc.layers) || []).filter((L) => L.kind !== "folder");   // folders live in project.json only
@@ -3520,7 +3643,7 @@ function ghArtifactsFromRecord(rec, slug) {
   const dims = ghRecSheetDims(rec, cid);
   const png = ghRecPngDataURL(rec, cid);
   return ghSheetHashFromDataURL(png, dims.cols, dims.rows).then((hash) => [
-    { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
+    { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, folder: ghRecFolder(rec), keys: rec.keys || {} })) },
     { name: slug + ".png", b64: png.split(",")[1] },
     { name: slug + ".rules.json", b64: b64EncodeUtf8(JSON.stringify(ghRulesFromRecord(rec, cid, dims, hash))) },
   ]);
@@ -3580,7 +3703,7 @@ function ghPushFiles(rec, base, files) {
     })
     .then(() => ghRemoveOldSlugs(rec))   // v6.84: a rename's previous folder(s) go once the new files are in place
     .then((moved) => {
-      rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));
+      rec.pushedHash = projSyncHash(rec);
       projPut(rec).catch(() => {});                 // persist slug + push fingerprint (+ cleared oldSlugs)
       const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
       if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
@@ -3660,7 +3783,7 @@ function ghPushTree(rec, base, files) {
       return attempt(1).then(() => ({ nothing: false }));
     })
     .then(({ nothing }) => {
-      rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));
+      rec.pushedHash = projSyncHash(rec);
       rec.oldSlugs = [];   // old folders went in the same commit (or had nothing in them)
       projPut(rec).catch(() => {});
       const badge = document.querySelector('.projCard[data-pid="' + rec.id + '"] .syncbadge');
@@ -3682,8 +3805,11 @@ function ghPullProject(slug, legacy) {
       return projGet(data.id).then((local) => {
         if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
         const rec = { id: data.id, name: data.name || slug, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: slug };
+        if (data.folder && data.folder.id) { rec.folder = data.folder.id; rec.folderName = data.folder.name || "Folder"; projFolderEnsure(rec.folder, rec.folderName); }   // v6.121.69: filed as it was on the device that pushed it
+        else if (data.folder === undefined && local && local.folder) { rec.folder = local.folder; rec.folderName = local.folderName; }   // an older push says nothing about folders — keep this device's filing
+        if (local && typeof local.order === "number") rec.order = local.order;
         rec.type = data.type === "bg" || (rec.keys[PROJ_TYPE_KEY] === "bg") ? "bg" : "tiles";
-        rec.pushedHash = fnv1aStr(JSON.stringify(rec.keys || {}));   // v6.121.9: what was just pulled IS what GitHub has — badge reads in sync, not "changes since last push"
+        rec.pushedHash = projSyncHash(rec);   // v6.121.9: what was just pulled IS what GitHub has — badge reads in sync, not "changes since last push"
         return projPut(rec).then(() => rec);
       });
     })
@@ -9488,7 +9614,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.68";
+const APP_VERSION = "6.121.69";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
