@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.69** (2026-11-09).
+be a change there. Current: **v6.121.70** (2026-11-09).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -126,7 +126,9 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
   project library is an IndexedDB database (`tessera-projects`), each record a snapshot of the
   project's `localStorage` keys (`PROJECT_KEYS`) plus `order`, `slug`, `pushedHash` and, since v6.121.69, `folder` + `folderName`
   (gallery folders, one level; the folder list and its order live on the device in `tessera.projFolders`, the open folder in
-  `tessera.galleryFolder`; project.json carries `folder: {id, name}` or `null`, so a pull files the project again). Palettes, brush, pen settings and the GitHub
+  `tessera.galleryFolder`). Folders reach GitHub as one registry file, `projects/folders.json` (`folders` in order, `projects`:
+  id → folder id or null), written with whatever project is pushed next and applied on any pull and on Sync's Refresh
+  (v6.121.70); filing a project changes nothing in the project itself, so its sync badge stays as it was. Palettes, brush, pen settings and the GitHub
   token stay on the device and never travel with a project.
 - GitHub sync pushes to `JamesDies5/tessera` under `projects/<slug>/`. Since v6.121.68 a push is **one commit**
   via the Git Data API (`ghPushTree`): list the folder, hash every file as git does, upload only the changed ones as
@@ -207,5 +209,5 @@ top-level state with no open marker, 63 adds a `theme-color` tag for the status 
 background-color under its gradient, the one thing iPad Safari 26 reads for the bar colour, verified by James 2026-11-08; 66 adds Pin,
 a reference layer shown on every frame, for his piece sheet; 67 makes a group move save every member's art, after Charge lost a
 two-pixel shift on reload; 68 makes a push one commit, uploading only changed files; 66–68 verified by James 2026-11-09; 69 adds project folders to the
-gallery, the last item on the card) (header button, timeline, current frame + onion skins, Loop /
+gallery, the last item on the card; 70 fixes the folder previews and moves the folder bookkeeping into one registry file so filing flags nothing) (header button, timeline, current frame + onion skins, Loop /
 Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. Project folders (v6.121.69) close the card, pending James's test.

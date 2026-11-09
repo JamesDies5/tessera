@@ -362,7 +362,9 @@
   /* v6.121.69 (James's QOL card, last item): project folders in the gallery, one level deep */
   .projCard.pfolder { border-color: #3f5468; }
   .projCard.pfolder .thumb { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 84px 84px; gap: 3px; padding: 3px; background: #1b1b1b; align-items: stretch; justify-items: stretch; }
-  .projCard.pfolder .fcell { background: #262626 center / 86% 86% no-repeat; border-radius: 4px; min-width: 0; min-height: 0; image-rendering: pixelated; display: flex; align-items: center; justify-content: center; }
+  .projCard.pfolder .fcell { background: #262626; border-radius: 4px; min-width: 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .projCard.pfolder .fcell img { max-width: 86%; max-height: 86%; image-rendering: pixelated; }
+  .projCard.pfolder .fcell img[data-nw] { max-width: none; max-height: none; }   /* a fitted image is sized exactly by projFitThumb; a CSS cap would squash it */   /* v6.121.70 (James): no stretching — the same crop, tint and whole-number fit as a card */
   .projCard.pfolder .fcell.more { color: #9a9a9a; font-size: 13px; font-weight: 600; }
   .projCard.pfolder .ptype { color: #cfe6ff; border-color: #3f5468; }
   .projCard.pfolder .pname { color: #8ecbff; display: flex; align-items: center; gap: 6px; }
@@ -2935,8 +2937,31 @@ function projNewFolder(name) { const f = { id: "f" + Date.now().toString(36) + M
 function projSetFolder(rec, id) {   // id null: top level
   if (id) { rec.folder = id; rec.folderName = projFolderName(id) || rec.folderName || "Folder"; } else { delete rec.folder; delete rec.folderName; }
 }
-function projSyncHash(rec) {   // what the sync badge compares — the keys, plus the folder when there is one, so filing a project is a change to push; unfiled projects hash exactly as before
-  return fnv1aStr(JSON.stringify(rec.keys || {}) + (rec.folder ? "|folder:" + rec.folder + ":" + (rec.folderName || "") : ""));
+function projSyncHash(rec) { return fnv1aStr(JSON.stringify(rec.keys || {})); }   // what the sync badge compares: the project's own keys. Filing is not a change to the project (James, v6.121.70) — folders travel in the registry file below
+/* v6.121.70 (James: filing a project must not flag it for a push). Folders reach GitHub as ONE registry file,
+   projects/folders.json — the folder list in order, and every project's folder (or null) — written with whichever
+   project is pushed next, and read back on any pull and on Sync's Refresh. Last write wins, as everywhere. */
+function projFolderRegistry() {
+  return projList().then((all) => { const projects = {}; all.forEach((r) => { projects[r.id] = r.folder || null; }); return { tessera_folders: 1, savedAt: new Date().toISOString(), folders: projFolders(), projects }; });
+}
+function projFolderApplyRegistry(reg, all) {   // GitHub's registry onto this device: folder names and order, then every project it mentions; projects it does not know keep their local filing
+  if (!reg || reg.tessera_folders !== 1) return Promise.resolve(false);
+  const rf = Array.isArray(reg.folders) ? reg.folders.filter((f) => f && f.id) : [], local = projFolders(), known = new Set(rf.map((f) => f.id));
+  projFoldersSave(rf.map((f) => ({ id: f.id, name: f.name || "Folder" })).concat(local.filter((f) => !known.has(f.id))));
+  const saves = [];
+  (all || []).forEach((r) => {
+    if (!reg.projects || !Object.prototype.hasOwnProperty.call(reg.projects, r.id)) return;
+    const fid = reg.projects[r.id] || null; if ((r.folder || null) === fid) return;
+    projSetFolder(r, fid); saves.push(projPut(r));
+  });
+  return Promise.all(saves).then(() => saves.length > 0);
+}
+function ghFetchRegistry() {   // null when the repo has none yet (or it cannot be read)
+  return ghFetch("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "/folders.json?ref=" + GH.branch, null, "application/vnd.github.raw+json")
+    .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+}
+function ghSyncRegistryDown() {   // pull the registry and apply it; resolves true when a project's filing changed
+  return ghFetchRegistry().then((reg) => (reg ? projList().then((all) => projFolderApplyRegistry(reg, all)) : false));
 }
 function projOpenFolder(id) {
   projFolderOpen = id || null;
@@ -2958,7 +2983,7 @@ function projFolderCard(f, mem) {   // a folder as a card: a 2×2 look inside, t
   mem.slice(0, 4).forEach((r, i) => {
     const cell = document.createElement("div"); cell.className = "fcell";
     if (i === 3 && mem.length > 4) { cell.classList.add("more"); cell.textContent = "+" + (mem.length - 3); }
-    else cell.style.backgroundImage = "url(" + projThumbSrc(r) + ")";
+    else { const im = document.createElement("img"); im.src = projThumbSrc(r); cell.appendChild(im); projTintThumb(im, r); }   // v6.121.70: cropped to the art, palette-tinted, fitted by whole numbers, as on the project's own card
     th.appendChild(cell);
   });
   const tags = document.createElement("span"); tags.className = "ptags"; const tag = document.createElement("span"); tag.className = "ptype"; tag.textContent = "FOLDER"; tags.appendChild(tag); th.appendChild(tags);
@@ -3626,13 +3651,12 @@ function ghRulesFromRecord(rec, cid, dims, hash) {
     deepVariants: dv.map((p) => ({ ...p })),
   };
 }
-function ghRecFolder(rec) { return rec.folder ? { id: rec.folder, name: rec.folderName || projFolderName(rec.folder) || "Folder" } : null; }   // v6.121.69: the folder rides along in project.json; null = top level, absent = an older push
 function ghArtifactsFromRecord(rec, slug) {
   if (projType(rec) === "bg") {   // v6.62: project.json + flat PNG (+ one PNG per layer once there are several); no rules file
     const doc = ghRecJSON(rec, BG_KEYS.doc);
     const flat = (rec.keys && rec.keys[BG_KEYS.flat]) || BLANK_PNG;
     const files = [
-      { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, type: "bg", app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, folder: ghRecFolder(rec), keys: rec.keys || {} })) },
+      { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, type: "bg", app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
       { name: slug + ".png", b64: flat.split(",")[1] },
     ];
     const layers = ((doc && doc.layers) || []).filter((L) => L.kind !== "folder");   // folders live in project.json only
@@ -3643,7 +3667,7 @@ function ghArtifactsFromRecord(rec, slug) {
   const dims = ghRecSheetDims(rec, cid);
   const png = ghRecPngDataURL(rec, cid);
   return ghSheetHashFromDataURL(png, dims.cols, dims.rows).then((hash) => [
-    { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, folder: ghRecFolder(rec), keys: rec.keys || {} })) },
+    { name: "project.json", b64: b64EncodeUtf8(JSON.stringify({ tessera_project: 1, app: APP_VERSION, id: rec.id, name: rec.name, createdAt: rec.createdAt, savedAt: rec.savedAt, keys: rec.keys || {} })) },
     { name: slug + ".png", b64: png.split(",")[1] },
     { name: slug + ".rules.json", b64: b64EncodeUtf8(JSON.stringify(ghRulesFromRecord(rec, cid, dims, hash))) },
   ]);
@@ -3701,6 +3725,10 @@ function ghPushFiles(rec, base, files) {
       });
       return c;
     })
+    .then(() => projFolderRegistry().then((reg) => ghListDir().then((dir) => {   // v6.121.70: the folder registry (the one-commit path puts it in the same commit)
+      const cur = (dir || []).find((f) => f.type === "file" && f.name === "folders.json");
+      return new Promise((res) => setTimeout(res, GH_FILE_GAP_MS)).then(() => ghPutFile("/repos/" + GH.owner + "/" + GH.repo + "/contents/" + GH.dir + "/folders.json", b64EncodeUtf8(JSON.stringify(reg)), "TESSERA: folder list", cur && cur.sha));
+    })).catch(() => {}))
     .then(() => ghRemoveOldSlugs(rec))   // v6.84: a rename's previous folder(s) go once the new files are in place
     .then((moved) => {
       rec.pushedHash = projSyncHash(rec);
@@ -3744,7 +3772,7 @@ function ghParallel(items, limit, fn) {   // run fn over items, at most `limit` 
 function ghPushTree(rec, base, files) {
   const slug = base.split("/").pop();
   const olds = (rec.oldSlugs || []).filter((x) => x && x !== slug);
-  let stale = [], moved = [], uploaded = 0, reused = 0;
+  let stale = [], moved = [], uploaded = 0, reused = 0, registry = false;
   projPushUI(rec.id, 0.08, "Checking what GitHub holds…");
   return Promise.all([ghListSub(base)].concat(olds.map((o) => ghListSub(GH.dir + "/" + o).then((es) => (es || []).filter((f) => f.type === "file").map((f) => f.path)))))
     .then(([entries, ...oldLists]) => {
@@ -3761,6 +3789,15 @@ function ghPushTree(rec, base, files) {
         }).then(() => ({ changed: todo, dels: stale.concat(oldPaths) }));
       });
     })
+    .then(({ changed, dels }) => projFolderRegistry().then((reg) => {   // v6.121.70: the folder registry, only when GitHub's copy differs
+      const b64 = b64EncodeUtf8(JSON.stringify(reg));
+      return Promise.all([ghBlobSha(b64), ghListDir()]).then(([sha, dir]) => {
+        const cur = (dir || []).find((f) => f.type === "file" && f.name === "folders.json");
+        if (cur && cur.sha === sha) return { changed, dels };
+        projPushUI(rec.id, 0.78, "Uploading folders.json…");
+        return ghGit("/blobs", { method: "POST", body: JSON.stringify({ content: b64, encoding: "base64" }) }).then((b) => { uploaded++; registry = true; return { changed: changed.concat([{ name: "folders.json", path: GH.dir + "/folders.json", sha: b.sha }]), dels }; });
+      });
+    }))
     .then(({ changed, dels }) => {
       if (!changed.length && !dels.length) return { nothing: true };
       // 3. one tree, one commit, one atomic branch move — redone from the head read if the branch moved meanwhile
@@ -3769,7 +3806,7 @@ function ghPushTree(rec, base, files) {
         return ghGit("/ref/heads/" + GH.branch).then((ref) => {
           const head = ref.object.sha;
           return ghGit("/commits/" + head).then((c) => {
-            const tree = changed.map((f) => ({ path: base + "/" + f.name, mode: "100644", type: "blob", sha: f.sha }))
+            const tree = changed.map((f) => ({ path: f.path || (base + "/" + f.name), mode: "100644", type: "blob", sha: f.sha }))
               .concat(dels.map((path) => ({ path, mode: "100644", type: "blob", sha: null })));
             return ghGit("/trees", { method: "POST", body: JSON.stringify({ base_tree: c.tree.sha, tree }) });
           }).then((t) => ghGit("/commits", { method: "POST", body: JSON.stringify({ message: "TESSERA: " + rec.name + " — " + changed.length + " file" + (changed.length === 1 ? "" : "s") + (dels.length ? ", " + dels.length + " removed" : ""), tree: t.sha, parents: [head] }) }))
@@ -3790,7 +3827,7 @@ function ghPushTree(rec, base, files) {
       if (badge) { badge.classList.remove("stale"); badge.classList.add("fresh"); badge.title = "In sync with GitHub"; }
       const what = projType(rec) === "bg" ? (files.length > 2 ? "project + PNG + layers" : "project + PNG") : "project + PNG + rules";
       projPushUI(rec.id, 1, nothing ? "Already up to date ✓" : "Pushed ✓ " + what + (reused ? " (" + reused + " unchanged)" : ""), "ok");
-      status(nothing ? "“" + rec.name + "” already matches GitHub — nothing to push." : "Pushed “" + rec.name + "” to GitHub in one commit: " + uploaded + " file" + (uploaded === 1 ? "" : "s") + " uploaded, " + reused + " unchanged." + (stale.length ? " Removed " + stale.length + " old layer file" + (stale.length > 1 ? "s" : "") + "." : "") + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
+      status(nothing ? "“" + rec.name + "” already matches GitHub — nothing to push." : "Pushed “" + rec.name + "” to GitHub in one commit: " + uploaded + " file" + (uploaded === 1 ? "" : "s") + " uploaded, " + reused + " unchanged." + (registry ? " Folder list updated." : "") + (stale.length ? " Removed " + stale.length + " old layer file" + (stale.length > 1 ? "s" : "") + "." : "") + (moved.length ? " Removed old folder " + moved.map((x) => x + "/").join(", ") + "." : ""));
     })
     .catch((e) => { const err = ghErrOf(e); projPushUI(rec.id, 1, "Push failed: " + err.message, "err"); status("Push failed: " + err.message + " — nothing was changed on GitHub."); });
 }
@@ -3805,14 +3842,15 @@ function ghPullProject(slug, legacy) {
       return projGet(data.id).then((local) => {
         if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
         const rec = { id: data.id, name: data.name || slug, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: slug };
-        if (data.folder && data.folder.id) { rec.folder = data.folder.id; rec.folderName = data.folder.name || "Folder"; projFolderEnsure(rec.folder, rec.folderName); }   // v6.121.69: filed as it was on the device that pushed it
-        else if (data.folder === undefined && local && local.folder) { rec.folder = local.folder; rec.folderName = local.folderName; }   // an older push says nothing about folders — keep this device's filing
+        if (data.folder && data.folder.id) { rec.folder = data.folder.id; rec.folderName = data.folder.name || "Folder"; projFolderEnsure(rec.folder, rec.folderName); }   // a v6.121.69 project.json carried its folder; the registry below overrides it when it knows the project
+        else if (local && local.folder) { rec.folder = local.folder; rec.folderName = local.folderName; }   // keep this device's filing unless the registry says otherwise
         if (local && typeof local.order === "number") rec.order = local.order;
         rec.type = data.type === "bg" || (rec.keys[PROJ_TYPE_KEY] === "bg") ? "bg" : "tiles";
         rec.pushedHash = projSyncHash(rec);   // v6.121.9: what was just pulled IS what GitHub has — badge reads in sync, not "changes since last push"
         return projPut(rec).then(() => rec);
       });
     })
+    .then((rec) => (rec ? ghSyncRegistryDown().then(() => projGet(rec.id)).then((fresh) => fresh || rec) : rec))   // v6.121.70: the folder registry files the pulled project (and any other it mentions)
     .then((rec) => {
       if (!rec) return;
       if (rec.id === activeProjectId && confirm("This is the OPEN project. Load the pulled version into the workspace now? The current workspace state will be replaced.")) {
@@ -3853,6 +3891,7 @@ $("btnGhTokenSave").addEventListener("click", () => {
 $("btnGhRefresh").addEventListener("click", () => {
   status("Listing GitHub projects…");
   ghListDir().then((entries) => { ghRenderRemoteList(entries); status("GitHub project list updated."); })
+    .then(() => ghSyncRegistryDown()).then((changed) => { if (changed) { projRenderGallery(); status("GitHub project list updated; folders brought in line with GitHub."); } })   // v6.121.70
     .catch((e) => status("List failed: " + e.message));
 });
 /* Per-contract sheet size in cells (extends the contract's base TCOLS/TROWS;
@@ -9614,7 +9653,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.69";
+const APP_VERSION = "6.121.70";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
