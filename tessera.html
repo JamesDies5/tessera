@@ -375,6 +375,7 @@
   .fbadge:active { background: #3d6388; }
   #projGrid.sorting .fbadge { display: flex; pointer-events: auto; }   /* the folder button takes the sync badge's corner while sorting (James: a temporary button, like the sync one) */
   #projGrid.sorting .syncbadge { display: none; }
+  #projTitle.infolder { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; min-width: 0; }   /* v6.121.73: a folder's name, smaller and on one line */
   #projTitle svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; color: #8ecbff; }
   .projCard .pushbar { height: 4px; background: #262626; }
   .projCard .pushfill { height: 100%; width: 0%; background: #8fb996; transition: width .25s; }
@@ -636,7 +637,7 @@
     <div class="brand"><h1>TESSERA</h1><div id="verProj"></div></div>
     <button class="ibtn" id="btnReloadProj" data-icon="reload" title="Reload the app — fetches the latest deployed version (cache-busting)"></button>
     <span class="vsep"></span>
-    <button class="optline" id="btnProjBack" title="Back to all projects" style="display:none">&#8249; Projects</button><h2 id="projTitle">Projects</h2>   <!-- v6.121.69: inside a folder the bar shows the way back and the folder's name -->
+    <button class="ibtn" id="btnProjBack" data-icon="back" title="Back to all projects" style="display:none"></button><h2 id="projTitle">Projects</h2>   <!-- v6.121.69: inside a folder the bar shows the way back and the folder's name -->
     <span class="spacer"></span>
     <div id="projFilter">
       <button class="optline on" data-pf="all">All</button>
@@ -2529,6 +2530,7 @@ const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>',
   rules: '<path d="M4 6h16"/><path d="M4 12h9"/><path d="M4 18h5"/><circle cx="16.5" cy="12" r="2"/><circle cx="12.5" cy="18" r="2"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',   // v6.121.73: the way out of a gallery folder
   opacity: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" opacity=".6"/>',
   shapes: '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   shRect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
@@ -2974,7 +2976,7 @@ function projRenderHead() {
   const f = projFolderOpen ? projFolders().find((x) => x.id === projFolderOpen) : null;
   if (projFolderOpen && !f) { projFolderOpen = null; try { localStorage.removeItem(PROJ_FOLDER_OPEN); } catch (e) {} }
   $("btnProjBack").style.display = f ? "" : "none";
-  const t = $("projTitle"); t.innerHTML = f ? projSvg(ICONS.folder) + "<span></span>" : "Projects"; if (f) t.lastChild.textContent = f.name;
+  const t = $("projTitle"); t.classList.toggle("infolder", !!f); t.innerHTML = f ? projSvg(ICONS.folder) + "<span></span>" : "Projects"; if (f) t.lastChild.textContent = f.name;
 }
 $("btnProjBack").addEventListener("click", () => { closeImportPop(); projOpenFolder(null); });
 function projFolderCard(f, mem) {   // a folder as a card: a 2×2 look inside, the count, Rename / Dissolve
@@ -9657,7 +9659,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.72";
+const APP_VERSION = "6.121.73";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
