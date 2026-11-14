@@ -3482,7 +3482,8 @@ function ghFetch(path, opts, accept) {
     opts.headers || {}
   );
   const tok = ghToken(); if (tok) headers.Authorization = "Bearer " + tok;
-  return fetch("https://api.github.com" + path, Object.assign({}, opts, { headers }));
+  return fetch("https://api.github.com" + path, Object.assign({}, opts, { headers }))
+    .catch(() => Promise.reject(new Error("no internet connection")));   // v6.121.71: offline reads as what it is, not the browser's "Load failed"
 }
 function ghErr(r) {
   if (r.status === 401) return new Error("token rejected (401)");
@@ -3839,8 +3840,11 @@ function ghPullProject(slug, legacy) {
     .then((txt) => {
       const data = JSON.parse(txt);
       if (!data || data.tessera_project !== 1 || !data.id) return Promise.reject(new Error("not a TESSERA project file"));
-      return projGet(data.id).then((local) => {
-        if (local && !confirm('Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
+      return (data.id === activeProjectId ? saveActiveProject() : Promise.resolve()).then(() => projGet(data.id)).then((local) => {   // v6.121.71: bank the open project first, so the check below sees its latest strokes
+        const unpushed = local && local.pushedHash !== projSyncHash(local);   // work on this device that GitHub has never received (e.g. done offline)
+        if (local && !confirm(unpushed
+          ? 'WARNING: “' + local.name + '” on this device has changes that were NOT pushed to GitHub (saved ' + projFmtDate(local.savedAt) + ').\n\nReplacing it with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ') will lose those changes for good.\n\nReplace anyway?'
+          : 'Replace local “' + local.name + '” (saved ' + projFmtDate(local.savedAt) + ') with the GitHub copy (saved ' + projFmtDate(data.savedAt) + ')?')) return null;
         const rec = { id: data.id, name: data.name || slug, createdAt: data.createdAt, savedAt: data.savedAt, keys: data.keys || {}, slug: slug };
         if (data.folder && data.folder.id) { rec.folder = data.folder.id; rec.folderName = data.folder.name || "Folder"; projFolderEnsure(rec.folder, rec.folderName); }   // a v6.121.69 project.json carried its folder; the registry below overrides it when it knows the project
         else if (local && local.folder) { rec.folder = local.folder; rec.folderName = local.folderName; }   // keep this device's filing unless the registry says otherwise
@@ -9653,7 +9657,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.70";
+const APP_VERSION = "6.121.71";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -9956,6 +9960,29 @@ $("btnConvert").addEventListener("click", () => {
   sizeOverlay(); fitView("pv");
 })();
 try { if (localStorage.getItem(PROJ_GALLERY) === "1") openGallery(true); } catch (e) {}   // v6.121.62: the Projects view is where the user was
+
+/* ---- v6.121.71: offline copy. sw.js (beside this file) keeps a copy of this page on the device so the
+   app opens with no connection; online it always fetches the newest build first. It never touches project
+   storage or GitHub calls. OFFLINE_COPY = false is the off switch: it unregisters the helper and deletes
+   the saved copy on the next online load. ---- */
+const OFFLINE_COPY = true;
+(function offlineCopy() {
+  if (!("serviceWorker" in navigator) || !window.caches) return;
+  if (!OFFLINE_COPY) {
+    navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+    caches.keys().then((ns) => ns.filter((n) => n.indexOf("tessera-offline-") === 0).forEach((n) => caches.delete(n))).catch(() => {});
+    return;
+  }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}   // ask the device not to clear this app's storage under space pressure
+  const first = !navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
+    if (!first) return;
+    setTimeout(() => caches.open("tessera-offline-v1").then((c) => c.match(location.origin + location.pathname)).then((hit) => {
+      if (hit) status("Offline copy saved — Tessera will now open without a connection.");
+    }).catch(() => {}), 1500);
+  }).catch(() => {});
+  if (navigator.onLine === false) setTimeout(() => status("Offline — running the saved copy (v" + APP_VERSION + "). Push and Pull will work again once you are connected."), 1200);
+})();
 </script>
 </body>
 </html>

@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.70** (2026-11-09).
+be a change there. Current: **v6.121.71** (2026-11-14).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -169,6 +169,10 @@ git (`git show HEAD:tessera.html` into the session scratchpad).
 - Each layer keeps a cached PNG (`bgLayers[i].png`) so a save re-encodes only what changed; `bgPersist` clears the
   **selected** layer's cache only. Anything that writes to another layer's canvas must set that layer's `png = null`
   itself (merges, flip-all and canvas resize do; the group move did not until v6.121.67, which lost Charge's move).
+- `sw.js` beside `tessera.html` is the offline helper (v6.121.71): it keeps a copy of the app page on the device, network first,
+  saved copy when there is no connection. It must stay beside the page and be committed with it. It handles the page and icon
+  only; never let it touch project storage or `api.github.com`. Off switch: `OFFLINE_COPY = false` near the end of the script.
+  Nothing in the app pulls from GitHub on its own, and that must stay so: offline work is only ever replaced by a tapped Pull.
 - GitHub pushes: one project at a time, wait for green. A 409 means the branch moved or a stale
   SHA, not a token problem.
 - Any slope or joint change is a per-set switch, default off, so older sheets such as Lavune Cave
@@ -210,4 +214,4 @@ background-color under its gradient, the one thing iPad Safari 26 reads for the 
 a reference layer shown on every frame, for his piece sheet; 67 makes a group move save every member's art, after Charge lost a
 two-pixel shift on reload; 68 makes a push one commit, uploading only changed files; 66–68 verified by James 2026-11-09; 69 adds project folders to the
 gallery, the last item on the card; 70 fixes the folder previews and moves the folder bookkeeping into one registry file so filing flags nothing) (header button, timeline, current frame + onion skins, Loop /
-Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. Project folders (v6.121.69) close the card, pending James's test.
+Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. Project folders (v6.121.69) close the card, pending James's test. **Also awaiting his test:** v6.121.71 (2026-11-14), the offline copy for travel: `sw.js`, a Pull that warns about unpushed changes, and plain offline error messages.
