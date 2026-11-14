@@ -9657,7 +9657,7 @@ if (window.ResizeObserver) new ResizeObserver(() => {
    Gradient tool (linear / radial, multi-stop, midpoint fall-off); ColorDrop;
    Copy All; canvas flip; gallery type filter + PNG import; palm handling by
    pointercancel. Tileset rules untouched throughout. */
-const APP_VERSION = "6.121.71";
+const APP_VERSION = "6.121.72";
 
 /* ---- tooltips that work for Apple Pencil hover (native title bubbles are
    mouse-only): titles migrate to data-tip, a shared tip shows after 450ms ---- */
@@ -9975,6 +9975,10 @@ const OFFLINE_COPY = true;
   }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}   // ask the device not to clear this app's storage under space pressure
   const first = !navigator.serviceWorker.controller;
+  if (navigator.onLine === false && !first) {   // v6.121.72: already installed and the device is offline — registering again would only make a network attempt (iOS answers it with its Airplane Mode box)
+    setTimeout(() => status("Offline — running the saved copy (v" + APP_VERSION + "). Push and Pull will work again once you are connected."), 1200);
+    return;
+  }
   navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
     if (!first) return;
     setTimeout(() => caches.open("tessera-offline-v1").then((c) => c.match(location.origin + location.pathname)).then((hit) => {

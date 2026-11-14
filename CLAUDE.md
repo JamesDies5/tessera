@@ -6,7 +6,7 @@ also his pixel editor: a second project type, Background (shown on screen as **S
 the stored type key is still `bg`), is a layered canvas he uses for backdrops
 and for game sprites (portraits, enemies, rope pieces). Its
 resolver is embedded verbatim in ATLAS (the level editor in the Godot project), so a change here can
-be a change there. Current: **v6.121.71** (2026-11-14).
+be a change there. Current: **v6.121.72** (2026-11-14).
 
 Four documents, each with one job. Read this file and the blueprint before touching code.
 
@@ -214,4 +214,4 @@ background-color under its gradient, the one thing iPad Safari 26 reads for the 
 a reference layer shown on every frame, for his piece sheet; 67 makes a group move save every member's art, after Charge lost a
 two-pixel shift on reload; 68 makes a push one commit, uploading only changed files; 66–68 verified by James 2026-11-09; 69 adds project folders to the
 gallery, the last item on the card; 70 fixes the folder previews and moves the folder bookkeeping into one registry file so filing flags nothing) (header button, timeline, current frame + onion skins, Loop /
-Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. Project folders (v6.121.69) close the card, pending James's test. **Also awaiting his test:** v6.121.71 (2026-11-14), the offline copy for travel: `sw.js`, a Pull that warns about unpushed changes, and plain offline error messages.
+Ping-Pong / One Shot, fps, holds, Duplicate / Delete, + FRAME; blueprint §1.8). Next: the sprite-sheet export. Project folders (v6.121.69) close the card, pending James's test. **Also awaiting his test:** v6.121.71 (2026-11-14), the offline copy for travel: `sw.js`, a Pull that warns about unpushed changes, and plain offline error messages; it opened offline on his iPad the same day. v6.121.72 skips every network attempt when the device reports offline, to stop iOS's Airplane Mode box on opening (awaiting his test).
