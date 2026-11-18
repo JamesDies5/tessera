@@ -17,7 +17,7 @@ The app starts in one of two modes, decided by the open project's type and fixed
 - **Tileset** — an autotile sheet plus its rules. Tabs, rules trays and level tools are all available.
 - **Background**, shown on screen as **Sprites** since v6.121.13 — a layered canvas (§1.8). Tabs, rules and level tools are hidden. James uses it for backdrops and, increasingly, for game sprites: portraits, the Gunner, rope pieces, scraps. The rename (James's QOL card, 2026-11-04) changed only the words: the gallery badge and filter, the New dialog, the header label, tooltips and status lines. The stored type key is still `bg`, so every project, its saved document and its folder in the repo are unchanged.
 
-What would make Sprites more than a renamed Background (frames, a timeline, onion skin) is roadmap §3 / §3a; nothing of it exists yet.
+What would make Sprites more than a renamed Background (frames, a timeline, onion skin) is animation mode, built 2026-11-06 (§1.8 below; roadmap §3a).
 
 ### 1.2 Sheet formats, and where each stands
 
@@ -95,7 +95,7 @@ Built 2026-09-02 (v6.61 → v6.81) by studying Aseprite's source; the ellipse, t
 - **Outline** — outside or inside, four neighbour patterns, live preview.
 - **Gradient** — linear or radial, two or more stops (one may be transparent), adjustable midpoints, ordered dither 2×2 / 4×4 / 8×8 or hard steps.
 - **Drag a colour chip onto the canvas** to fill.
-- **Canvas** — resize a tileset sheet by dragging its edges (a background's size is typed in); Flip H / Flip V for the whole canvas.
+- **Canvas** — resize a tileset sheet by dragging its edges (a Sprites canvas has its own canvas-size mode with handles, below); Flip H / Flip V for the whole canvas.
 - **Finger drawing** toggle (on until a Pencil is seen), palm rejection, pinch to zoom and pan.
 
 **Colour.** Art is painted in fixed gray tones and shown through a zone palette, exactly as the game's shader shows it. Tileset tones: 25, 52, 89, 139, 200, 255. Background projects add 20, the void-match tone. The colour menu shows the tones, any off-tone colours found in the file with a Convert button that snaps them to the nearest tone, and the preview palette. What each tone means is in the game repo's `palette_canon.md`.
